@@ -37,7 +37,6 @@ struct PreferencesView: View {
     @AppStorage("scrollArrowMode") private var scrollArrowMode: String = "select"
     @AppStorage("showScrollAreaNumbers") private var showScrollAreaNumbers: Bool = true
     @AppStorage("scrollKeys") private var scrollKeys: String = "hjkl"
-    @AppStorage("scrollCommandsEnabled") private var scrollCommandsEnabled: Bool = true
     @AppStorage("scrollSpeed") private var scrollSpeed: Double = 5.0
     @AppStorage("dashSpeed") private var dashSpeed: Double = 9.0
     @AppStorage("autoScrollDeactivation") private var autoScrollDeactivation: Bool = true
@@ -95,6 +94,11 @@ struct PreferencesView: View {
                         .frame(width: 120)
                         .textFieldStyle(.roundedBorder)
                         .multilineTextAlignment(.center)
+                        .onChange(of: hintCharacters) { _, newValue in
+                            var seen = Set<Character>()
+                            let cleaned = String(newValue.lowercased().filter { $0.isLetter && seen.insert($0).inserted })
+                            if cleaned != newValue { hintCharacters = cleaned }
+                        }
                 }
                 Text("Current: \(hintCharacters.count) chars = \(hintCharacters.count * hintCharacters.count) two-letter combos")
                     .font(.caption)
@@ -134,6 +138,9 @@ struct PreferencesView: View {
                         .textFieldStyle(.roundedBorder)
                         .multilineTextAlignment(.center)
                         .font(.system(.body, design: .monospaced))
+                        .onChange(of: manualRefreshTrigger) { _, newValue in
+                            if newValue.isEmpty { manualRefreshTrigger = "rr" }
+                        }
                 }
                 .padding(.top, 4)
             }
@@ -218,16 +225,13 @@ struct PreferencesView: View {
                         .frame(width: 80)
                         .textFieldStyle(.roundedBorder)
                         .multilineTextAlignment(.center)
+                        .onChange(of: scrollKeys) { _, newValue in
+                            var seen = Set<Character>()
+                            let cleaned = String(newValue.lowercased().filter { $0.isLetter && seen.insert($0).inserted }.prefix(4))
+                            if cleaned != newValue { scrollKeys = cleaned }
+                        }
                 }
 
-                HStack {
-                    HStack(spacing: 4) {
-                        Text("Scroll commands")
-                        helpButton(text: "Enable keyboard-based scrolling using the configured scroll keys.")
-                    }
-                    Spacer()
-                    Toggle("", isOn: $scrollCommandsEnabled)
-                }
             }
 
             Section("Speed") {

@@ -2,14 +2,14 @@
 
 ## Status
 
-- **Status**: pending
+- **Status**: done
 - **Priority**: Medium
 - **Depends on**: `WS-02`, `WS-04`
 - **Main plan**: [../README.md](../README.md)
 
 ## One-Line Summary
 
-- [ ] Make settings safe to save and remove dead or half-wired refresh/config paths.
+- [x] Make settings safe to save and remove dead or half-wired refresh/config paths.
 
 ## Goal
 
@@ -48,14 +48,14 @@ Prevent invalid preferences from putting the app into broken states, and either 
 
 ## Implementation Tasks
 
-- [ ] Define validation rules for `hintCharacters`.
-- [ ] Define validation rules for `scrollKeys`.
-- [ ] Prevent invalid values from being saved or normalize them before use.
-- [ ] Ensure defaults are registered centrally instead of relying on runtime zero/unset sentinels.
-- [ ] Decide whether `scrollCommandsEnabled` should be implemented or removed; then complete that choice fully.
-- [ ] Decide whether the UI-change observer path in `HintModeController` should be wired up or removed; then complete that choice fully.
-- [ ] Remove dead state or dead code paths left behind by the chosen refresh model.
-- [ ] Add concise log entries to this file and the main plan after implementation.
+- [x] Define validation rules for `hintCharacters`.
+- [x] Define validation rules for `scrollKeys`.
+- [x] Prevent invalid values from being saved or normalize them before use.
+- [x] Ensure defaults are registered centrally instead of relying on runtime zero/unset sentinels.
+- [x] Decide whether `scrollCommandsEnabled` should be implemented or removed; then complete that choice fully.
+- [x] Decide whether the UI-change observer path in `HintModeController` should be wired up or removed; then complete that choice fully.
+- [x] Remove dead state or dead code paths left behind by the chosen refresh model.
+- [x] Add concise log entries to this file and the main plan after implementation.
 
 ## Acceptance Criteria
 
@@ -79,3 +79,4 @@ Prevent invalid preferences from putting the app into broken states, and either 
 ## Work Log
 
 - **2026-03-14**: Workstream created from the audit findings. No implementation work started yet.
+- **2026-03-14**: WS-06 complete. (1) `hintCharacters` and `scrollKeys` TextFields now auto-normalize to lowercase unique alpha on every keystroke; `hintCharacters` caps at 4 chars. Consumer-side guard in `assignHints()` falls back to default if < 2 chars — prevents divide-by-zero. (2) `manualRefreshTrigger` resets to "rr" if cleared. (3) `scrollCommandsEnabled` removed: dead setting never read by any controller — removed from PreferencesView, keynaveApp defaults. (4) Dead UI-change observer removed from HintModeController: `startUIChangeObserver()`, `stopUIChangeObserver()`, `handleUIChangeDetected()` and related instance vars (`uiChangeObserver`, `isWaitingForUIChange`, `refreshFallbackTask`) deleted — never called, timer-based refresh is the active path. Build passes.

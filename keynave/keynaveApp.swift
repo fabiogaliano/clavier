@@ -135,7 +135,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             "scrollArrowMode": "select",
             "showScrollAreaNumbers": true,
             "scrollKeys": "hjkl",
-            "scrollCommandsEnabled": true,
             "scrollSpeed": 5.0,
             "dashSpeed": 9.0,
             "autoScrollDeactivation": true,

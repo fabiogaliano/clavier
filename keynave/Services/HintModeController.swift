@@ -19,9 +19,6 @@ class HintModeController {
     private var eventTap: CFMachPort?
     private var runLoopSource: CFRunLoopSource?
     private var hotKeyRef: EventHotKeyRef?
-    private var uiChangeObserver: NSObjectProtocol?
-    private var isWaitingForUIChange = false
-    private var refreshFallbackTask: Task<Void, Never>?
     private var isTextSearchMode = false
     private var numberedElements: [UIElement] = []
     private var previousElementCount = 0
@@ -198,9 +195,6 @@ class HintModeController {
         HintModeController.isTextSearchActive = false
         HintModeController.numberedElementsCount = 0
 
-        // Stop UI change observer
-        stopUIChangeObserver()
-
         // Stop deactivation timer
         deactivationTimer?.invalidate()
         deactivationTimer = nil
@@ -221,58 +215,6 @@ class HintModeController {
         currentInput = ""
         isTextSearchMode = false
         numberedElements = []
-    }
-
-    private func startUIChangeObserver() {
-        // Remove existing observer if any
-        stopUIChangeObserver()
-
-        // Start accessibility observer
-        AccessibilityService.shared.startObservingUIChanges()
-
-        // Subscribe to UI change notifications
-        uiChangeObserver = NotificationCenter.default.addObserver(
-            forName: .accessibilityUIChanged,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            guard let self = self else { return }
-            Task { @MainActor in
-                self.handleUIChangeDetected()
-            }
-        }
-    }
-
-    private func stopUIChangeObserver() {
-        // Cancel fallback task
-        refreshFallbackTask?.cancel()
-        refreshFallbackTask = nil
-
-        // Remove notification observer
-        if let observer = uiChangeObserver {
-            NotificationCenter.default.removeObserver(observer)
-            uiChangeObserver = nil
-        }
-
-        // Stop accessibility observer
-        AccessibilityService.shared.stopObservingUIChanges()
-        isWaitingForUIChange = false
-    }
-
-    private func handleUIChangeDetected() {
-        guard isWaitingForUIChange && isActive else { return }
-
-        let detectionTime = CFAbsoluteTimeGetCurrent()
-        print("[CONTINUOUS] UI change detected at +\(String(format: "%.0f", (detectionTime - refreshStartTime) * 1000))ms")
-
-        isWaitingForUIChange = false
-
-        // Cancel fallback task since we got the notification
-        refreshFallbackTask?.cancel()
-        refreshFallbackTask = nil
-
-        // Perform the actual refresh
-        performHintRefresh()
     }
 
     private var refreshStartTime: CFAbsoluteTime = 0
@@ -322,7 +264,8 @@ class HintModeController {
     }
 
     private func assignHints() {
-        let hintCharacters = UserDefaults.standard.string(forKey: "hintCharacters") ?? "asdfhjkl"
+        var hintCharacters = UserDefaults.standard.string(forKey: "hintCharacters") ?? "asdfhjkl"
+        if hintCharacters.count < 2 { hintCharacters = "asdfhjkl" }
         let chars = Array(hintCharacters)
         let count = elements.count
 
