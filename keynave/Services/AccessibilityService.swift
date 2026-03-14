@@ -70,16 +70,18 @@ class AccessibilityService {
             return []
         }
 
-        let screenFrame = NSScreen.main?.frame ?? .zero
+        // Use the full desktop bounds in AX coordinates so windows on non-main
+        // displays are not silently dropped by the intersection clip.
+        let desktopBoundsAX = ScreenGeometry.desktopBoundsInAX
 
         // Process each window with visibility clipping
         let traverseStartTime = CFAbsoluteTimeGetCurrent()
         for window in windows {
             // Get window frame for visibility clipping
-            let windowBounds = getWindowBounds(window) ?? screenFrame
-            let visibleBounds = windowBounds.intersection(screenFrame)
+            let windowBounds = getWindowBounds(window) ?? desktopBoundsAX
+            let visibleBounds = windowBounds.intersection(desktopBoundsAX)
 
-            traverseElementOptimized(window, clickableAncestor: nil, into: &elements, clipBounds: visibleBounds, screenFrame: screenFrame)
+            traverseElementOptimized(window, clickableAncestor: nil, into: &elements, clipBounds: visibleBounds)
         }
         let traverseEndTime = CFAbsoluteTimeGetCurrent()
         print("  ⏱️ traverseElements: \(String(format: "%.3f", traverseEndTime - traverseStartTime))s (\(elements.count) raw elements)")
@@ -139,7 +141,7 @@ class AccessibilityService {
         return unique
     }
 
-    private func traverseElementOptimized(_ element: AXUIElement, clickableAncestor: AXUIElement?, into elements: inout [UIElement], clipBounds: CGRect, screenFrame: CGRect) {
+    private func traverseElementOptimized(_ element: AXUIElement, clickableAncestor: AXUIElement?, into elements: inout [UIElement], clipBounds: CGRect) {
         // BATCH FETCH: Get role, position, size, children in ONE IPC call
         let attributes = [
             kAXRoleAttribute as CFString,
@@ -186,9 +188,8 @@ class AccessibilityService {
             return // Early exit - don't traverse children
         }
 
-        // Convert to screen coordinates (macOS uses bottom-left origin, we need top-left)
-        let flippedY = screenFrame.height - position.y - size.height
-        let frame = CGRect(x: position.x, y: flippedY, width: size.width, height: size.height)
+        // Convert AX coordinates (top-left origin, y down) to AppKit (bottom-left origin, y up).
+        let frame = ScreenGeometry.axToAppKit(position: position, size: size)
 
         // Update clickable ancestor for children
         // If this element is clickable, it becomes the new ancestor for its children
@@ -196,9 +197,10 @@ class AccessibilityService {
 
         // Check if element is clickable
         if clickableRoles.contains(role) {
-            // Filter out too small elements
-            if frame.width > 5 && frame.height > 5 &&
-               frame.origin.x >= 0 && frame.origin.y >= 0 {
+            // Filter out elements too small to be meaningful click targets.
+            // The origin check is intentionally omitted: secondary displays can
+            // have negative AppKit coordinates (screens left of or below main).
+            if frame.width > 5 && frame.height > 5 {
                 var uiElement = UIElement(
                     axElement: element,
                     frame: frame,
@@ -224,7 +226,7 @@ class AccessibilityService {
         let childClipBounds = elementFrame.intersection(clipBounds)
 
         for child in children {
-            traverseElementOptimized(child, clickableAncestor: newClickableAncestor, into: &elements, clipBounds: childClipBounds, screenFrame: screenFrame)
+            traverseElementOptimized(child, clickableAncestor: newClickableAncestor, into: &elements, clipBounds: childClipBounds)
         }
     }
 

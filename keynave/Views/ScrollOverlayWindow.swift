@@ -19,10 +19,11 @@ class ScrollOverlayWindow: NSWindow {
     init(areas: [ScrollableArea]) {
         self.areas = areas
 
-        let screenFrame = NSScreen.main?.frame ?? .zero
+        // Cover the entire desktop so scroll hints render correctly on every display.
+        let desktopBounds = ScreenGeometry.desktopBoundsInAppKit
 
         super.init(
-            contentRect: screenFrame,
+            contentRect: desktopBounds,
             styleMask: .borderless,
             backing: .buffered,
             defer: false
@@ -48,7 +49,7 @@ class ScrollOverlayWindow: NSWindow {
     }
 
     private func setupViews() {
-        let containerView = NSView(frame: self.frame)
+        let containerView = NSView(frame: CGRect(origin: .zero, size: self.frame.size))
         containerView.wantsLayer = true
 
         // Create highlight view (hidden initially)
@@ -94,11 +95,12 @@ class ScrollOverlayWindow: NSWindow {
         let width = label.frame.width + padding * 2
         let height = label.frame.height + padding
 
-        // Position at top-right corner
-        let x = area.frame.maxX - width - 8  // 8px from right edge
-        let y = area.frame.minY + 8           // 8px from top edge
+        // Position at top-right corner of the area, translated to window-local coords.
+        let localOrigin = ScreenGeometry.toWindowLocal(
+            CGRect(x: area.frame.maxX - width - 8, y: area.frame.minY + 8, width: width, height: height)
+        )
 
-        label.frame = CGRect(x: x, y: y, width: width, height: height)
+        label.frame = CGRect(x: localOrigin.minX, y: localOrigin.minY, width: width, height: height)
 
         return label
     }
@@ -195,8 +197,8 @@ class ScrollOverlayWindow: NSWindow {
         selectedAreaIndex = index
         let area = areas[index]
 
-        // Update highlight
-        highlightView?.frame = area.frame
+        // Update highlight — translate to window-local coordinates.
+        highlightView?.frame = ScreenGeometry.toWindowLocal(area.frame)
         highlightView?.isHidden = false
 
         // Dim non-selected hints

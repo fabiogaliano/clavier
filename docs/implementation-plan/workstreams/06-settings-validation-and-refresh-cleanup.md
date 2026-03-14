@@ -1,0 +1,81 @@
+# WS-06: Settings Validation and Refresh Cleanup
+
+## Status
+
+- **Status**: pending
+- **Priority**: Medium
+- **Depends on**: `WS-02`, `WS-04`
+- **Main plan**: [../README.md](../README.md)
+
+## One-Line Summary
+
+- [ ] Make settings safe to save and remove dead or half-wired refresh/config paths.
+
+## Goal
+
+Prevent invalid preferences from putting the app into broken states, and either wire up or remove dead code paths that currently add complexity without delivering behavior.
+
+## Audit Findings Addressed
+
+- Unvalidated `hintCharacters` and `scrollKeys`
+- Dead `scrollCommandsEnabled` setting
+- Unused UI-change observer state in `HintModeController`
+- Mixed sentinel/default behavior in settings-driven runtime code
+
+## Allowed Files
+
+- `keynave/Views/PreferencesView.swift`
+- `keynave/keynaveApp.swift`
+- `keynave/Services/HintModeController.swift`
+- `keynave/Services/ScrollModeController.swift`
+- `keynave/Services/AccessibilityService.swift`
+- Optional new helper: `keynave/Services/SettingsValidationService.swift`
+
+## Do Not Touch In This Workstream
+
+- Geometry and multi-display conversion
+- Overlay placement algorithms
+- Scroll detection heuristics
+- Large performance refactors
+
+## Suggested Read Order
+
+1. `keynave/Views/PreferencesView.swift`
+2. `keynave/keynaveApp.swift`
+3. `keynave/Services/HintModeController.swift`
+4. `keynave/Services/ScrollModeController.swift`
+5. `keynave/Services/AccessibilityService.swift`
+
+## Implementation Tasks
+
+- [ ] Define validation rules for `hintCharacters`.
+- [ ] Define validation rules for `scrollKeys`.
+- [ ] Prevent invalid values from being saved or normalize them before use.
+- [ ] Ensure defaults are registered centrally instead of relying on runtime zero/unset sentinels.
+- [ ] Decide whether `scrollCommandsEnabled` should be implemented or removed; then complete that choice fully.
+- [ ] Decide whether the UI-change observer path in `HintModeController` should be wired up or removed; then complete that choice fully.
+- [ ] Remove dead state or dead code paths left behind by the chosen refresh model.
+- [ ] Add concise log entries to this file and the main plan after implementation.
+
+## Acceptance Criteria
+
+- Invalid settings can no longer crash hint generation or silently break input behavior.
+- Any user-facing settings in Preferences correspond to real behavior.
+- Dead refresh/config code is either fully wired or fully removed.
+- Defaults are explicit and consistent.
+
+## Manual Verification Notes
+
+- Try empty, duplicate, and too-short `hintCharacters` inputs.
+- Try invalid `scrollKeys` inputs.
+- Verify Preferences still reflects saved values correctly.
+- Verify hint mode and scroll mode still start normally after validation changes.
+
+## Handoff Notes
+
+- Prefer minimal behavior changes.
+- If a cleanup decision is ambiguous, document it in the log rather than silently changing product behavior.
+
+## Work Log
+
+- **2026-03-14**: Workstream created from the audit findings. No implementation work started yet.

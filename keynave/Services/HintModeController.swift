@@ -673,12 +673,7 @@ class HintModeController {
     }
 
     private func performRightClick(on element: UIElement) {
-        let screenFrame = NSScreen.main?.frame ?? .zero
-        let clickPoint = CGPoint(
-            x: element.centerPoint.x,
-            y: screenFrame.height - element.centerPoint.y
-        )
-
+        let clickPoint = ScreenGeometry.appKitCenterToQuartz(element.centerPoint)
         ClickService.shared.rightClick(at: clickPoint)
 
         // Restart auto-deactivation timer after successful click
@@ -789,13 +784,7 @@ class HintModeController {
     }
 
     private func performClick(on element: UIElement) {
-        // Convert to screen coordinates for CGEvent (uses bottom-left origin)
-        let screenFrame = NSScreen.main?.frame ?? .zero
-        let clickPoint = CGPoint(
-            x: element.centerPoint.x,
-            y: screenFrame.height - element.centerPoint.y
-        )
-
+        let clickPoint = ScreenGeometry.appKitCenterToQuartz(element.centerPoint)
         ClickService.shared.click(at: clickPoint)
 
         // Restart auto-deactivation timer after successful click

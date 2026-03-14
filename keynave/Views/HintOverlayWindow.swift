@@ -21,10 +21,11 @@ class HintOverlayWindow: NSWindow {
     init(elements: [UIElement]) {
         self.elements = elements
 
-        let screenFrame = NSScreen.main?.frame ?? .zero
+        // Cover the entire desktop so hints render correctly on every display.
+        let desktopBounds = ScreenGeometry.desktopBoundsInAppKit
 
         super.init(
-            contentRect: screenFrame,
+            contentRect: desktopBounds,
             styleMask: .borderless,
             backing: .buffered,
             defer: false
@@ -51,7 +52,8 @@ class HintOverlayWindow: NSWindow {
     }
 
     private func setupHintViews() {
-        let containerView = NSView(frame: self.frame)
+        // Use the window size (not frame) so the container stays at local origin (0,0).
+        let containerView = NSView(frame: CGRect(origin: .zero, size: self.frame.size))
         containerView.wantsLayer = true
 
         for element in elements {
@@ -128,26 +130,39 @@ class HintOverlayWindow: NSWindow {
         glassContainer.addSubview(tintOverlay)
         glassContainer.addSubview(label)
 
-        // Position hint overlapping the element (top-left corner, inside the element)
-        // Apply horizontal offset from preferences (negative = left, positive = right)
+        // Position hint overlapping the element (top-left corner, inside the element).
+        // Apply horizontal offset from preferences (negative = left, positive = right).
+        // Translate from screen (AppKit) coordinates to window-local coordinates so
+        // hints appear correctly when the overlay spans non-main displays.
         let horizontalOffset = UserDefaults.standard.double(forKey: "hintHorizontalOffset")
         let offsetValue = horizontalOffset != 0 ? CGFloat(horizontalOffset) : -25.0
-        let x = element.frame.minX + offsetValue
-        let y = element.frame.maxY - height  // Place at top of element (maxY in flipped coords)
+        let hintFrame = ScreenGeometry.toWindowLocal(
+            CGRect(
+                x: element.frame.minX + offsetValue,
+                y: element.frame.maxY - height,
+                width: width,
+                height: height
+            )
+        )
 
-        glassContainer.frame = CGRect(x: x, y: y, width: width, height: height)
+        glassContainer.frame = hintFrame
 
         return glassContainer
     }
 
     private func setupSearchBar() {
-        let screenFrame = NSScreen.main?.frame ?? .zero
+        // The search bar is intentionally anchored to the main display (the screen
+        // with the menu bar) because it is a global UI element the user types into,
+        // regardless of which display the hinted elements are on.
+        let mainFrame = NSScreen.main?.frame ?? .zero
+        let windowOrigin = ScreenGeometry.desktopBoundsInAppKit.origin
 
         // Create container view for search bar
         let containerWidth: CGFloat = 300
         let containerHeight: CGFloat = 40
-        let containerX = (screenFrame.width - containerWidth) / 2
-        let containerY: CGFloat = 80 // Near bottom of screen
+        // Center horizontally on the main display, translated to window-local coords.
+        let containerX = mainFrame.minX + (mainFrame.width - containerWidth) / 2 - windowOrigin.x
+        let containerY: CGFloat = 80 - windowOrigin.y // Near bottom of main display
 
         // Create visual effect view for glass background
         let visualEffectView = NSVisualEffectView(frame: CGRect(x: containerX, y: containerY, width: containerWidth, height: containerHeight))
@@ -342,7 +357,8 @@ class HintOverlayWindow: NSWindow {
     }
 
     private func createHighlightView(for element: UIElement) -> NSView {
-        let highlightView = NSView(frame: element.frame.insetBy(dx: -2, dy: -2))
+        let localFrame = ScreenGeometry.toWindowLocal(element.frame.insetBy(dx: -2, dy: -2))
+        let highlightView = NSView(frame: localFrame)
         highlightView.wantsLayer = true
         highlightView.layer?.borderWidth = 3
         highlightView.layer?.borderColor = NSColor.systemGreen.cgColor

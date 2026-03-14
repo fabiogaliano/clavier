@@ -380,10 +380,10 @@ class ScrollableAreaService {
                 if isWebContent {
                     // Web scrollables are accepted without native scrollbar validation
                     if let area = createScrollableArea(from: element) {
-                        // Filter out off-screen or too small areas
+                        // Size filter only — origin check omitted because secondary displays
+                        // can have negative AppKit coordinates (screens left of or below main).
                         if area.frame.width > Config.minimumAreaSize &&
-                           area.frame.height > Config.minimumAreaSize &&
-                           area.frame.origin.x >= 0 && area.frame.origin.y >= 0 {
+                           area.frame.height > Config.minimumAreaSize {
 
                             // Use centralized area filtering logic
                             if shouldAddArea(area, to: &areas) {
@@ -399,10 +399,9 @@ class ScrollableAreaService {
                     }
                 }
             } else if let area = createScrollableArea(from: element) {
-                // Filter out off-screen or too small areas
+                // Size filter only — see comment above for why origin check is omitted.
                 if area.frame.width > Config.minimumAreaSize &&
-                   area.frame.height > Config.minimumAreaSize &&
-                   area.frame.origin.x >= 0 && area.frame.origin.y >= 0 {
+                   area.frame.height > Config.minimumAreaSize {
 
                     // Use centralized area filtering logic
                     if shouldAddArea(area, to: &areas) {
@@ -523,12 +522,7 @@ class ScrollableAreaService {
             return nil
         }
 
-        // Convert to screen coordinates (macOS uses bottom-left origin, we need top-left)
-        let screenFrame = NSScreen.main?.frame ?? .zero
-        let flippedY = screenFrame.height - position.y - size.height
-
-        let frame = CGRect(x: position.x, y: flippedY, width: size.width, height: size.height)
-
+        let frame = ScreenGeometry.axToAppKit(position: position, size: size)
         return ScrollableArea(axElement: axElement, frame: frame)
     }
 }

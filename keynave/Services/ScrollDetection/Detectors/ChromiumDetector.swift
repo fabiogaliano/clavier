@@ -192,12 +192,7 @@ class ChromiumDetector: AppSpecificDetector {
             return nil
         }
 
-        // Convert to screen coordinates (macOS uses bottom-left origin, we need top-left)
-        let screenFrame = NSScreen.main?.frame ?? .zero
-        let flippedY = screenFrame.height - position.y - size.height
-
-        let frame = CGRect(x: position.x, y: flippedY, width: size.width, height: size.height)
-
+        let frame = ScreenGeometry.axToAppKit(position: position, size: size)
         return ScrollableArea(axElement: axElement, frame: frame)
     }
 }

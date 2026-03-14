@@ -613,14 +613,7 @@ class ScrollModeController {
         guard selectedAreaIndex >= 0 && selectedAreaIndex < areas.count else { return }
 
         let area = areas[selectedAreaIndex]
-        let screenFrame = NSScreen.main?.frame ?? .zero
-
-        // Convert to screen coordinates for CGEvent
-        let clickPoint = CGPoint(
-            x: area.centerPoint.x,
-            y: screenFrame.height - area.centerPoint.y
-        )
-
+        let clickPoint = ScreenGeometry.appKitCenterToQuartz(area.centerPoint)
         ClickService.shared.scroll(at: clickPoint, direction: direction, speed: speed)
     }
 
