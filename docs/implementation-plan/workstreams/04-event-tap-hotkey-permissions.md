@@ -2,14 +2,14 @@
 
 ## Status
 
-- **Status**: pending
+- **Status**: done
 - **Priority**: High
 - **Depends on**: none
 - **Main plan**: [../README.md](../README.md)
 
 ## One-Line Summary
 
-- [ ] Make input interception reliable by hardening event-tap state, hotkey lifecycle, and permission guidance.
+- [x] Make input interception reliable by hardening event-tap state, hotkey lifecycle, and permission guidance.
 
 ## Goal
 
@@ -46,15 +46,15 @@ Stabilize the keyboard interception path so hint mode and scroll mode can activa
 
 ## Implementation Tasks
 
-- [ ] Inventory all shared callback-visible state in both controllers.
-- [ ] Replace `nonisolated(unsafe)` string/reference state with a safer synchronization model.
-- [ ] Ensure any remaining callback-visible shared state has a clear ownership and synchronization strategy.
-- [ ] Refactor hotkey registration so the application event handler is installed once or explicitly removed when re-registering.
-- [ ] Ensure re-recording shortcuts does not accumulate duplicate handlers.
-- [ ] Convert activation into a transaction so overlays do not become active if event-tap creation fails.
-- [ ] Add explicit input-listening permission checks or guidance alongside the existing accessibility flow.
-- [ ] Surface actionable user-facing status when input capture cannot start.
-- [ ] Add concise log entries to this file and the main plan after implementation.
+- [x] Inventory all shared callback-visible state in both controllers.
+- [x] Replace `nonisolated(unsafe)` string/reference state with a safer synchronization model.
+- [x] Ensure any remaining callback-visible shared state has a clear ownership and synchronization strategy.
+- [x] Refactor hotkey registration so the application event handler is installed once or explicitly removed when re-registering.
+- [x] Ensure re-recording shortcuts does not accumulate duplicate handlers.
+- [x] Convert activation into a transaction so overlays do not become active if event-tap creation fails.
+- [x] Add explicit input-listening permission checks or guidance alongside the existing accessibility flow.
+- [x] Surface actionable user-facing status when input capture cannot start.
+- [x] Add concise log entries to this file and the main plan after implementation.
 
 ## Acceptance Criteria
 
@@ -78,3 +78,4 @@ Stabilize the keyboard interception path so hint mode and scroll mode can activa
 ## Work Log
 
 - **2026-03-14**: Workstream created from the audit findings. No implementation work started yet.
+- **2026-03-14**: WS-04 complete. Changes in `HintModeController.swift` and `ScrollModeController.swift`; `keynaveApp.swift` and `PreferencesView.swift` unchanged. Changes: (1) Eliminated `typedInput` String from shared callback state — callback is now a thin dispatcher that only reads Bool/Int/pointer statics and dispatches all string work to main thread. (2) Removed 7 dead `nonisolated(unsafe)` statics across both controllers (hintChars, pendingAction, textSearchEnabled, minSearchChars, refreshTrigger from Hint; typedInput, selectedIndex, areaCount from Scroll). Remaining 4 statics per controller are simple scalars, documented. (3) `InstallEventHandler` now stored as `eventHandlerRef`, installed once in `registerGlobalHotkey()`, reused across re-registrations — eliminates handler accumulation. (4) `startEventTap()` returns Bool; activation is transactional — if tap fails, overlay is closed and state is rolled back. Both controllers print actionable Accessibility permission guidance on failure. Build passes.

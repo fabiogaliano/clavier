@@ -22,15 +22,15 @@ class ScrollModeController {
     private var hotKeyRef: EventHotKeyRef?
     private var deactivationTimer: Timer?
 
-    // Thread-safe state for event tap callback
+    // Callback-visible state: only simple scalars that are practically atomic on arm64.
     private nonisolated(unsafe) static var isScrollModeActive = false
     private nonisolated(unsafe) static var currentEventTap: CFMachPort?
-    private nonisolated(unsafe) static var typedInput = ""
-    private nonisolated(unsafe) static var selectedIndex = -1
-    private nonisolated(unsafe) static var areaCount = 0
 
     // Static reference for C callback
     private static var sharedInstance: ScrollModeController?
+
+    // Carbon event handler installed once, reused across hotkey re-registrations
+    private var eventHandlerRef: EventHandlerRef?
 
     // Settings cache
     private var scrollKeys = "hjkl"
@@ -42,6 +42,40 @@ class ScrollModeController {
 
     func registerGlobalHotkey() {
         ScrollModeController.sharedInstance = self
+
+        // Install Carbon event handler once
+        if eventHandlerRef == nil {
+            var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+
+            InstallEventHandler(GetApplicationEventTarget(), { (_, event, userData) -> OSStatus in
+                guard let userData = userData, let event = event else { return OSStatus(eventNotHandledErr) }
+
+                var pressedHotKeyID = EventHotKeyID()
+                let err = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &pressedHotKeyID
+                )
+
+                guard err == noErr else { return OSStatus(eventNotHandledErr) }
+
+                let expectedSignature = OSType("KSCR".utf8.reduce(0) { ($0 << 8) + OSType($1) })
+                guard pressedHotKeyID.signature == expectedSignature && pressedHotKeyID.id == 2 else {
+                    return OSStatus(eventNotHandledErr)
+                }
+
+                let controller = Unmanaged<ScrollModeController>.fromOpaque(userData).takeUnretainedValue()
+
+                Task { @MainActor in
+                    controller.toggleScrollMode()
+                }
+                return noErr
+            }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &eventHandlerRef)
+        }
 
         // Listen for hotkey disable/enable notifications
         NotificationCenter.default.addObserver(
@@ -64,7 +98,6 @@ class ScrollModeController {
     }
 
     private func registerHotkeyInternal() {
-        // Don't register if already registered
         guard hotKeyRef == nil else { return }
 
         let keyCode = UserDefaults.standard.integer(forKey: "scrollShortcutKeyCode")
@@ -73,39 +106,6 @@ class ScrollModeController {
         var hotKeyID = EventHotKeyID()
         hotKeyID.signature = OSType("KSCR".utf8.reduce(0) { ($0 << 8) + OSType($1) })
         hotKeyID.id = 2
-
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-
-        InstallEventHandler(GetApplicationEventTarget(), { (_, event, userData) -> OSStatus in
-            guard let userData = userData, let event = event else { return OSStatus(eventNotHandledErr) }
-
-            // Extract the hotkey ID from the event to check if this is our hotkey
-            var pressedHotKeyID = EventHotKeyID()
-            let err = GetEventParameter(
-                event,
-                EventParamName(kEventParamDirectObject),
-                EventParamType(typeEventHotKeyID),
-                nil,
-                MemoryLayout<EventHotKeyID>.size,
-                nil,
-                &pressedHotKeyID
-            )
-
-            guard err == noErr else { return OSStatus(eventNotHandledErr) }
-
-            // Check if this is the scroll mode hotkey (signature: "KSCR", id: 2)
-            let expectedSignature = OSType("KSCR".utf8.reduce(0) { ($0 << 8) + OSType($1) })
-            guard pressedHotKeyID.signature == expectedSignature && pressedHotKeyID.id == 2 else {
-                return OSStatus(eventNotHandledErr) // Not our hotkey, let other handlers process
-            }
-
-            let controller = Unmanaged<ScrollModeController>.fromOpaque(userData).takeUnretainedValue()
-
-            Task { @MainActor in
-                controller.toggleScrollMode()
-            }
-            return noErr
-        }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), nil)
 
         RegisterEventHotKey(UInt32(keyCode), UInt32(modifiers), hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
     }
@@ -146,20 +146,23 @@ class ScrollModeController {
             overlayWindow = ScrollOverlayWindow(areas: areas)
             overlayWindow?.show()
 
-            // Update state
+            // Start intercepting keyboard events — abort if tap creation fails
+            guard startEventTap() else {
+                overlayWindow?.orderOut(nil)
+                overlayWindow?.close()
+                overlayWindow = nil
+                areas = []
+                return
+            }
+
+            // Update state after event tap is confirmed
             isActive = true
             currentInput = ""
             selectedAreaIndex = 0
             ScrollModeController.isScrollModeActive = true
-            ScrollModeController.typedInput = ""
-            ScrollModeController.selectedIndex = 0
-            ScrollModeController.areaCount = areas.count
 
             // Auto-select the focused area
             selectArea(at: 0)
-
-            // Start intercepting keyboard events
-            startEventTap()
 
             // Start deactivation timer if enabled
             startDeactivationTimer()
@@ -202,17 +205,20 @@ class ScrollModeController {
                         self.overlayWindow = ScrollOverlayWindow(areas: self.areas)
                         self.overlayWindow?.show()
 
-                        // Update state
+                        // Start event tap — abort if tap creation fails
+                        guard self.startEventTap() else {
+                            self.overlayWindow?.orderOut(nil)
+                            self.overlayWindow?.close()
+                            self.overlayWindow = nil
+                            self.areas = []
+                            return
+                        }
+
+                        // Update state after event tap is confirmed
                         self.isActive = true
                         self.currentInput = ""
                         self.selectedAreaIndex = -1
                         ScrollModeController.isScrollModeActive = true
-                        ScrollModeController.typedInput = ""
-                        ScrollModeController.selectedIndex = -1
-                        ScrollModeController.areaCount = self.areas.count
-
-                        // Start event tap
-                        self.startEventTap()
                         self.startDeactivationTimer()
 
                         let initialElapsed = Date().timeIntervalSince(activationStartTime)
@@ -230,7 +236,7 @@ class ScrollModeController {
                         areaWithHint.hint = "\(hintNumber)"
                         self.areas.append(areaWithHint)
                         self.overlayWindow?.addArea(areaWithHint)
-                        ScrollModeController.areaCount = self.areas.count
+
 
                         print("[HINT] #\(hintNumber) → \(area.frame)")
                     }
@@ -371,7 +377,7 @@ class ScrollModeController {
                     areaWithHint.hint = nextHint
                     self.areas.append(areaWithHint)
                     self.overlayWindow?.addArea(areaWithHint)
-                    ScrollModeController.areaCount = self.areas.count
+
 
                     print("[HINT] #\(nextHint) → \(area.frame)")
                 }
@@ -388,8 +394,6 @@ class ScrollModeController {
 
         // Update static state
         ScrollModeController.isScrollModeActive = false
-        ScrollModeController.typedInput = ""
-        ScrollModeController.selectedIndex = -1
 
         // Stop event tap
         stopEventTap()
@@ -440,8 +444,6 @@ class ScrollModeController {
             }
         }
 
-        // Update static count
-        ScrollModeController.areaCount = areas.count
     }
 
     private func startDeactivationTimer() {
@@ -460,7 +462,8 @@ class ScrollModeController {
         startDeactivationTimer()
     }
 
-    private func startEventTap() {
+    @discardableResult
+    private func startEventTap() -> Bool {
         let eventMask = (1 << CGEventType.keyDown.rawValue)
 
         eventTap = CGEvent.tapCreate(
@@ -502,8 +505,8 @@ class ScrollModeController {
         )
 
         guard let eventTap = eventTap else {
-            print("Failed to create event tap for scroll mode")
-            return
+            print("⚠️ Failed to create event tap for scroll mode. Check Accessibility permissions in System Settings > Privacy & Security > Accessibility.")
+            return false
         }
 
         ScrollModeController.currentEventTap = eventTap
@@ -511,6 +514,7 @@ class ScrollModeController {
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
         CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
+        return true
     }
 
     private func stopEventTap() {
@@ -540,11 +544,11 @@ class ScrollModeController {
             if let index = Int(currentInput), index >= 1 && index <= areas.count {
                 selectArea(at: index - 1)
                 currentInput = ""
-                ScrollModeController.typedInput = ""
+    
             } else if currentInput.count >= String(areas.count).count {
                 // Reset if input is too long
                 currentInput = ""
-                ScrollModeController.typedInput = ""
+    
             }
             return
         }
@@ -576,7 +580,7 @@ class ScrollModeController {
         // Backspace (51) - clear input
         if keyCode == 51 {
             currentInput = ""
-            ScrollModeController.typedInput = ""
+
             overlayWindow?.clearSelection()
             selectedAreaIndex = -1
             return
@@ -586,7 +590,6 @@ class ScrollModeController {
     private func selectArea(at index: Int) {
         guard index >= 0 && index < areas.count else { return }
         selectedAreaIndex = index
-        ScrollModeController.selectedIndex = index
         overlayWindow?.selectArea(at: index)
         print("Selected scroll area \(index + 1)")
     }

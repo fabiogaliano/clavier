@@ -31,27 +31,64 @@ class HintModeController {
     private var autoDeactivation = false
     private var deactivationDelay: Double = 5.0
 
+    // Text search settings (loaded from UserDefaults at activation, used on main thread only)
+    private var textSearchEnabled = true
+    private var minSearchChars = 2
+    private var refreshTrigger = "rr"
+
     // Default refresh delays for continuous mode
     private static let defaultOptimisticDelay: TimeInterval = 0.050 // 50ms
     private static let defaultFallbackDelay: TimeInterval = 0.100   // 100ms additional
 
-    // Thread-safe state for event tap callback
+    // Callback-visible state: only simple scalars that are practically atomic on arm64.
+    // The callback dispatches ALL string manipulation to main — no shared String state.
     private nonisolated(unsafe) static var isHintModeActive = false
-    private nonisolated(unsafe) static var hintChars = "asdfhjkl"
     private nonisolated(unsafe) static var currentEventTap: CFMachPort?
-    private nonisolated(unsafe) static var typedInput = ""
-    private nonisolated(unsafe) static var pendingAction: (() -> Void)?
-    private nonisolated(unsafe) static var textSearchEnabled = true
-    private nonisolated(unsafe) static var minSearchChars = 2
     private nonisolated(unsafe) static var isTextSearchActive = false
     private nonisolated(unsafe) static var numberedElementsCount = 0
-    private nonisolated(unsafe) static var refreshTrigger = "rr"
 
     // Static reference for C callback
     private static var sharedInstance: HintModeController?
 
+    // Carbon event handler installed once, reused across hotkey re-registrations
+    private var eventHandlerRef: EventHandlerRef?
+
     func registerGlobalHotkey() {
         HintModeController.sharedInstance = self
+
+        // Install Carbon event handler once — it persists for the app lifetime
+        if eventHandlerRef == nil {
+            var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
+
+            InstallEventHandler(GetApplicationEventTarget(), { (_, event, userData) -> OSStatus in
+                guard let userData = userData, let event = event else { return OSStatus(eventNotHandledErr) }
+
+                var pressedHotKeyID = EventHotKeyID()
+                let err = GetEventParameter(
+                    event,
+                    EventParamName(kEventParamDirectObject),
+                    EventParamType(typeEventHotKeyID),
+                    nil,
+                    MemoryLayout<EventHotKeyID>.size,
+                    nil,
+                    &pressedHotKeyID
+                )
+
+                guard err == noErr else { return OSStatus(eventNotHandledErr) }
+
+                let expectedSignature = OSType("KNAV".utf8.reduce(0) { ($0 << 8) + OSType($1) })
+                guard pressedHotKeyID.signature == expectedSignature && pressedHotKeyID.id == 1 else {
+                    return OSStatus(eventNotHandledErr)
+                }
+
+                let controller = Unmanaged<HintModeController>.fromOpaque(userData).takeUnretainedValue()
+
+                Task { @MainActor in
+                    controller.toggleHintMode()
+                }
+                return noErr
+            }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &eventHandlerRef)
+        }
 
         // Listen for hotkey disable/enable notifications
         NotificationCenter.default.addObserver(
@@ -74,7 +111,6 @@ class HintModeController {
     }
 
     private func registerHotkeyInternal() {
-        // Don't register if already registered
         guard hotKeyRef == nil else { return }
 
         let keyCode = UserDefaults.standard.integer(forKey: "hintShortcutKeyCode")
@@ -83,40 +119,6 @@ class HintModeController {
         var hotKeyID = EventHotKeyID()
         hotKeyID.signature = OSType("KNAV".utf8.reduce(0) { ($0 << 8) + OSType($1) })
         hotKeyID.id = 1
-
-        var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-
-        // Install event handler
-        InstallEventHandler(GetApplicationEventTarget(), { (_, event, userData) -> OSStatus in
-            guard let userData = userData, let event = event else { return OSStatus(eventNotHandledErr) }
-
-            // Extract the hotkey ID from the event to check if this is our hotkey
-            var pressedHotKeyID = EventHotKeyID()
-            let err = GetEventParameter(
-                event,
-                EventParamName(kEventParamDirectObject),
-                EventParamType(typeEventHotKeyID),
-                nil,
-                MemoryLayout<EventHotKeyID>.size,
-                nil,
-                &pressedHotKeyID
-            )
-
-            guard err == noErr else { return OSStatus(eventNotHandledErr) }
-
-            // Check if this is the hint mode hotkey (signature: "KNAV", id: 1)
-            let expectedSignature = OSType("KNAV".utf8.reduce(0) { ($0 << 8) + OSType($1) })
-            guard pressedHotKeyID.signature == expectedSignature && pressedHotKeyID.id == 1 else {
-                return OSStatus(eventNotHandledErr) // Not our hotkey, let other handlers process
-            }
-
-            let controller = Unmanaged<HintModeController>.fromOpaque(userData).takeUnretainedValue()
-
-            Task { @MainActor in
-                controller.toggleHintMode()
-            }
-            return noErr
-        }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), nil)
 
         RegisterEventHotKey(UInt32(keyCode), UInt32(modifiers), hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
     }
@@ -156,18 +158,24 @@ class HintModeController {
         overlayWindow = HintOverlayWindow(elements: elements)
         overlayWindow?.show()
 
-        // Update state before starting event tap
+        // Start intercepting keyboard events — abort if tap creation fails
+        guard startEventTap() else {
+            print("⚠️ Failed to create event tap. Check Accessibility permissions in System Settings > Privacy & Security > Accessibility.")
+            overlayWindow?.orderOut(nil)
+            overlayWindow?.close()
+            overlayWindow = nil
+            elements = []
+            return
+        }
+
+        // Update state after event tap is confirmed
         isActive = true
         currentInput = ""
         previousElementCount = elements.count
         HintModeController.isHintModeActive = true
-        HintModeController.typedInput = ""
-        HintModeController.textSearchEnabled = UserDefaults.standard.bool(forKey: "textSearchEnabled")
-        HintModeController.minSearchChars = UserDefaults.standard.integer(forKey: "minSearchCharacters")
-        HintModeController.refreshTrigger = UserDefaults.standard.string(forKey: "manualRefreshTrigger") ?? "rr"
-
-        // Start intercepting keyboard events
-        startEventTap()
+        textSearchEnabled = UserDefaults.standard.bool(forKey: "textSearchEnabled")
+        minSearchChars = UserDefaults.standard.integer(forKey: "minSearchCharacters")
+        refreshTrigger = UserDefaults.standard.string(forKey: "manualRefreshTrigger") ?? "rr"
 
         // Start auto-deactivation timer (if enabled)
         startDeactivationTimer()
@@ -187,7 +195,6 @@ class HintModeController {
 
         // Update static state first
         HintModeController.isHintModeActive = false
-        HintModeController.typedInput = ""
         HintModeController.isTextSearchActive = false
         HintModeController.numberedElementsCount = 0
 
@@ -319,9 +326,6 @@ class HintModeController {
         let chars = Array(hintCharacters)
         let count = elements.count
 
-        // Update static hint chars for event tap filtering
-        HintModeController.hintChars = hintCharacters
-
         // Generate hints based on element count
         // Always use 2-letter hints minimum, expand to 3-letter if needed
         var hints: [String] = []
@@ -358,19 +362,18 @@ class HintModeController {
         }
     }
 
-    private func startEventTap() {
-        // Create event tap to intercept keyboard events
+    @discardableResult
+    private func startEventTap() -> Bool {
         let eventMask = (1 << CGEventType.keyDown.rawValue) | (1 << CGEventType.flagsChanged.rawValue)
 
+        // Thin dispatcher: only reads simple scalar statics, dispatches all
+        // string/state work to main thread. No shared String mutation.
         eventTap = CGEvent.tapCreate(
             tap: .cgSessionEventTap,
             place: .headInsertEventTap,
             options: .defaultTap,
             eventsOfInterest: CGEventMask(eventMask),
-            callback: { (proxy, type, event, refcon) -> Unmanaged<CGEvent>? in
-                guard let refcon = refcon else { return Unmanaged.passRetained(event) }
-
-                // Handle tap disabled by timeout - re-enable it
+            callback: { (_, type, event, _) -> Unmanaged<CGEvent>? in
                 if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
                     if let tap = HintModeController.currentEventTap {
                         CGEvent.tapEnable(tap: tap, enable: true)
@@ -385,134 +388,102 @@ class HintModeController {
                 let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
                 let flags = event.flags
 
-                // Option key press (keycode 58 or 61) - clear search
+                // Option key press — clear search
                 if type == .flagsChanged && (keyCode == 58 || keyCode == 61) {
                     if flags.contains(.maskAlternate) {
-                        // Option pressed - clear search
-                        HintModeController.typedInput = ""
                         DispatchQueue.main.async {
-                            HintModeController.sharedInstance?.clearSearch()
+                            HintModeController.sharedInstance?.handleClearSearch()
                         }
                     }
                     return Unmanaged.passRetained(event)
                 }
 
-                // Only process keyDown events from here
                 guard type == .keyDown else {
                     return Unmanaged.passRetained(event)
                 }
 
-                // Escape key (keycode 53) - two-stage behavior
+                // ESC — dispatch to main for two-stage handling
                 if keyCode == 53 {
-                    if !HintModeController.typedInput.isEmpty {
-                        // First ESC: Clear search, stay in hint mode
-                        HintModeController.typedInput = ""
-                        DispatchQueue.main.async {
-                            HintModeController.sharedInstance?.processInput("")
-                        }
-                    } else {
-                        // Second ESC: Exit hint mode
-                        DispatchQueue.main.async {
-                            HintModeController.sharedInstance?.deactivateHintMode()
-                        }
+                    DispatchQueue.main.async {
+                        HintModeController.sharedInstance?.handleEscapeKey()
                     }
-                    return nil // Consume the event
+                    return nil
                 }
 
-                // Enter key (keycode 36) - handle actions
+                // Enter
                 if keyCode == 36 {
                     let hasControl = flags.contains(.maskControl)
                     DispatchQueue.main.async {
                         HintModeController.sharedInstance?.handleEnterKey(withControl: hasControl)
                     }
-                    return nil // Consume the event
+                    return nil
                 }
 
-                // Backspace (keycode 51)
+                // Backspace
                 if keyCode == 51 {
-                    if !HintModeController.typedInput.isEmpty {
-                        HintModeController.typedInput.removeLast()
-                        let input = HintModeController.typedInput
-                        DispatchQueue.main.async {
-                            HintModeController.sharedInstance?.processInput(input)
-                        }
-                    }
-                    return nil // Consume the event
-                }
-
-                // Space key (keycode 49) - add to search
-                if keyCode == 49 {
-                    HintModeController.typedInput += " "
-                    let input = HintModeController.typedInput
                     DispatchQueue.main.async {
-                        HintModeController.sharedInstance?.processInput(input)
+                        HintModeController.sharedInstance?.handleBackspace()
                     }
-                    return nil // Consume the event
+                    return nil
                 }
 
-                // Number keys (1-9) during text search mode - immediate selection
+                // Space
+                if keyCode == 49 {
+                    DispatchQueue.main.async {
+                        HintModeController.sharedInstance?.handleCharacterInput(" ")
+                    }
+                    return nil
+                }
+
+                // Number keys during text search
                 if HintModeController.isTextSearchActive {
                     let numberKeyMap: [Int64: Int] = [
                         18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9
                     ]
-
                     if let number = numberKeyMap[keyCode], number <= HintModeController.numberedElementsCount {
-                        // Number pressed in text search mode - select that numbered element
                         DispatchQueue.main.async {
                             HintModeController.sharedInstance?.selectNumberedElement(number)
                         }
-                        return nil // Consume the event
+                        return nil
                     }
                 }
 
-                // Convert keycode to character
+                // Character keys
                 guard var character = HintModeController.keyCodeToCharacter(keyCode) else {
-                    return Unmanaged.passRetained(event) // Pass through non-character keys
+                    return Unmanaged.passRetained(event)
                 }
 
-                // Handle shift modifier for underscore (shift + hyphen = underscore)
                 if keyCode == 27 && flags.contains(.maskShift) {
                     character = "_"
                 }
 
                 let lowerChar = character.lowercased()
 
-                // Accept alphanumeric and common symbols for text search
-                guard lowerChar.count == 1 else {
+                guard lowerChar.count == 1,
+                      let char = lowerChar.first,
+                      char.isLetter || char.isNumber || "-._".contains(char) else {
                     return Unmanaged.passRetained(event)
                 }
 
-                let char = lowerChar.first!
-                let isValidChar = char.isLetter || char.isNumber || "-._".contains(char)
-                guard isValidChar else {
-                    return Unmanaged.passRetained(event)
-                }
-
-                // Update typed input
-                HintModeController.typedInput += lowerChar
-
-                // Schedule UI update on main thread
-                let input = HintModeController.typedInput
                 DispatchQueue.main.async {
-                    HintModeController.sharedInstance?.processInput(input)
+                    HintModeController.sharedInstance?.handleCharacterInput(lowerChar)
                 }
 
-                return nil // Consume the event
+                return nil
             },
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
+            userInfo: nil
         )
 
         guard let eventTap = eventTap else {
-            return
+            return false
         }
 
-        // Store in static for re-enabling
         HintModeController.currentEventTap = eventTap
 
-        // Add to run loop
         runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
         CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
         CGEvent.tapEnable(tap: eventTap, enable: true)
+        return true
     }
 
     private func stopEventTap() {
@@ -538,7 +509,7 @@ class HintModeController {
         overlayWindow?.updateSearchBar(text: input)
 
         // Check for manual refresh trigger
-        if input == HintModeController.refreshTrigger {
+        if input == refreshTrigger {
             print("[MANUAL] Refresh trigger detected: \"\(input)\"")
             clearInputState()
             performManualRefresh()
@@ -567,7 +538,7 @@ class HintModeController {
         }
 
         // If no hint matches, try text search (if enabled and input is long enough)
-        if HintModeController.textSearchEnabled && input.count >= HintModeController.minSearchChars {
+        if textSearchEnabled && input.count >= minSearchChars {
             var textMatches = searchElementsByText(input)
 
             if textMatches.count == 1 {
@@ -616,9 +587,37 @@ class HintModeController {
 
     private func clearInputState() {
         currentInput = ""
-        HintModeController.typedInput = ""
         overlayWindow?.updateSearchBar(text: "")
         overlayWindow?.updateMatchCount(-1)
+    }
+
+    // MARK: - Event Tap Dispatch Handlers (called from main thread only)
+
+    private func handleCharacterInput(_ char: String) {
+        guard isActive else { return }
+        currentInput += char
+        processInput(currentInput)
+    }
+
+    private func handleBackspace() {
+        guard isActive, !currentInput.isEmpty else { return }
+        currentInput.removeLast()
+        processInput(currentInput)
+    }
+
+    private func handleEscapeKey() {
+        guard isActive else { return }
+        if !currentInput.isEmpty {
+            currentInput = ""
+            processInput("")
+        } else {
+            deactivateHintMode()
+        }
+    }
+
+    private func handleClearSearch() {
+        guard isActive else { return }
+        clearSearch()
     }
 
     private func selectNumberedElement(_ number: Int) {
@@ -659,7 +658,7 @@ class HintModeController {
 
     private func handleEnterKey(withControl: Bool) {
         // If we have text matches, click the first one
-        if currentInput.count >= HintModeController.minSearchChars {
+        if currentInput.count >= minSearchChars {
             let textMatches = searchElementsByText(currentInput)
             if let firstMatch = textMatches.first {
                 if withControl {
@@ -686,7 +685,6 @@ class HintModeController {
 
         // Reset input state
         currentInput = ""
-        HintModeController.typedInput = ""
 
         // Store current element count for comparison
         previousElementCount = elements.count
