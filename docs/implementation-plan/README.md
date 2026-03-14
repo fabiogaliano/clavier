@@ -26,9 +26,9 @@ If a task needs extra files, the agent must first update this plan and the relev
 
 ## Current Plan Status
 
-- **Overall status**: in-progress
-- **Current active workstream**: none (WS-06 done)
-- **Recommended next workstream**: `WS-07`
+- **Overall status**: done
+- **Current active workstream**: none (all complete)
+- **Recommended next workstream**: none
 - **Execution rule**: do not start a second workstream until the current one is `done`, `blocked`, or `deferred`
 - **Last updated**: 2026-03-14
 
@@ -40,7 +40,7 @@ If a task needs extra files, the agent must first update this plan and the relev
 - [x] `WS-04` Harden event taps, hotkeys, and permission handling; remove duplicate handler accumulation.
 - [x] `WS-05` Remove scroll-mode crash paths and fix progressive discovery plus multi-digit selection.
 - [x] `WS-06` Validate user settings and clean up dead refresh/config code.
-- [ ] `WS-07` Improve overlay performance and parity/extensibility after the core reliability work is stable.
+- [x] `WS-07` Improve overlay performance and parity/extensibility after the core reliability work is stable.
 
 ## Workstream Index
 
@@ -52,7 +52,7 @@ If a task needs extra files, the agent must first update this plan and the relev
 | `WS-04` | Event tap, hotkey, and permission hardening | High | done | none | [workstreams/04-event-tap-hotkey-permissions.md](workstreams/04-event-tap-hotkey-permissions.md) |
 | `WS-05` | Scroll detection crash hardening and selection fixes | High | done | none | [workstreams/05-scroll-hardening-and-selection.md](workstreams/05-scroll-hardening-and-selection.md) |
 | `WS-06` | Settings validation and refresh cleanup | Medium | done | `WS-02`, `WS-04` | [workstreams/06-settings-validation-and-refresh-cleanup.md](workstreams/06-settings-validation-and-refresh-cleanup.md) |
-| `WS-07` | Overlay performance and parity/extensibility backlog | Medium | pending | `WS-01`, `WS-02`, `WS-03` | [workstreams/07-performance-and-parity-backlog.md](workstreams/07-performance-and-parity-backlog.md) |
+| `WS-07` | Overlay performance and parity/extensibility backlog | Medium | done | `WS-01`, `WS-02`, `WS-03` | [workstreams/07-performance-and-parity-backlog.md](workstreams/07-performance-and-parity-backlog.md) |
 
 ## Recommended Execution Order
 
@@ -162,6 +162,7 @@ Recommended first session:
 - **2026-03-14**: `WS-04` complete. Hardened event taps and hotkey lifecycle in both controllers. Eliminated shared String state from callbacks (thin dispatcher pattern), removed 7 dead statics, stored EventHandlerRef to prevent handler accumulation, made activation transactional (rollback on tap failure with permission guidance). No new files. Build passes. Recommended next: `WS-05`.
 - **2026-03-14**: `WS-05` complete. AXValue casts validated via `CFGetTypeID` in ScrollableAreaService and ChromiumDetector. Multi-digit scroll area selection fixed (waits for more input when digit could prefix a larger area number). Progressive discovery moved from `DispatchQueue.global` to main actor (eliminates actor boundary crossing). No new files. Build passes. Recommended next: `WS-06`.
 - **2026-03-14**: `WS-06` complete. Settings validation for hintCharacters/scrollKeys/manualRefreshTrigger. Removed dead `scrollCommandsEnabled` setting. Removed dead UI-change observer code from HintModeController. Consumer-side guard prevents divide-by-zero on invalid hintCharacters. No new files. Build passes. Recommended next: `WS-07`.
+- **2026-03-14**: `WS-07` complete. Hoisted UserDefaults reads into `HintStyle` struct (7 prefs read once per refresh instead of per hint). Made `updateHints` incremental (reuses views by hint key). Deferred: click detector registry and search role indexing — not needed based on current capability-based detection. No new files. Build passes. **All 7 workstreams complete.**
 
 ## Completion Rules
 

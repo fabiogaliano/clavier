@@ -8,6 +8,33 @@
 import AppKit
 import SwiftUI
 
+// Snapshot of appearance preferences, read once per activation/refresh
+private struct HintStyle {
+    let fontSize: CGFloat
+    let backgroundColor: NSColor
+    let borderColor: NSColor
+    let textColor: NSColor
+    let bgOpacity: CGFloat
+    let bdrOpacity: CGFloat
+    let horizontalOffset: CGFloat
+
+    init() {
+        let size = UserDefaults.standard.double(forKey: "hintSize")
+        fontSize = size > 0 ? CGFloat(size) : 12
+        let bgHex = UserDefaults.standard.string(forKey: "hintBackgroundHex") ?? "#3B82F6"
+        let brHex = UserDefaults.standard.string(forKey: "hintBorderHex") ?? "#3B82F6"
+        let txHex = UserDefaults.standard.string(forKey: "hintTextHex") ?? "#FFFFFF"
+        backgroundColor = NSColor(hex: bgHex)
+        borderColor = NSColor(hex: brHex)
+        textColor = NSColor(hex: txHex)
+        let bgOp = UserDefaults.standard.double(forKey: "hintBackgroundOpacity")
+        bgOpacity = bgOp > 0 ? CGFloat(bgOp) : 0.3
+        let bdOp = UserDefaults.standard.double(forKey: "hintBorderOpacity")
+        bdrOpacity = bdOp > 0 ? CGFloat(bdOp) : 0.6
+        horizontalOffset = CGFloat(UserDefaults.standard.double(forKey: "hintHorizontalOffset"))
+    }
+}
+
 @MainActor
 class HintOverlayWindow: NSWindow {
 
@@ -52,13 +79,13 @@ class HintOverlayWindow: NSWindow {
     }
 
     private func setupHintViews() {
-        // Use the window size (not frame) so the container stays at local origin (0,0).
         let containerView = NSView(frame: CGRect(origin: .zero, size: self.frame.size))
         containerView.wantsLayer = true
 
+        let style = HintStyle()
         var engine = HintPlacementEngine(windowSize: self.frame.size)
         for element in elements {
-            let hintView = createHintLabel(for: element, engine: &engine)
+            let hintView = createHintLabel(for: element, style: style, engine: &engine)
             containerView.addSubview(hintView)
             hintViews[element.hint] = hintView
         }
@@ -66,27 +93,10 @@ class HintOverlayWindow: NSWindow {
         self.contentView = containerView
     }
 
-    private func createHintLabel(for element: UIElement, engine: inout HintPlacementEngine) -> NSView {
-        // Get user preferences
-        let hintSize = UserDefaults.standard.double(forKey: "hintSize")
-        let fontSize = hintSize > 0 ? CGFloat(hintSize) : 12
-
-        // Get custom colors from preferences
-        let backgroundHex = UserDefaults.standard.string(forKey: "hintBackgroundHex") ?? "#3B82F6"
-        let borderHex = UserDefaults.standard.string(forKey: "hintBorderHex") ?? "#3B82F6"
-        let textHex = UserDefaults.standard.string(forKey: "hintTextHex") ?? "#FFFFFF"
-        let backgroundOpacity = UserDefaults.standard.double(forKey: "hintBackgroundOpacity")
-        let borderOpacity = UserDefaults.standard.double(forKey: "hintBorderOpacity")
-
-        let backgroundColor = NSColor(hex: backgroundHex)
-        let borderColor = NSColor(hex: borderHex)
-        let textColor = NSColor(hex: textHex)
-        let bgOpacity = backgroundOpacity > 0 ? CGFloat(backgroundOpacity) : 0.3
-        let bdrOpacity = borderOpacity > 0 ? CGFloat(borderOpacity) : 0.6
-
+    private func createHintLabel(for element: UIElement, style: HintStyle, engine: inout HintPlacementEngine) -> NSView {
         let label = NSTextField(labelWithString: element.hint)
-        label.font = NSFont.monospacedSystemFont(ofSize: fontSize, weight: .bold)
-        label.textColor = textColor
+        label.font = NSFont.monospacedSystemFont(ofSize: style.fontSize, weight: .bold)
+        label.textColor = style.textColor
         label.backgroundColor = .clear
         label.isBordered = false
         label.isBezeled = false
@@ -118,12 +128,12 @@ class HintOverlayWindow: NSWindow {
         glassContainer.layer?.cornerRadius = 4
         glassContainer.layer?.masksToBounds = true
         glassContainer.layer?.borderWidth = 1
-        glassContainer.layer?.borderColor = borderColor.withAlphaComponent(bdrOpacity).cgColor
+        glassContainer.layer?.borderColor = style.borderColor.withAlphaComponent(style.bdrOpacity).cgColor
 
         // Add subtle tint overlay for accent color
         let tintOverlay = NSView(frame: CGRect(x: 0, y: 0, width: width, height: height))
         tintOverlay.wantsLayer = true
-        tintOverlay.layer?.backgroundColor = backgroundColor.withAlphaComponent(bgOpacity).cgColor
+        tintOverlay.layer?.backgroundColor = style.backgroundColor.withAlphaComponent(style.bgOpacity).cgColor
 
         // Position label within container
         label.frame = CGRect(x: 0, y: 0, width: width, height: height)
@@ -131,13 +141,10 @@ class HintOverlayWindow: NSWindow {
         glassContainer.addSubview(tintOverlay)
         glassContainer.addSubview(label)
 
-        // Place the hint using the engine, which applies the user's horizontal offset,
-        // clamps to the overlay window bounds, and nudges to avoid already-placed hints.
-        let horizontalOffset = CGFloat(UserDefaults.standard.double(forKey: "hintHorizontalOffset"))
         let hintFrame = engine.place(
             element: element,
             labelSize: CGSize(width: width, height: height),
-            horizontalOffset: horizontalOffset
+            horizontalOffset: style.horizontalOffset
         )
 
         glassContainer.frame = hintFrame
@@ -243,33 +250,35 @@ class HintOverlayWindow: NSWindow {
     }
 
     func updateHints(with newElements: [UIElement]) {
-        // Clear existing hints but preserve search bar
-        hintViews.removeAll()
+        // Clear element highlights
+        for (_, view) in elementHighlights { view.removeFromSuperview() }
         elementHighlights.removeAll()
 
-        // Remove only hint views, not the search bar
-        self.contentView?.subviews.forEach { view in
-            if view !== searchBarView {
-                view.removeFromSuperview()
-            }
+        // Build set of hint strings needed by the new elements
+        let neededHints = Set(newElements.map { $0.hint })
+
+        // Remove stale hint views that are no longer needed
+        for (hint, view) in hintViews where !neededHints.contains(hint) {
+            view.removeFromSuperview()
+            hintViews[hint] = nil
         }
 
-        // Update elements
+        // Update elements and create only missing hint views
         self.elements = newElements
-
-        // Recreate hint views (but not search bar)
+        let style = HintStyle()
         var engine = HintPlacementEngine(windowSize: self.frame.size)
         for element in elements {
-            let hintView = createHintLabel(for: element, engine: &engine)
-            self.contentView?.addSubview(hintView)
-            hintViews[element.hint] = hintView
+            if hintViews[element.hint] == nil {
+                let hintView = createHintLabel(for: element, style: style, engine: &engine)
+                self.contentView?.addSubview(hintView)
+                hintViews[element.hint] = hintView
+            }
         }
 
         // Reset search bar state
         updateSearchBar(text: "")
         updateMatchCount(-1)
 
-        // Force redraw
         self.contentView?.needsDisplay = true
         self.displayIfNeeded()
     }
@@ -299,9 +308,10 @@ class HintOverlayWindow: NSWindow {
                 }
 
                 // Create numbered hint views for each match
+                let style = HintStyle()
                 var engine = HintPlacementEngine(windowSize: self.frame.size)
                 for element in textMatches {
-                    let hintView = createHintLabel(for: element, engine: &engine)
+                    let hintView = createHintLabel(for: element, style: style, engine: &engine)
                     self.contentView?.addSubview(hintView)
                     elementHighlights[element.id] = hintView
                 }
