@@ -177,7 +177,9 @@ class ChromiumDetector: AppSpecificDetector {
         }
 
         var position = CGPoint.zero
-        if !AXValueGetValue(positionRef as! AXValue, .cgPoint, &position) {
+        guard let posRef = positionRef,
+              CFGetTypeID(posRef) == AXValueGetTypeID(),
+              AXValueGetValue(posRef as! AXValue, .cgPoint, &position) else {
             return nil
         }
 
@@ -188,7 +190,9 @@ class ChromiumDetector: AppSpecificDetector {
         }
 
         var size = CGSize.zero
-        if !AXValueGetValue(sizeRef as! AXValue, .cgSize, &size) {
+        guard let szRef = sizeRef,
+              CFGetTypeID(szRef) == AXValueGetTypeID(),
+              AXValueGetValue(szRef as! AXValue, .cgSize, &size) else {
             return nil
         }
 

@@ -2,14 +2,14 @@
 
 ## Status
 
-- **Status**: pending
+- **Status**: done
 - **Priority**: High
 - **Depends on**: none
 - **Main plan**: [../README.md](../README.md)
 
 ## One-Line Summary
 
-- [ ] Remove scroll-mode crash paths and fix selection/progressive-discovery bugs without changing unrelated behavior.
+- [x] Remove scroll-mode crash paths and fix selection/progressive-discovery bugs without changing unrelated behavior.
 
 ## Goal
 
@@ -42,13 +42,13 @@ Make scroll mode materially safer and more predictable by removing force-cast cr
 
 ## Implementation Tasks
 
-- [ ] Replace `as! AXUIElement` and `as! AXValue` casts in the allowed files with safe decoding helpers.
-- [ ] Reuse or create a consistent safe AX extraction pattern across both scroll-detection files.
-- [ ] Fix progressive discovery so actor-isolated work is not driven directly from an unmanaged background queue.
-- [ ] Preserve the current staged-discovery behavior while making the execution model safe.
-- [ ] Fix numeric selection so areas `10...15` can be selected when present.
-- [ ] Keep existing scroll hints, selection visuals, and scroll commands working.
-- [ ] Add concise log entries to this file and the main plan after implementation.
+- [x] Replace `as! AXUIElement` and `as! AXValue` casts in the allowed files with safe decoding helpers.
+- [x] Reuse or create a consistent safe AX extraction pattern across both scroll-detection files.
+- [x] Fix progressive discovery so actor-isolated work is not driven directly from an unmanaged background queue.
+- [x] Preserve the current staged-discovery behavior while making the execution model safe.
+- [x] Fix numeric selection so areas `10...15` can be selected when present.
+- [x] Keep existing scroll hints, selection visuals, and scroll commands working.
+- [x] Add concise log entries to this file and the main plan after implementation.
 
 ## Acceptance Criteria
 
@@ -72,3 +72,4 @@ Make scroll mode materially safer and more predictable by removing force-cast cr
 ## Work Log
 
 - **2026-03-14**: Workstream created from the audit findings. No implementation work started yet.
+- **2026-03-14**: WS-05 complete. Changes in all 3 allowed files. (1) AXValue casts in `ScrollableAreaService.swift` and `ChromiumDetector.swift` now use `CFGetTypeID` validation before casting — returns nil instead of crashing on type mismatch. AXUIElement casts kept as `as! AXUIElement?` since Swift confirms CF type casts always succeed (toll-free bridging). (2) Multi-digit selection fixed: typing a digit that could prefix a larger valid area number (e.g., "1" when 10+ areas exist) now waits for more input instead of committing immediately. Non-digit keys auto-commit pending numeric input. (3) Progressive discovery removed from `DispatchQueue.global` — runs synchronously on main actor since `ScrollableAreaService` is `@MainActor` and AX calls must run on main thread. Eliminates actor boundary crossing. Build passes.
