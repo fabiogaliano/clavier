@@ -27,8 +27,8 @@ If a task needs extra files, the agent must first update this plan and the relev
 ## Current Plan Status
 
 - **Overall status**: in-progress
-- **Current active workstream**: none (WS-02 done)
-- **Recommended next workstream**: `WS-03`
+- **Current active workstream**: none (WS-03 done)
+- **Recommended next workstream**: `WS-04`
 - **Execution rule**: do not start a second workstream until the current one is `done`, `blocked`, or `deferred`
 - **Last updated**: 2026-03-14
 
@@ -36,7 +36,7 @@ If a task needs extra files, the agent must first update this plan and the relev
 
 - [x] `WS-01` Build a shared screen-coordinate foundation so overlays, AX frames, clicks, and scrolls work across all displays.
 - [x] `WS-02` Make hint placement collision-aware, bounds-safe, and respectful of a true `0px` offset.
-- [ ] `WS-03` Replace role-only clickability with capability-based detection and safer deduplication.
+- [x] `WS-03` Replace role-only clickability with capability-based detection and safer deduplication.
 - [ ] `WS-04` Harden event taps, hotkeys, and permission handling; remove duplicate handler accumulation.
 - [ ] `WS-05` Remove scroll-mode crash paths and fix progressive discovery plus multi-digit selection.
 - [ ] `WS-06` Validate user settings and clean up dead refresh/config code.
@@ -48,7 +48,7 @@ If a task needs extra files, the agent must first update this plan and the relev
 | --- | --- | --- | --- | --- | --- |
 | `WS-01` | Coordinate foundation and multi-display correctness | High | done | none | [workstreams/01-coordinate-foundation.md](workstreams/01-coordinate-foundation.md) |
 | `WS-02` | Hint placement and density control | High | done | `WS-01` | [workstreams/02-hint-placement-and-density.md](workstreams/02-hint-placement-and-density.md) |
-| `WS-03` | Clickable detection and deduplication | High | pending | none | [workstreams/03-clickable-detection-and-deduplication.md](workstreams/03-clickable-detection-and-deduplication.md) |
+| `WS-03` | Clickable detection and deduplication | High | done | none | [workstreams/03-clickable-detection-and-deduplication.md](workstreams/03-clickable-detection-and-deduplication.md) |
 | `WS-04` | Event tap, hotkey, and permission hardening | High | pending | none | [workstreams/04-event-tap-hotkey-permissions.md](workstreams/04-event-tap-hotkey-permissions.md) |
 | `WS-05` | Scroll detection crash hardening and selection fixes | High | pending | none | [workstreams/05-scroll-hardening-and-selection.md](workstreams/05-scroll-hardening-and-selection.md) |
 | `WS-06` | Settings validation and refresh cleanup | Medium | pending | `WS-02`, `WS-04` | [workstreams/06-settings-validation-and-refresh-cleanup.md](workstreams/06-settings-validation-and-refresh-cleanup.md) |
@@ -158,6 +158,7 @@ Recommended first session:
 - **2026-03-14**: No implementation work has started yet. `WS-01` is the recommended first workstream.
 - **2026-03-14**: `WS-01` complete. Added `ScreenGeometry.swift`; removed all `NSScreen.main`-based coordinate assumptions from the 7 allowed files. Build passes. Recommended next: `WS-03`.
 - **2026-03-14**: `WS-02` complete. Added `HintPlacementEngine.swift`; removed sentinel in `HintOverlayWindow`, added viewport clamping and 4-candidate collision reduction. Build passes. Recommended next: `WS-03`.
+- **2026-03-14**: `WS-03` complete. Capability-based clickability in `AccessibilityService.swift`: enabled-state gating via batch-fetched `kAXEnabledAttribute`, `AXStaticText` action-checked via `AXUIElementCopyActionNames`, frame-aware dedup (10px edge tolerance). No new files. Build passes. Recommended next: `WS-04`.
 
 ## Completion Rules
 

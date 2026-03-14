@@ -26,7 +26,8 @@ class AccessibilityService {
     // Track if we're waiting for changes
     private var isObservingForChanges = false
 
-    private let clickableRoles: Set<String> = [
+    // Roles assumed interactive by default (capability check still gates on enabled state)
+    private let interactiveRoles: Set<String> = [
         kAXButtonRole as String,
         "AXLink",
         kAXTextFieldRole as String,
@@ -40,8 +41,7 @@ class AccessibilityService {
         kAXComboBoxRole as String,
         kAXSliderRole as String,
         kAXColorWellRole as String,
-        "AXCell",
-        "AXStaticText"
+        "AXCell"
     ]
 
     // Roles that never contain clickable children - skip their subtrees
@@ -141,19 +141,20 @@ class AccessibilityService {
         return unique
     }
 
-    private func traverseElementOptimized(_ element: AXUIElement, clickableAncestor: AXUIElement?, into elements: inout [UIElement], clipBounds: CGRect) {
-        // BATCH FETCH: Get role, position, size, children in ONE IPC call
+    private func traverseElementOptimized(_ element: AXUIElement, clickableAncestor: (element: AXUIElement, frame: CGRect)?, into elements: inout [UIElement], clipBounds: CGRect) {
+        // BATCH FETCH: Get role, position, size, children, enabled in ONE IPC call
         let attributes = [
             kAXRoleAttribute as CFString,
             kAXPositionAttribute as CFString,
             kAXSizeAttribute as CFString,
-            kAXChildrenAttribute as CFString
+            kAXChildrenAttribute as CFString,
+            kAXEnabledAttribute as CFString
         ] as CFArray
 
         var values: CFArray?
         guard AXUIElementCopyMultipleAttributeValues(element, attributes, [], &values) == .success,
               let valuesArray = values as? [Any],
-              valuesArray.count == 4 else {
+              valuesArray.count == 5 else {
             return
         }
 
@@ -191,12 +192,15 @@ class AccessibilityService {
         // Convert AX coordinates (top-left origin, y down) to AppKit (bottom-left origin, y up).
         let frame = ScreenGeometry.axToAppKit(position: position, size: size)
 
-        // Update clickable ancestor for children
-        // If this element is clickable, it becomes the new ancestor for its children
-        let newClickableAncestor: AXUIElement? = clickableRoles.contains(role) ? element : clickableAncestor
+        // Extract enabled state (may be absent for non-interactive elements)
+        let enabled = valuesArray[4] as? Bool
 
-        // Check if element is clickable
-        if clickableRoles.contains(role) {
+        let isClickable = isElementClickable(role: role, element: element, enabled: enabled)
+
+        // If this element is clickable, it becomes the new ancestor for its children
+        let newClickableAncestor: (element: AXUIElement, frame: CGRect)? = isClickable ? (element, frame) : clickableAncestor
+
+        if isClickable {
             // Filter out elements too small to be meaningful click targets.
             // The origin check is intentionally omitted: secondary displays can
             // have negative AppKit coordinates (screens left of or below main).
@@ -206,8 +210,17 @@ class AccessibilityService {
                     frame: frame,
                     role: role
                 )
-                // Store hash of clickable ancestor (if any) for deduplication
-                uiElement.clickableAncestorHash = clickableAncestor.map { Int(CFHash($0)) }
+                // Frame-aware dedup: only mark as duplicate if frames nearly match ancestor
+                if let ancestor = clickableAncestor {
+                    let tol: CGFloat = 10
+                    let framesMatch = abs(frame.minX - ancestor.frame.minX) < tol &&
+                                      abs(frame.minY - ancestor.frame.minY) < tol &&
+                                      abs(frame.maxX - ancestor.frame.maxX) < tol &&
+                                      abs(frame.maxY - ancestor.frame.maxY) < tol
+                    if framesMatch {
+                        uiElement.clickableAncestorHash = Int(CFHash(ancestor.element))
+                    }
+                }
                 elements.append(uiElement)
             }
         }
@@ -228,6 +241,25 @@ class AccessibilityService {
         for child in children {
             traverseElementOptimized(child, clickableAncestor: newClickableAncestor, into: &elements, clipBounds: childClipBounds)
         }
+    }
+
+    // MARK: - Clickability Heuristics
+
+    private func isElementClickable(role: String, element: AXUIElement, enabled: Bool?) -> Bool {
+        if let enabled = enabled, !enabled { return false }
+        if interactiveRoles.contains(role) { return true }
+        // AXStaticText is only clickable when it exposes a press/showMenu action
+        if role == kAXStaticTextRole as String { return hasClickAction(element) }
+        return false
+    }
+
+    private func hasClickAction(_ element: AXUIElement) -> Bool {
+        var actions: CFArray?
+        guard AXUIElementCopyActionNames(element, &actions) == .success,
+              let actionNames = actions as? [String] else {
+            return false
+        }
+        return actionNames.contains(kAXPressAction as String) || actionNames.contains("AXShowMenu")
     }
 
     /// Load all text attributes for elements (title, label, value, description)
