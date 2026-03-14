@@ -56,8 +56,9 @@ class HintOverlayWindow: NSWindow {
         let containerView = NSView(frame: CGRect(origin: .zero, size: self.frame.size))
         containerView.wantsLayer = true
 
+        var engine = HintPlacementEngine(windowSize: self.frame.size)
         for element in elements {
-            let hintView = createHintLabel(for: element)
+            let hintView = createHintLabel(for: element, engine: &engine)
             containerView.addSubview(hintView)
             hintViews[element.hint] = hintView
         }
@@ -65,7 +66,7 @@ class HintOverlayWindow: NSWindow {
         self.contentView = containerView
     }
 
-    private func createHintLabel(for element: UIElement) -> NSView {
+    private func createHintLabel(for element: UIElement, engine: inout HintPlacementEngine) -> NSView {
         // Get user preferences
         let hintSize = UserDefaults.standard.double(forKey: "hintSize")
         let fontSize = hintSize > 0 ? CGFloat(hintSize) : 12
@@ -130,19 +131,13 @@ class HintOverlayWindow: NSWindow {
         glassContainer.addSubview(tintOverlay)
         glassContainer.addSubview(label)
 
-        // Position hint overlapping the element (top-left corner, inside the element).
-        // Apply horizontal offset from preferences (negative = left, positive = right).
-        // Translate from screen (AppKit) coordinates to window-local coordinates so
-        // hints appear correctly when the overlay spans non-main displays.
-        let horizontalOffset = UserDefaults.standard.double(forKey: "hintHorizontalOffset")
-        let offsetValue = horizontalOffset != 0 ? CGFloat(horizontalOffset) : -25.0
-        let hintFrame = ScreenGeometry.toWindowLocal(
-            CGRect(
-                x: element.frame.minX + offsetValue,
-                y: element.frame.maxY - height,
-                width: width,
-                height: height
-            )
+        // Place the hint using the engine, which applies the user's horizontal offset,
+        // clamps to the overlay window bounds, and nudges to avoid already-placed hints.
+        let horizontalOffset = CGFloat(UserDefaults.standard.double(forKey: "hintHorizontalOffset"))
+        let hintFrame = engine.place(
+            element: element,
+            labelSize: CGSize(width: width, height: height),
+            horizontalOffset: horizontalOffset
         )
 
         glassContainer.frame = hintFrame
@@ -263,8 +258,9 @@ class HintOverlayWindow: NSWindow {
         self.elements = newElements
 
         // Recreate hint views (but not search bar)
+        var engine = HintPlacementEngine(windowSize: self.frame.size)
         for element in elements {
-            let hintView = createHintLabel(for: element)
+            let hintView = createHintLabel(for: element, engine: &engine)
             self.contentView?.addSubview(hintView)
             hintViews[element.hint] = hintView
         }
@@ -303,8 +299,9 @@ class HintOverlayWindow: NSWindow {
                 }
 
                 // Create numbered hint views for each match
+                var engine = HintPlacementEngine(windowSize: self.frame.size)
                 for element in textMatches {
-                    let hintView = createHintLabel(for: element)
+                    let hintView = createHintLabel(for: element, engine: &engine)
                     self.contentView?.addSubview(hintView)
                     elementHighlights[element.id] = hintView
                 }
