@@ -16,7 +16,7 @@ Use these prompts exactly to keep implementation work bounded.
 ## Start Prompt Template
 
 ```text
-You are implementing one bounded workstream for keynave.
+You are implementing one bounded workstream for clavier.
 
 Mandatory read order:
 1. Read `docs/implementation-plan/README.md`
@@ -48,7 +48,7 @@ Deliverable at the end of the session:
 ## Resume Prompt Template
 
 ```text
-Resume work on keynave implementation workstream `[WORKSTREAM_ID]`.
+Resume work on clavier implementation workstream `[WORKSTREAM_ID]`.
 
 Mandatory read order:
 1. Read `docs/implementation-plan/README.md`
@@ -78,7 +78,7 @@ Deliverable at the end of the session:
 ## Ready-To-Use Prompt For The First Session
 
 ```text
-You are starting the first keynave implementation session.
+You are starting the first clavier implementation session.
 
 Mandatory read order:
 1. Read `docs/implementation-plan/README.md`

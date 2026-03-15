@@ -1,6 +1,6 @@
 //
-//  keynaveApp.swift
-//  keynave
+//  clavierApp.swift
+//  clavier
 //
 //  Created by fábio on 17/11/2025.
 //
@@ -10,7 +10,7 @@ import AppKit
 import Carbon
 
 @main
-struct keynaveApp: App {
+struct clavierApp: App {
     @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
 
     var body: some Scene {
@@ -151,7 +151,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "keynave")
+            button.image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "clavier")
         }
 
         let menu = NSMenu()
@@ -164,7 +164,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Preferences...", action: #selector(openPreferences), keyEquivalent: ","))
         menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit keynave", action: #selector(quitApp), keyEquivalent: "q"))
+        menu.addItem(NSMenuItem(title: "Quit clavier", action: #selector(quitApp), keyEquivalent: "q"))
 
         statusItem?.menu = menu
 

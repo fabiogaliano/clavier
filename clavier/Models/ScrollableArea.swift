@@ -1,6 +1,6 @@
 //
 //  ScrollableArea.swift
-//  keynave
+//  clavier
 //
 //  Wrapper for scrollable UI elements
 //

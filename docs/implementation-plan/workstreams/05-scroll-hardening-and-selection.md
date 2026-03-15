@@ -23,9 +23,9 @@ Make scroll mode materially safer and more predictable by removing force-cast cr
 
 ## Allowed Files
 
-- `keynave/Services/ScrollableAreaService.swift`
-- `keynave/Services/ScrollDetection/Detectors/ChromiumDetector.swift`
-- `keynave/Services/ScrollModeController.swift`
+- `clavier/Services/ScrollableAreaService.swift`
+- `clavier/Services/ScrollDetection/Detectors/ChromiumDetector.swift`
+- `clavier/Services/ScrollModeController.swift`
 
 ## Do Not Touch In This Workstream
 
@@ -36,9 +36,9 @@ Make scroll mode materially safer and more predictable by removing force-cast cr
 
 ## Suggested Read Order
 
-1. `keynave/Services/ScrollableAreaService.swift`
-2. `keynave/Services/ScrollDetection/Detectors/ChromiumDetector.swift`
-3. `keynave/Services/ScrollModeController.swift`
+1. `clavier/Services/ScrollableAreaService.swift`
+2. `clavier/Services/ScrollDetection/Detectors/ChromiumDetector.swift`
+3. `clavier/Services/ScrollModeController.swift`
 
 ## Implementation Tasks
 

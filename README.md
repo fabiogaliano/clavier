@@ -1,10 +1,10 @@
-# keynave
+# clavier
 
 A macOS menu bar application for keyboard-driven UI navigation. Click anywhere on your screen using keyboard shortcuts instead of the mouse.
 
 ## Overview
 
-keynave displays alphabetic hints over clickable UI elements, allowing you to interact with any application without reaching for the mouse. Similar to Vimium for browsers, but for the entire macOS desktop.
+clavier displays alphabetic hints over clickable UI elements, allowing you to interact with any application without reaching for the mouse. Similar to Vimium for browsers, but for the entire macOS desktop.
 
 ## Features
 
@@ -50,19 +50,19 @@ keynave displays alphabetic hints over clickable UI elements, allowing you to in
 ```bash
 # Clone the repository
 git clone <repository-url>
-cd keynave
+cd clavier
 
 # Build from command line
-xcodebuild -project keynave.xcodeproj -scheme keynave -configuration Debug build
+xcodebuild -project clavier.xcodeproj -scheme clavier -configuration Debug build
 
 # Or open in Xcode
-open keynave.xcodeproj
+open clavier.xcodeproj
 # Press Cmd+R to build and run
 ```
 
 ## Setup
 
-1. Launch keynave
+1. Launch clavier
 2. Grant Accessibility permissions when prompted (System Settings > Privacy & Security > Accessibility)
 3. The app appears in the menu bar
 

@@ -1,6 +1,6 @@
 //
 //  AppSpecificDetector.swift
-//  keynave
+//  clavier
 //
 //  Protocol for app-specific scrollable area detection
 //

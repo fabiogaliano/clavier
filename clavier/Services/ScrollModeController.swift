@@ -1,6 +1,6 @@
 //
 //  ScrollModeController.swift
-//  keynave
+//  clavier
 //
 //  Orchestrates scroll mode activation and keyboard input
 //

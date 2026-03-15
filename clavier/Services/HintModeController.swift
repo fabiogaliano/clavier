@@ -1,6 +1,6 @@
 //
 //  HintModeController.swift
-//  keynave
+//  clavier
 //
 //  Orchestrates hint mode activation and keyboard input
 //

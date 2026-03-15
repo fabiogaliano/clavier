@@ -23,10 +23,10 @@ Improve hint placement so labels are easier to read and less likely to overlap o
 
 ## Allowed Files
 
-- `keynave/Views/HintOverlayWindow.swift`
-- `keynave/Views/PreferencesView.swift`
-- `keynave/keynaveApp.swift`
-- Optional new helper: `keynave/Views/HintPlacementEngine.swift`
+- `clavier/Views/HintOverlayWindow.swift`
+- `clavier/Views/PreferencesView.swift`
+- `clavier/clavierApp.swift`
+- Optional new helper: `clavier/Views/HintPlacementEngine.swift`
 
 ## Do Not Touch In This Workstream
 
@@ -37,9 +37,9 @@ Improve hint placement so labels are easier to read and less likely to overlap o
 
 ## Suggested Read Order
 
-1. `keynave/Views/HintOverlayWindow.swift`
-2. `keynave/Views/PreferencesView.swift`
-3. `keynave/keynaveApp.swift`
+1. `clavier/Views/HintOverlayWindow.swift`
+2. `clavier/Views/PreferencesView.swift`
+3. `clavier/clavierApp.swift`
 
 ## Implementation Tasks
 
@@ -77,5 +77,5 @@ Improve hint placement so labels are easier to read and less likely to overlap o
 
 - **2026-03-14**: Workstream created from the audit findings. No implementation work started yet.
 - **2026-03-14**: Implementation complete. All 9 checklist items done, build passes.
-  - **New file**: `keynave/Views/HintPlacementEngine.swift` — stateful engine with `place(element:labelSize:horizontalOffset:)`. Tries 4 candidate positions (primary, nudge-right, vertically-centred, top-right), picks the first non-colliding one, clamps to window bounds.
+  - **New file**: `clavier/Views/HintPlacementEngine.swift` — stateful engine with `place(element:labelSize:horizontalOffset:)`. Tries 4 candidate positions (primary, nudge-right, vertically-centred, top-right), picks the first non-colliding one, clamps to window bounds.
   - **HintOverlayWindow**: Removed `horizontalOffset != 0 ? ... : -25.0` sentinel; the registered default in `AppDelegate` now takes effect. `createHintLabel` signature changed to `engine: inout HintPlacementEngine`. `setupHintViews`, `updateHints`, and the numbered-mode branch in `filterHints` each create a fresh engine and pass it through. Highlight and prefix-filter paths unchanged.

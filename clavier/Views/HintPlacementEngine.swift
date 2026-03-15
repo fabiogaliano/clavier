@@ -1,6 +1,6 @@
 //
 //  HintPlacementEngine.swift
-//  keynave
+//  clavier
 //
 //  Stateful hint placement engine: collision reduction and viewport clamping.
 //

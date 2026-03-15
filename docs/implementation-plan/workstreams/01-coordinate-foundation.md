@@ -29,14 +29,14 @@ Create one reliable coordinate model for the entire app so that:
 
 ## Allowed Files
 
-- `keynave/Services/AccessibilityService.swift`
-- `keynave/Services/HintModeController.swift`
-- `keynave/Services/ScrollModeController.swift`
-- `keynave/Services/ScrollableAreaService.swift`
-- `keynave/Services/ScrollDetection/Detectors/ChromiumDetector.swift`
-- `keynave/Views/HintOverlayWindow.swift`
-- `keynave/Views/ScrollOverlayWindow.swift`
-- Optional new helper: `keynave/Services/ScreenGeometry.swift`
+- `clavier/Services/AccessibilityService.swift`
+- `clavier/Services/HintModeController.swift`
+- `clavier/Services/ScrollModeController.swift`
+- `clavier/Services/ScrollableAreaService.swift`
+- `clavier/Services/ScrollDetection/Detectors/ChromiumDetector.swift`
+- `clavier/Views/HintOverlayWindow.swift`
+- `clavier/Views/ScrollOverlayWindow.swift`
+- Optional new helper: `clavier/Services/ScreenGeometry.swift`
 
 ## Do Not Touch In This Workstream
 
@@ -49,13 +49,13 @@ If one of those becomes necessary, stop and update the main plan before widening
 
 ## Suggested Read Order
 
-1. `keynave/Services/AccessibilityService.swift`
-2. `keynave/Views/HintOverlayWindow.swift`
-3. `keynave/Services/HintModeController.swift`
-4. `keynave/Services/ScrollableAreaService.swift`
-5. `keynave/Services/ScrollDetection/Detectors/ChromiumDetector.swift`
-6. `keynave/Views/ScrollOverlayWindow.swift`
-7. `keynave/Services/ScrollModeController.swift`
+1. `clavier/Services/AccessibilityService.swift`
+2. `clavier/Views/HintOverlayWindow.swift`
+3. `clavier/Services/HintModeController.swift`
+4. `clavier/Services/ScrollableAreaService.swift`
+5. `clavier/Services/ScrollDetection/Detectors/ChromiumDetector.swift`
+6. `clavier/Views/ScrollOverlayWindow.swift`
+7. `clavier/Services/ScrollModeController.swift`
 
 ## Implementation Tasks
 
@@ -96,7 +96,7 @@ If one of those becomes necessary, stop and update the main plan before widening
 
 - **2026-03-14**: Workstream created from the audit findings. No implementation work started yet.
 - **2026-03-14**: Implementation complete. All 10 checklist items done, build passes.
-  - **New file**: `keynave/Services/ScreenGeometry.swift` — `desktopBoundsInAX`, `desktopBoundsInAppKit`, `axToAppKit(position:size:)`, `appKitCenterToQuartz(_:)`, `toWindowLocal(_:)`.
+  - **New file**: `clavier/Services/ScreenGeometry.swift` — `desktopBoundsInAX`, `desktopBoundsInAppKit`, `axToAppKit(position:size:)`, `appKitCenterToQuartz(_:)`, `toWindowLocal(_:)`.
   - **AccessibilityService**: Clipping now uses `desktopBoundsInAX` (union of all screens in AX coords). Y-flip replaced with `ScreenGeometry.axToAppKit`. Removed `origin >= 0` filter that was silently discarding elements on left-of-main or below-main displays. `screenFrame` parameter removed from `traverseElementOptimized`.
   - **HintOverlayWindow**: `contentRect` changed to `desktopBoundsInAppKit`. Container view sized to `self.frame.size` (local origin). Hint label and highlight positions converted via `ScreenGeometry.toWindowLocal`. Search bar kept on main screen (intentional: it is a global input element).
   - **ScrollOverlayWindow**: Same overlay/container sizing fix. Hint label and selection highlight positions converted via `ScreenGeometry.toWindowLocal`.

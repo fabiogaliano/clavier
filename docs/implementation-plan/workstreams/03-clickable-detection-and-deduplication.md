@@ -24,9 +24,9 @@ Improve element discovery quality so hint mode finds more real targets, ignores 
 
 ## Allowed Files
 
-- `keynave/Services/AccessibilityService.swift`
-- `keynave/Models/UIElement.swift`
-- Optional new helper: `keynave/Services/AXElementSemantics.swift`
+- `clavier/Services/AccessibilityService.swift`
+- `clavier/Models/UIElement.swift`
+- Optional new helper: `clavier/Services/AXElementSemantics.swift`
 
 ## Do Not Touch In This Workstream
 
@@ -37,8 +37,8 @@ Improve element discovery quality so hint mode finds more real targets, ignores 
 
 ## Suggested Read Order
 
-1. `keynave/Services/AccessibilityService.swift`
-2. `keynave/Models/UIElement.swift`
+1. `clavier/Services/AccessibilityService.swift`
+2. `clavier/Models/UIElement.swift`
 
 ## Implementation Tasks
 

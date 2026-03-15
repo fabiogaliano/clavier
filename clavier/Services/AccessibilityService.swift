@@ -1,6 +1,6 @@
 //
 //  AccessibilityService.swift
-//  keynave
+//  clavier
 //
 //  Queries UI elements via Accessibility APIs
 //

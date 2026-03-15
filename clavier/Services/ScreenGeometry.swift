@@ -1,6 +1,6 @@
 //
 //  ScreenGeometry.swift
-//  keynave
+//  clavier
 //
 //  Shared coordinate-system conversions for multi-display correctness.
 //

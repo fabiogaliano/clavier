@@ -1,6 +1,6 @@
 //
 //  ChromiumDetector.swift
-//  keynave
+//  clavier
 //
 //  Specialized detector for Chromium-based browsers (Chrome, Arc, Edge, Brave)
 //  Optimizes detection of developer tools and web content

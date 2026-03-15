@@ -1,4 +1,4 @@
-# Keynave Implementation Plan
+# Clavier Implementation Plan
 
 ## Objective
 
@@ -10,8 +10,8 @@ If a task needs extra files, the agent must first update this plan and the relev
 
 ## Repository Paths
 
-- **Repo root**: `/Users/f/Core/dev/projects/keynave`
-- **App source root**: `keynave/`
+- **Repo root**: `/Users/f/Core/dev/projects/clavier`
+- **App source root**: `clavier/`
 - **Plan root**: `docs/implementation-plan/`
 - **Workstream docs**: `docs/implementation-plan/workstreams/`
 - **Prompt library**: `docs/implementation-plan/agent-prompts.md`
@@ -94,53 +94,53 @@ If a task needs extra files, the agent must first update this plan and the relev
 ## Workstream-to-File Map
 
 ### `WS-01`
-- `keynave/Services/AccessibilityService.swift`
-- `keynave/Services/HintModeController.swift`
-- `keynave/Services/ScrollModeController.swift`
-- `keynave/Services/ScrollableAreaService.swift`
-- `keynave/Services/ScrollDetection/Detectors/ChromiumDetector.swift`
-- `keynave/Views/HintOverlayWindow.swift`
-- `keynave/Views/ScrollOverlayWindow.swift`
-- Optional new helper if needed: `keynave/Services/ScreenGeometry.swift`
+- `clavier/Services/AccessibilityService.swift`
+- `clavier/Services/HintModeController.swift`
+- `clavier/Services/ScrollModeController.swift`
+- `clavier/Services/ScrollableAreaService.swift`
+- `clavier/Services/ScrollDetection/Detectors/ChromiumDetector.swift`
+- `clavier/Views/HintOverlayWindow.swift`
+- `clavier/Views/ScrollOverlayWindow.swift`
+- Optional new helper if needed: `clavier/Services/ScreenGeometry.swift`
 
 ### `WS-02`
-- `keynave/Views/HintOverlayWindow.swift`
-- `keynave/Views/PreferencesView.swift`
-- `keynave/keynaveApp.swift`
-- Optional new helper if needed: `keynave/Views/HintPlacementEngine.swift`
+- `clavier/Views/HintOverlayWindow.swift`
+- `clavier/Views/PreferencesView.swift`
+- `clavier/clavierApp.swift`
+- Optional new helper if needed: `clavier/Views/HintPlacementEngine.swift`
 
 ### `WS-03`
-- `keynave/Services/AccessibilityService.swift`
-- `keynave/Models/UIElement.swift`
-- Optional new helper if needed: `keynave/Services/AXElementSemantics.swift`
+- `clavier/Services/AccessibilityService.swift`
+- `clavier/Models/UIElement.swift`
+- Optional new helper if needed: `clavier/Services/AXElementSemantics.swift`
 
 ### `WS-04`
-- `keynave/Services/HintModeController.swift`
-- `keynave/Services/ScrollModeController.swift`
-- `keynave/keynaveApp.swift`
-- `keynave/Views/PreferencesView.swift`
-- Optional new helper if needed: `keynave/Services/InputPermissionService.swift`
+- `clavier/Services/HintModeController.swift`
+- `clavier/Services/ScrollModeController.swift`
+- `clavier/clavierApp.swift`
+- `clavier/Views/PreferencesView.swift`
+- Optional new helper if needed: `clavier/Services/InputPermissionService.swift`
 
 ### `WS-05`
-- `keynave/Services/ScrollableAreaService.swift`
-- `keynave/Services/ScrollDetection/Detectors/ChromiumDetector.swift`
-- `keynave/Services/ScrollModeController.swift`
+- `clavier/Services/ScrollableAreaService.swift`
+- `clavier/Services/ScrollDetection/Detectors/ChromiumDetector.swift`
+- `clavier/Services/ScrollModeController.swift`
 
 ### `WS-06`
-- `keynave/Views/PreferencesView.swift`
-- `keynave/keynaveApp.swift`
-- `keynave/Services/HintModeController.swift`
-- `keynave/Services/ScrollModeController.swift`
-- `keynave/Services/AccessibilityService.swift`
-- Optional new helper if needed: `keynave/Services/SettingsValidationService.swift`
+- `clavier/Views/PreferencesView.swift`
+- `clavier/clavierApp.swift`
+- `clavier/Services/HintModeController.swift`
+- `clavier/Services/ScrollModeController.swift`
+- `clavier/Services/AccessibilityService.swift`
+- Optional new helper if needed: `clavier/Services/SettingsValidationService.swift`
 
 ### `WS-07`
-- `keynave/Views/HintOverlayWindow.swift`
-- `keynave/Views/ScrollOverlayWindow.swift`
-- `keynave/Services/HintModeController.swift`
-- `keynave/Services/AccessibilityService.swift`
-- `keynave/Services/ScrollDetection/DetectorRegistry.swift`
-- Optional new helpers/detectors inside `keynave/Services/ScrollDetection/`
+- `clavier/Views/HintOverlayWindow.swift`
+- `clavier/Views/ScrollOverlayWindow.swift`
+- `clavier/Services/HintModeController.swift`
+- `clavier/Services/AccessibilityService.swift`
+- `clavier/Services/ScrollDetection/DetectorRegistry.swift`
+- Optional new helpers/detectors inside `clavier/Services/ScrollDetection/`
 
 ## How to Start or Resume Work
 

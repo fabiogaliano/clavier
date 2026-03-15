@@ -24,12 +24,12 @@ Handle the post-stability improvements that are valuable but should not distract
 
 ## Allowed Files
 
-- `keynave/Views/HintOverlayWindow.swift`
-- `keynave/Views/ScrollOverlayWindow.swift`
-- `keynave/Services/HintModeController.swift`
-- `keynave/Services/AccessibilityService.swift`
-- `keynave/Services/ScrollDetection/DetectorRegistry.swift`
-- Optional new helpers/detectors inside `keynave/Services/ScrollDetection/`
+- `clavier/Views/HintOverlayWindow.swift`
+- `clavier/Views/ScrollOverlayWindow.swift`
+- `clavier/Services/HintModeController.swift`
+- `clavier/Services/AccessibilityService.swift`
+- `clavier/Services/ScrollDetection/DetectorRegistry.swift`
+- Optional new helpers/detectors inside `clavier/Services/ScrollDetection/`
 
 ## Do Not Touch In This Workstream
 
@@ -39,11 +39,11 @@ Handle the post-stability improvements that are valuable but should not distract
 
 ## Suggested Read Order
 
-1. `keynave/Views/HintOverlayWindow.swift`
-2. `keynave/Views/ScrollOverlayWindow.swift`
-3. `keynave/Services/HintModeController.swift`
-4. `keynave/Services/AccessibilityService.swift`
-5. `keynave/Services/ScrollDetection/DetectorRegistry.swift`
+1. `clavier/Views/HintOverlayWindow.swift`
+2. `clavier/Views/ScrollOverlayWindow.swift`
+3. `clavier/Services/HintModeController.swift`
+4. `clavier/Services/AccessibilityService.swift`
+5. `clavier/Services/ScrollDetection/DetectorRegistry.swift`
 
 ## Implementation Tasks
 

@@ -1,6 +1,6 @@
 //
 //  DetectorRegistry.swift
-//  keynave
+//  clavier
 //
 //  Registry for app-specific scrollable area detectors
 //

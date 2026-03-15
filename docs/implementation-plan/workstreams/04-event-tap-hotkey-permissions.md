@@ -24,11 +24,11 @@ Stabilize the keyboard interception path so hint mode and scroll mode can activa
 
 ## Allowed Files
 
-- `keynave/Services/HintModeController.swift`
-- `keynave/Services/ScrollModeController.swift`
-- `keynave/keynaveApp.swift`
-- `keynave/Views/PreferencesView.swift`
-- Optional new helper: `keynave/Services/InputPermissionService.swift`
+- `clavier/Services/HintModeController.swift`
+- `clavier/Services/ScrollModeController.swift`
+- `clavier/clavierApp.swift`
+- `clavier/Views/PreferencesView.swift`
+- Optional new helper: `clavier/Services/InputPermissionService.swift`
 
 ## Do Not Touch In This Workstream
 
@@ -39,10 +39,10 @@ Stabilize the keyboard interception path so hint mode and scroll mode can activa
 
 ## Suggested Read Order
 
-1. `keynave/Services/HintModeController.swift`
-2. `keynave/Services/ScrollModeController.swift`
-3. `keynave/keynaveApp.swift`
-4. `keynave/Views/PreferencesView.swift`
+1. `clavier/Services/HintModeController.swift`
+2. `clavier/Services/ScrollModeController.swift`
+3. `clavier/clavierApp.swift`
+4. `clavier/Views/PreferencesView.swift`
 
 ## Implementation Tasks
 
@@ -78,4 +78,4 @@ Stabilize the keyboard interception path so hint mode and scroll mode can activa
 ## Work Log
 
 - **2026-03-14**: Workstream created from the audit findings. No implementation work started yet.
-- **2026-03-14**: WS-04 complete. Changes in `HintModeController.swift` and `ScrollModeController.swift`; `keynaveApp.swift` and `PreferencesView.swift` unchanged. Changes: (1) Eliminated `typedInput` String from shared callback state — callback is now a thin dispatcher that only reads Bool/Int/pointer statics and dispatches all string work to main thread. (2) Removed 7 dead `nonisolated(unsafe)` statics across both controllers (hintChars, pendingAction, textSearchEnabled, minSearchChars, refreshTrigger from Hint; typedInput, selectedIndex, areaCount from Scroll). Remaining 4 statics per controller are simple scalars, documented. (3) `InstallEventHandler` now stored as `eventHandlerRef`, installed once in `registerGlobalHotkey()`, reused across re-registrations — eliminates handler accumulation. (4) `startEventTap()` returns Bool; activation is transactional — if tap fails, overlay is closed and state is rolled back. Both controllers print actionable Accessibility permission guidance on failure. Build passes.
+- **2026-03-14**: WS-04 complete. Changes in `HintModeController.swift` and `ScrollModeController.swift`; `clavierApp.swift` and `PreferencesView.swift` unchanged. Changes: (1) Eliminated `typedInput` String from shared callback state — callback is now a thin dispatcher that only reads Bool/Int/pointer statics and dispatches all string work to main thread. (2) Removed 7 dead `nonisolated(unsafe)` statics across both controllers (hintChars, pendingAction, textSearchEnabled, minSearchChars, refreshTrigger from Hint; typedInput, selectedIndex, areaCount from Scroll). Remaining 4 statics per controller are simple scalars, documented. (3) `InstallEventHandler` now stored as `eventHandlerRef`, installed once in `registerGlobalHotkey()`, reused across re-registrations — eliminates handler accumulation. (4) `startEventTap()` returns Bool; activation is transactional — if tap fails, overlay is closed and state is rolled back. Both controllers print actionable Accessibility permission guidance on failure. Build passes.

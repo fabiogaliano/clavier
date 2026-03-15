@@ -24,12 +24,12 @@ Prevent invalid preferences from putting the app into broken states, and either 
 
 ## Allowed Files
 
-- `keynave/Views/PreferencesView.swift`
-- `keynave/keynaveApp.swift`
-- `keynave/Services/HintModeController.swift`
-- `keynave/Services/ScrollModeController.swift`
-- `keynave/Services/AccessibilityService.swift`
-- Optional new helper: `keynave/Services/SettingsValidationService.swift`
+- `clavier/Views/PreferencesView.swift`
+- `clavier/clavierApp.swift`
+- `clavier/Services/HintModeController.swift`
+- `clavier/Services/ScrollModeController.swift`
+- `clavier/Services/AccessibilityService.swift`
+- Optional new helper: `clavier/Services/SettingsValidationService.swift`
 
 ## Do Not Touch In This Workstream
 
@@ -40,11 +40,11 @@ Prevent invalid preferences from putting the app into broken states, and either 
 
 ## Suggested Read Order
 
-1. `keynave/Views/PreferencesView.swift`
-2. `keynave/keynaveApp.swift`
-3. `keynave/Services/HintModeController.swift`
-4. `keynave/Services/ScrollModeController.swift`
-5. `keynave/Services/AccessibilityService.swift`
+1. `clavier/Views/PreferencesView.swift`
+2. `clavier/clavierApp.swift`
+3. `clavier/Services/HintModeController.swift`
+4. `clavier/Services/ScrollModeController.swift`
+5. `clavier/Services/AccessibilityService.swift`
 
 ## Implementation Tasks
 
@@ -79,4 +79,4 @@ Prevent invalid preferences from putting the app into broken states, and either 
 ## Work Log
 
 - **2026-03-14**: Workstream created from the audit findings. No implementation work started yet.
-- **2026-03-14**: WS-06 complete. (1) `hintCharacters` and `scrollKeys` TextFields now auto-normalize to lowercase unique alpha on every keystroke; `hintCharacters` caps at 4 chars. Consumer-side guard in `assignHints()` falls back to default if < 2 chars — prevents divide-by-zero. (2) `manualRefreshTrigger` resets to "rr" if cleared. (3) `scrollCommandsEnabled` removed: dead setting never read by any controller — removed from PreferencesView, keynaveApp defaults. (4) Dead UI-change observer removed from HintModeController: `startUIChangeObserver()`, `stopUIChangeObserver()`, `handleUIChangeDetected()` and related instance vars (`uiChangeObserver`, `isWaitingForUIChange`, `refreshFallbackTask`) deleted — never called, timer-based refresh is the active path. Build passes.
+- **2026-03-14**: WS-06 complete. (1) `hintCharacters` and `scrollKeys` TextFields now auto-normalize to lowercase unique alpha on every keystroke; `hintCharacters` caps at 4 chars. Consumer-side guard in `assignHints()` falls back to default if < 2 chars — prevents divide-by-zero. (2) `manualRefreshTrigger` resets to "rr" if cleared. (3) `scrollCommandsEnabled` removed: dead setting never read by any controller — removed from PreferencesView, clavierApp defaults. (4) Dead UI-change observer removed from HintModeController: `startUIChangeObserver()`, `stopUIChangeObserver()`, `handleUIChangeDetected()` and related instance vars (`uiChangeObserver`, `isWaitingForUIChange`, `refreshFallbackTask`) deleted — never called, timer-based refresh is the active path. Build passes.
