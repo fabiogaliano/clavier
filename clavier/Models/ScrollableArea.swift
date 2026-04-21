@@ -18,7 +18,6 @@ struct ScrollableArea: Identifiable {
     let stableID: AreaIdentity
     let axElement: AXUIElement
     let frame: CGRect
-    var hint: String = ""
 
     init(axElement: AXUIElement, frame: CGRect) {
         self.stableID = AreaIdentity(axElement: axElement, frame: frame)

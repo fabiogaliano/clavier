@@ -11,15 +11,16 @@ import SwiftUI
 @MainActor
 class ScrollOverlayWindow: NSWindow {
 
-    private var areas: [ScrollableArea]
-    private var hintViews: [String: NSView] = [:]
+    private var numberedAreas: [NumberedArea]
+    /// Keyed by stable area identity so view reuse survives number reassignment
+    /// across progressive-discovery merges (F06 equivalent for scroll, P3-S2).
+    private var hintViews: [AreaIdentity: NSView] = [:]
     private var highlightView: NSView?
-    private var selectedAreaIndex: Int = -1
+    private var selectedAreaIndex: Int?
 
-    init(areas: [ScrollableArea]) {
-        self.areas = areas
+    init(numberedAreas: [NumberedArea]) {
+        self.numberedAreas = numberedAreas
 
-        // Cover the entire desktop so scroll hints render correctly on every display.
         let desktopBounds = ScreenGeometry.desktopBoundsInAppKit
 
         super.init(
@@ -40,19 +41,13 @@ class ScrollOverlayWindow: NSWindow {
         setupViews()
     }
 
-    override var canBecomeKey: Bool {
-        return false
-    }
-
-    override var canBecomeMain: Bool {
-        return false
-    }
+    override var canBecomeKey: Bool { false }
+    override var canBecomeMain: Bool { false }
 
     private func setupViews() {
         let containerView = NSView(frame: CGRect(origin: .zero, size: self.frame.size))
         containerView.wantsLayer = true
 
-        // Create highlight view (hidden initially)
         let highlight = NSView(frame: .zero)
         highlight.wantsLayer = true
         highlight.layer?.borderColor = NSColor.systemYellow.cgColor
@@ -62,22 +57,21 @@ class ScrollOverlayWindow: NSWindow {
         containerView.addSubview(highlight)
         highlightView = highlight
 
-        // Show hints only if setting is enabled
         let showNumbers = UserDefaults.standard.bool(forKey: AppSettings.Keys.showScrollAreaNumbers)
 
         if showNumbers {
-            for area in areas {
-                let hintView = createHintLabel(for: area)
+            for numbered in numberedAreas {
+                let hintView = createHintLabel(for: numbered)
                 containerView.addSubview(hintView)
-                hintViews[area.hint] = hintView
+                hintViews[numbered.identity] = hintView
             }
         }
 
         self.contentView = containerView
     }
 
-    private func createHintLabel(for area: ScrollableArea) -> NSView {
-        let label = NSTextField(labelWithString: area.hint)
+    private func createHintLabel(for numbered: NumberedArea) -> NSView {
+        let label = NSTextField(labelWithString: numbered.number)
         label.font = NSFont.monospacedSystemFont(ofSize: 14, weight: .bold)
         label.textColor = .white
         label.backgroundColor = NSColor.systemOrange.withAlphaComponent(0.9)
@@ -90,14 +84,12 @@ class ScrollOverlayWindow: NSWindow {
 
         label.sizeToFit()
 
-        // Add padding
         let padding: CGFloat = 6
         let width = label.frame.width + padding * 2
         let height = label.frame.height + padding
 
-        // Position at top-right corner of the area, translated to window-local coords.
         let localOrigin = ScreenGeometry.toWindowLocal(
-            CGRect(x: area.frame.maxX - width - 8, y: area.frame.minY + 8, width: width, height: height)
+            CGRect(x: numbered.area.frame.maxX - width - 8, y: numbered.area.frame.minY + 8, width: width, height: height)
         )
 
         label.frame = CGRect(x: localOrigin.minX, y: localOrigin.minY, width: width, height: height)
@@ -109,78 +101,41 @@ class ScrollOverlayWindow: NSWindow {
         self.orderFrontRegardless()
     }
 
-    /// Dynamically add a new scrollable area to the overlay
-    func addArea(_ area: ScrollableArea) {
-        // Add to areas array
-        areas.append(area)
+    /// Dynamically add a new numbered area to the overlay during progressive discovery.
+    func addArea(_ numbered: NumberedArea) {
+        numberedAreas.append(numbered)
 
-        // Only create hint view if setting is enabled
         let showNumbers = UserDefaults.standard.bool(forKey: AppSettings.Keys.showScrollAreaNumbers)
         guard showNumbers else { return }
 
-        // Create and add hint view
-        let hintView = createHintLabel(for: area)
+        let hintView = createHintLabel(for: numbered)
         contentView?.addSubview(hintView)
-        hintViews[area.hint] = hintView
+        hintViews[numbered.identity] = hintView
 
-        // Preserve selection state (dim new hint if something is already selected)
-        if selectedAreaIndex >= 0 {
+        // Dim the new hint if an area is already selected
+        if selectedAreaIndex != nil {
             hintView.alphaValue = 0.3
         }
     }
 
-    /// Remove an area from the overlay by its hint number
-    func removeArea(withHint hint: String) {
-        // Remove from areas array
-        areas.removeAll { $0.hint == hint }
+    /// Remove an area from the overlay by its stable identity.
+    func removeArea(withIdentity identity: AreaIdentity) {
+        numberedAreas.removeAll { $0.identity == identity }
 
-        // Remove hint view if it exists
-        if let hintView = hintViews[hint] {
+        if let hintView = hintViews[identity] {
             hintView.removeFromSuperview()
-            hintViews.removeValue(forKey: hint)
+            hintViews.removeValue(forKey: identity)
         }
     }
 
-    /// Update hint number for an existing area (for resequencing)
-    func updateHint(oldHint: String, newHint: String) {
-        // Update in areas array
-        if let index = areas.firstIndex(where: { $0.hint == oldHint }) {
-            areas[index].hint = newHint
+    /// Update the displayed number for an area after resequencing.
+    func updateNumber(forIdentity identity: AreaIdentity, newNumber: String) {
+        if let idx = numberedAreas.firstIndex(where: { $0.identity == identity }) {
+            numberedAreas[idx] = NumberedArea(area: numberedAreas[idx].area, number: newNumber)
         }
 
-        // Update hint view if it exists
-        if let hintView = hintViews[oldHint] as? NSTextField {
-            hintView.stringValue = newHint
-            hintViews.removeValue(forKey: oldHint)
-            hintViews[newHint] = hintView
-        }
-    }
-
-    /// Update all areas (used after removing nested areas to refresh overlay)
-    func updateAllAreas(_ newAreas: [ScrollableArea]) {
-        // Clear existing hints
-        hintViews.values.forEach { $0.removeFromSuperview() }
-        hintViews.removeAll()
-
-        // Update areas
-        areas = newAreas
-
-        // Recreate hints if enabled
-        let showNumbers = UserDefaults.standard.bool(forKey: AppSettings.Keys.showScrollAreaNumbers)
-        guard showNumbers else { return }
-
-        for area in areas {
-            let hintView = createHintLabel(for: area)
-            contentView?.addSubview(hintView)
-            hintViews[area.hint] = hintView
-
-            // Preserve selection state
-            if selectedAreaIndex >= 0 && selectedAreaIndex < areas.count {
-                let selectedArea = areas[selectedAreaIndex]
-                if area.hint != selectedArea.hint {
-                    hintView.alphaValue = 0.3
-                }
-            }
+        if let hintView = hintViews[identity] as? NSTextField {
+            hintView.stringValue = newNumber
         }
     }
 
@@ -192,62 +147,25 @@ class ScrollOverlayWindow: NSWindow {
     }
 
     func selectArea(at index: Int) {
-        guard index >= 0 && index < areas.count else { return }
+        guard index >= 0 && index < numberedAreas.count else { return }
 
         selectedAreaIndex = index
-        let area = areas[index]
+        let numbered = numberedAreas[index]
 
-        // Update highlight — translate to window-local coordinates.
-        highlightView?.frame = ScreenGeometry.toWindowLocal(area.frame)
+        highlightView?.frame = ScreenGeometry.toWindowLocal(numbered.area.frame)
         highlightView?.isHidden = false
 
-        // Dim non-selected hints
-        for (hint, view) in hintViews {
-            if hint == area.hint {
-                view.alphaValue = 1.0
-            } else {
-                view.alphaValue = 0.3
-            }
+        for (identity, view) in hintViews {
+            view.alphaValue = identity == numbered.identity ? 1.0 : 0.3
         }
     }
 
     func clearSelection() {
-        selectedAreaIndex = -1
+        selectedAreaIndex = nil
         highlightView?.isHidden = true
 
-        // Reset all hints
         for (_, view) in hintViews {
             view.alphaValue = 1.0
         }
-    }
-
-    func filterHints(matching prefix: String) {
-        for (hint, view) in hintViews {
-            if prefix.isEmpty {
-                view.isHidden = false
-                (view as? NSTextField)?.textColor = .white
-            } else if hint.hasPrefix(prefix) {
-                view.isHidden = false
-                highlightPrefix(in: view as? NSTextField, prefix: prefix, hint: hint)
-            } else {
-                view.isHidden = true
-            }
-        }
-    }
-
-    private func highlightPrefix(in textField: NSTextField?, prefix: String, hint: String) {
-        guard let textField = textField else { return }
-
-        let attributedString = NSMutableAttributedString(string: hint)
-
-        // Matched portion in yellow
-        attributedString.addAttribute(.foregroundColor, value: NSColor.yellow, range: NSRange(location: 0, length: prefix.count))
-
-        // Remaining portion in white
-        if prefix.count < hint.count {
-            attributedString.addAttribute(.foregroundColor, value: NSColor.white, range: NSRange(location: prefix.count, length: hint.count - prefix.count))
-        }
-
-        textField.attributedStringValue = attributedString
     }
 }

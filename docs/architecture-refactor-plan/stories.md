@@ -37,7 +37,7 @@ Sizing mode: **medium PRs per phase sub-area**.
   Depends on: P2-S1, P1-S3  
   Blocks: P4-S1, P4-S2, P5-S2
 
-- [ ] **P3-S2 — Scroll domain/presentation split + explicit session state**  
+- [x] **P3-S2 — Scroll domain/presentation split + explicit session state**  
   Depends on: P2-S3, P1-S3  
   Blocks: P4-S1, P4-S3, P5-S2
 
@@ -331,7 +331,7 @@ Blocks: P4-S1, P4-S2, P5-S2.
 
 ---
 
-### [ ] P3-S2 — Scroll domain/presentation split + explicit session state
+### [x] P3-S2 — Scroll domain/presentation split + explicit session state
 
 **Goal**  
 Model scroll sessions with explicit state types and separate discovery data from UI/session concerns.

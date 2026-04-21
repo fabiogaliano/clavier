@@ -13,10 +13,7 @@ import Carbon
 class ScrollModeController {
 
     private var overlayWindow: ScrollOverlayWindow?
-    private var isActive = false
-    private var currentInput = ""
-    private var areas: [ScrollableArea] = []
-    private var selectedAreaIndex: Int = -1
+    private var session: ScrollSession = .inactive
     private var deactivationTimer: Timer?
 
     // Callback-visible state: only simple scalars that are practically atomic on arm64.
@@ -44,6 +41,12 @@ class ScrollModeController {
     private var autoDeactivation = true
     private var deactivationDelay: Double = 5.0
 
+    // MARK: - Convenience accessors into session
+
+    private var isActive: Bool { session.isActive }
+    private var areas: [NumberedArea] { session.areas }
+    private var selectedIndex: Int? { session.selectedIndex }
+
     func registerGlobalHotkey() {
         ScrollModeController.sharedInstance = self
         hotkeyRegistrar.register(
@@ -65,53 +68,36 @@ class ScrollModeController {
         let activationStartTime = Date()
         guard !isActive else { return }
 
-        // Load settings
         loadSettings()
 
         // PHASE 1: Quick focus check (5-10ms)
         if let focusedArea = ScrollableAreaService.shared.findFocusedScrollableArea() {
-            // Assign hint
-            var focusedAreaWithHint = focusedArea
-            focusedAreaWithHint.hint = "1"
-            areas = [focusedAreaWithHint]
-            assignHints()
+            let numbered = NumberedArea(area: focusedArea, number: "1")
+            session = .active(areas: [numbered], selected: nil, pendingInput: "")
 
             print("[HINT] #1 → \(focusedArea.frame)")
 
-            // Create overlay with just the focused area
-            overlayWindow = ScrollOverlayWindow(areas: areas)
+            overlayWindow = ScrollOverlayWindow(numberedAreas: areas)
             overlayWindow?.show()
 
-            // Start intercepting keyboard events — abort if tap creation fails
             guard startEventTap() else {
                 overlayWindow?.orderOut(nil)
                 overlayWindow?.close()
                 overlayWindow = nil
-                areas = []
+                session = .inactive
                 return
             }
 
-            // Update state after event tap is confirmed
-            isActive = true
-            currentInput = ""
-            selectedAreaIndex = 0
             ScrollModeController.isScrollModeActive = true
 
-            // Auto-select the focused area
             selectArea(at: 0)
-
-            // Start deactivation timer if enabled
             startDeactivationTimer()
 
-            // PHASE 2: Continue progressive discovery in background
             continueProgressiveDiscovery()
-
             return
         }
 
         // PHASE 2: No focus found — synchronous progressive discovery on main actor
-        // (ScrollableAreaService is @MainActor and AX calls must run on main thread)
-
         var firstAreaFound = false
         var nextHintNumber = 1
         let maxAreas = 15
@@ -124,26 +110,22 @@ class ScrollModeController {
             if !firstAreaFound {
                 firstAreaFound = true
 
-                var areaWithHint = area
-                areaWithHint.hint = "\(hintNumber)"
-                self.areas = [areaWithHint]
+                let numbered = NumberedArea(area: area, number: "\(hintNumber)")
+                self.session = .active(areas: [numbered], selected: nil, pendingInput: "")
 
                 print("[HINT] #\(hintNumber) → \(area.frame)")
 
-                self.overlayWindow = ScrollOverlayWindow(areas: self.areas)
+                self.overlayWindow = ScrollOverlayWindow(numberedAreas: self.areas)
                 self.overlayWindow?.show()
 
                 guard self.startEventTap() else {
                     self.overlayWindow?.orderOut(nil)
                     self.overlayWindow?.close()
                     self.overlayWindow = nil
-                    self.areas = []
+                    self.session = .inactive
                     return
                 }
 
-                self.isActive = true
-                self.currentInput = ""
-                self.selectedAreaIndex = -1
                 ScrollModeController.isScrollModeActive = true
                 self.startDeactivationTimer()
 
@@ -156,10 +138,11 @@ class ScrollModeController {
                     print("[PERF] Auto-selected first area via cursor position")
                 }
             } else {
-                var areaWithHint = area
-                areaWithHint.hint = "\(hintNumber)"
-                self.areas.append(areaWithHint)
-                self.overlayWindow?.addArea(areaWithHint)
+                let numbered = NumberedArea(area: area, number: "\(hintNumber)")
+                if case .active(let current, let sel, let input) = self.session {
+                    self.session = .active(areas: current + [numbered], selected: sel, pendingInput: input)
+                }
+                self.overlayWindow?.addArea(numbered)
 
                 print("[HINT] #\(hintNumber) → \(area.frame)")
             }
@@ -172,8 +155,8 @@ class ScrollModeController {
         //
         // The service's shouldAddArea gate already deduplicates areas within a single traversal
         // wave, but it starts with an empty local list and therefore cannot see the focused area
-        // we pre-loaded in Phase 1.  We therefore evaluate each incoming area against self.areas
-        // (our live cross-wave list) using the same ScrollableAreaMerger policy.
+        // we pre-loaded in Phase 1.  We therefore evaluate each incoming area against our live
+        // cross-wave list using the same ScrollableAreaMerger policy.
 
         var areasFound = 0
         let maxAreas = 15
@@ -183,7 +166,7 @@ class ScrollModeController {
             if areasFound >= maxAreas { return }
             areasFound += 1
 
-            let existingFrames = self.areas.map(\.frame)
+            let existingFrames = self.areas.map(\.area.frame)
             let decision = self.merger.decision(for: area.frame, against: existingFrames)
 
             switch decision {
@@ -192,49 +175,55 @@ class ScrollModeController {
 
             case .replaceExisting(let indices):
                 for index in indices.sorted().reversed() {
-                    self.overlayWindow?.removeArea(withHint: self.areas[index].hint)
-                    self.areas.remove(at: index)
+                    if case .active(var current, var sel, let input) = self.session {
+                        let removedIdentity = current[index].identity
+                        self.overlayWindow?.removeArea(withIdentity: removedIdentity)
+                        current.remove(at: index)
+                        // Shift selected index down if the removed area was before it
+                        if let s = sel {
+                            if index < s {
+                                sel = s - 1
+                            } else if index == s {
+                                sel = nil
+                            }
+                        }
+                        self.session = .active(areas: current, selected: sel, pendingInput: input)
+                    }
                 }
-                self.reassignHints()
+                self.reassignNumbers()
 
             case .add:
                 break
             }
 
-            var areaWithHint = area
-            let nextHint = "\(self.areas.count + 1)"
-            areaWithHint.hint = nextHint
-            self.areas.append(areaWithHint)
-            self.overlayWindow?.addArea(areaWithHint)
-            print("[HINT] #\(nextHint) → \(area.frame)")
+            let nextNumber = "\(self.areas.count + 1)"
+            let numbered = NumberedArea(area: area, number: nextNumber)
+            if case .active(let current, let sel, let input) = self.session {
+                self.session = .active(areas: current + [numbered], selected: sel, pendingInput: input)
+            }
+            self.overlayWindow?.addArea(numbered)
+            print("[HINT] #\(nextNumber) → \(area.frame)")
         }, maxAreas: maxAreas)
     }
 
     private func deactivateScrollMode() {
         guard isActive else { return }
 
-        // Stop timer
         deactivationTimer?.invalidate()
         deactivationTimer = nil
 
         // Update static state before stopping the tap so the gate sees false immediately.
         ScrollModeController.isScrollModeActive = false
 
-        // Stop event tap
         eventTap.stop()
 
-        // Close overlay
         if let window = overlayWindow {
             window.orderOut(nil)
             window.close()
         }
         overlayWindow = nil
 
-        // Reset state
-        areas = []
-        isActive = false
-        currentInput = ""
-        selectedAreaIndex = -1
+        session = .inactive
     }
 
     private func loadSettings() {
@@ -249,27 +238,24 @@ class ScrollModeController {
         if dashSpeed == 0 { dashSpeed = 9.0 }
         if deactivationDelay == 0 { deactivationDelay = 5.0 }
 
-        // Mirror to CF-thread-readable static so the decoder context is current.
         ScrollModeController.scrollKeysCache = scrollKeys
     }
 
-    private func assignHints() {
-        for i in 0..<areas.count {
-            areas[i].hint = "\(i + 1)"
-        }
-    }
-
-    /// Reassign hints after removing nested areas (eliminates gaps in numbering)
-    private func reassignHints() {
-        for i in 0..<areas.count {
-            let oldHint = areas[i].hint
-            let newHint = "\(i + 1)"
-
-            if oldHint != newHint {
-                areas[i].hint = newHint
-                overlayWindow?.updateHint(oldHint: oldHint, newHint: newHint)
+    /// Reassign sequential numbers after a replaceExisting merge removes areas.
+    ///
+    /// Gaps in numbering are eliminated so visible hints remain contiguous
+    /// (1, 2, 3… rather than 1, 3, 4…).
+    private func reassignNumbers() {
+        guard case .active(var current, let sel, let input) = session else { return }
+        for i in 0..<current.count {
+            let newNumber = "\(i + 1)"
+            if current[i].number != newNumber {
+                let oldIdentity = current[i].identity
+                current[i] = NumberedArea(area: current[i].area, number: newNumber)
+                overlayWindow?.updateNumber(forIdentity: oldIdentity, newNumber: newNumber)
             }
         }
+        session = .active(areas: current, selected: sel, pendingInput: input)
     }
 
     private func startDeactivationTimer() {
@@ -351,29 +337,32 @@ class ScrollModeController {
     private func handleDigit(_ number: Int) {
         resetDeactivationTimer()
 
-        currentInput += "\(number)"
+        guard case .active(let current, let sel, let pending) = session else { return }
+        let newInput = pending + "\(number)"
 
-        if let index = Int(currentInput), index >= 1 && index <= areas.count {
-            let couldExtend = (index * 10) <= areas.count
+        if let index = Int(newInput), index >= 1 && index <= current.count {
+            let couldExtend = (index * 10) <= current.count
             if !couldExtend {
                 selectArea(at: index - 1)
-                currentInput = ""
+                // selectArea updates session; wipe pending input there
+            } else {
+                session = .active(areas: current, selected: sel, pendingInput: newInput)
             }
         } else {
-            currentInput = ""
+            // Input doesn't match any area — clear pending
+            session = .active(areas: current, selected: sel, pendingInput: "")
         }
     }
 
     private func handleArrowKey(_ direction: ClickService.ScrollDirection, isShift: Bool) {
         resetDeactivationTimer()
 
-        // Commit any pending numeric input first
         commitPendingInput()
 
         if arrowMode == "select" {
             handleArrowSelection(direction: direction)
         } else {
-            if selectedAreaIndex >= 0 {
+            if selectedIndex != nil {
                 let speed = isShift ? dashSpeed : scrollSpeed
                 performScroll(direction: direction, speed: speed)
             }
@@ -383,10 +372,9 @@ class ScrollModeController {
     private func handleScrollKey(_ direction: ClickService.ScrollDirection, isShift: Bool) {
         resetDeactivationTimer()
 
-        // Commit any pending numeric input first
         commitPendingInput()
 
-        if selectedAreaIndex >= 0 {
+        if selectedIndex != nil {
             let speed = isShift ? dashSpeed : scrollSpeed
             performScroll(direction: direction, speed: speed)
         }
@@ -395,52 +383,58 @@ class ScrollModeController {
     private func handleBackspace() {
         resetDeactivationTimer()
 
-        currentInput = ""
+        if case .active(let current, _, _) = session {
+            session = .active(areas: current, selected: nil, pendingInput: "")
+        }
         overlayWindow?.clearSelection()
-        selectedAreaIndex = -1
     }
 
     private func commitPendingInput() {
-        guard !currentInput.isEmpty,
-              let index = Int(currentInput),
-              index >= 1, index <= areas.count else {
-            currentInput = ""
+        guard case .active(let current, let sel, let pending) = session,
+              !pending.isEmpty,
+              let index = Int(pending),
+              index >= 1, index <= current.count else {
+            // Clear any dangling pending input
+            if case .active(let current, let sel, _) = session {
+                session = .active(areas: current, selected: sel, pendingInput: "")
+            }
             return
         }
         selectArea(at: index - 1)
-        currentInput = ""
     }
 
     private func selectArea(at index: Int) {
-        guard index >= 0 && index < areas.count else { return }
-        selectedAreaIndex = index
+        guard case .active(let current, _, _) = session,
+              index >= 0 && index < current.count else { return }
+        session = .active(areas: current, selected: index, pendingInput: "")
         overlayWindow?.selectArea(at: index)
         print("Selected scroll area \(index + 1)")
     }
 
     private func handleArrowSelection(direction: ClickService.ScrollDirection) {
-        if selectedAreaIndex < 0 {
+        guard case .active(let current, let sel, _) = session else { return }
+
+        guard let current_sel = sel else {
             selectArea(at: 0)
             return
         }
 
-        var newIndex = selectedAreaIndex
-
+        let newIndex: Int
         switch direction {
         case .up, .left:
-            newIndex = max(0, selectedAreaIndex - 1)
+            newIndex = max(0, current_sel - 1)
         case .down, .right:
-            newIndex = min(areas.count - 1, selectedAreaIndex + 1)
+            newIndex = min(current.count - 1, current_sel + 1)
         }
 
         selectArea(at: newIndex)
     }
 
     private func performScroll(direction: ClickService.ScrollDirection, speed: Double) {
-        guard selectedAreaIndex >= 0 && selectedAreaIndex < areas.count else { return }
+        guard let idx = selectedIndex, idx < areas.count else { return }
 
-        let area = areas[selectedAreaIndex]
-        let clickPoint = ScreenGeometry.appKitCenterToQuartz(area.centerPoint)
+        let area = areas[idx]
+        let clickPoint = ScreenGeometry.appKitCenterToQuartz(area.area.centerPoint)
         ClickService.shared.scroll(at: clickPoint, direction: direction, speed: speed)
     }
 }
