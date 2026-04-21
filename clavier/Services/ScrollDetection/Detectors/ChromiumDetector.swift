@@ -75,18 +75,13 @@ class ChromiumDetector: AppSpecificDetector {
     private func detectDevTools(in window: AXUIElement) -> [ScrollableArea]? {
         var areas: [ScrollableArea] = []
 
-        // Get window children
-        var childrenRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(window, kAXChildrenAttribute as CFString, &childrenRef) == .success,
-              let children = childrenRef as? [AXUIElement] else {
+        guard case .success(let children) = AXReader.elements(kAXChildrenAttribute as CFString, of: window) else {
             return nil
         }
 
         // Look for AXSplitGroup (indicates docked dev tools)
         for child in children {
-            var roleRef: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(child, kAXRoleAttribute as CFString, &roleRef) == .success,
-                  let role = roleRef as? String,
+            guard case .success(let role) = AXReader.string(kAXRoleAttribute as CFString, of: child),
                   role == "AXSplitGroup" else {
                 continue
             }
@@ -103,18 +98,12 @@ class ChromiumDetector: AppSpecificDetector {
     private func findDevToolsPanels(in element: AXUIElement, depth: Int, maxDepth: Int, into areas: inout [ScrollableArea]) {
         guard depth < maxDepth else { return }
 
-        // Get children
-        var childrenRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
-              let children = childrenRef as? [AXUIElement] else {
+        guard case .success(let children) = AXReader.elements(kAXChildrenAttribute as CFString, of: element) else {
             return
         }
 
         for child in children {
-            // Check role
-            var roleRef: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(child, kAXRoleAttribute as CFString, &roleRef) == .success,
-                  let role = roleRef as? String else {
+            guard case .success(let role) = AXReader.string(kAXRoleAttribute as CFString, of: child) else {
                 continue
             }
 

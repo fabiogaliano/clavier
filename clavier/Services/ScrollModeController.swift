@@ -2,7 +2,13 @@
 //  ScrollModeController.swift
 //  clavier
 //
-//  Orchestrates scroll mode activation and keyboard input
+//  Orchestration-only entry point for scroll mode.
+//
+//  Wires: GlobalHotkeyRegistrar → event tap → ScrollInputDecoder
+//       → ScrollSelectionReducer → [ScrollSideEffect]
+//       → ScrollCommandExecutor  (scroll events)
+//       → ScrollDiscoveryCoordinator (two-phase area discovery)
+//       → ScrollOverlayWindow (overlay updates)
 //
 
 import Foundation
@@ -16,36 +22,41 @@ class ScrollModeController {
     private var session: ScrollSession = .inactive
     private var deactivationTimer: Timer?
 
-    // Callback-visible state: only simple scalars that are practically atomic on arm64.
-    // Read on the CF run loop thread from the isActiveGate closure and the tap handler.
+    // CF run-loop readable scalars (see CLAUDE.md threading note).
     private nonisolated(unsafe) static var isScrollModeActive = false
+    private nonisolated(unsafe) static var scrollKeysCache = "hjkl"
 
-    // Retained for the CF-thread dispatch path inside KeyboardEventTap's handler closure.
+    // Back-reference for CF run-loop callback dispatch.
     private static var sharedInstance: ScrollModeController?
 
-    private let merger = ScrollableAreaMerger()
-
-    // Shared input infrastructure (P2-S3)
+    // Shared input infrastructure
     private let hotkeyRegistrar = GlobalHotkeyRegistrar(signature: "SCRL", hotkeyID: 2)
     private let eventTap = KeyboardEventTap(slotIndex: 1)
 
-    // Scroll-decoder context accessible from the CF run loop thread.
-    // Refreshed from UserDefaults when scroll mode activates (main thread only).
-    private nonisolated(unsafe) static var scrollKeysCache = "hjkl"
+    // Decomposed scroll modules (P4-S3)
+    private let discoveryCoordinator = ScrollDiscoveryCoordinator(
+        service: ScrollableAreaService.shared,
+        merger: ScrollableAreaMerger()
+    )
+    private let commandExecutor = ScrollCommandExecutor(clickService: ClickService.shared)
 
-    // Settings cache (main thread only)
-    private var scrollKeys = "hjkl"
-    private var arrowMode = "select"
-    private var scrollSpeed: Double = 5.0
-    private var dashSpeed: Double = 9.0
-    private var autoDeactivation = true
-    private var deactivationDelay: Double = 5.0
+    // Session settings (main-actor only; refreshed at each activation)
+    private var inputContext = ScrollInputContext(
+        scrollKeys: "hjkl",
+        arrowMode: "select",
+        scrollSpeed: 5.0,
+        dashSpeed: 9.0,
+        autoDeactivation: true,
+        deactivationDelay: 5.0
+    )
 
-    // MARK: - Convenience accessors into session
+    // MARK: - Convenience accessors
 
     private var isActive: Bool { session.isActive }
     private var areas: [NumberedArea] { session.areas }
     private var selectedIndex: Int? { session.selectedIndex }
+
+    // MARK: - Registration
 
     func registerGlobalHotkey() {
         ScrollModeController.sharedInstance = self
@@ -64,146 +75,109 @@ class ScrollModeController {
         }
     }
 
+    // MARK: - Lifecycle
+
     private func activateScrollMode() {
-        let activationStartTime = Date()
         guard !isActive else { return }
 
         loadSettings()
 
-        // PHASE 1: Quick focus check (5-10ms)
-        if let focusedArea = ScrollableAreaService.shared.findFocusedScrollableArea() {
-            let numbered = NumberedArea(area: focusedArea, number: "1")
-            session = .active(areas: [numbered], selected: nil, pendingInput: "")
+        let activationStart = Date()
+        var tapStarted = false
 
-            print("[HINT] #1 → \(focusedArea.frame)")
+        discoveryCoordinator.discover { [weak self] event in
+            guard let self else { return }
 
-            overlayWindow = ScrollOverlayWindow(numberedAreas: areas)
-            overlayWindow?.show()
+            switch event {
+            case .areaAddedPhase1(let area):
+                guard self.openOverlayAndStartTap(firstArea: area, activationStart: activationStart) else { return }
+                tapStarted = true
+                // Phase 1 always auto-selects: the focused area is the user's clear intent.
+                self.selectArea(at: 0)
+                print("[PERF] Auto-selected first area (focused area)")
 
-            guard startEventTap() else {
-                overlayWindow?.orderOut(nil)
-                overlayWindow?.close()
-                overlayWindow = nil
-                session = .inactive
-                return
+            case .areaAddedPhase2(let area, let isCursorInside):
+                if !tapStarted {
+                    guard self.openOverlayAndStartTap(firstArea: area, activationStart: activationStart) else { return }
+                    tapStarted = true
+                    if isCursorInside {
+                        self.selectArea(at: 0)
+                        print("[PERF] Auto-selected first area via cursor position")
+                    }
+                } else {
+                    self.appendArea(area)
+                }
+
+            case .areaReplaced(let area, let replacedIndices, let isCursorInside):
+                guard tapStarted else { return }
+                self.removeAreas(at: replacedIndices)
+                self.appendArea(area)
+                if isCursorInside && self.selectedIndex == nil {
+                    let newIndex = self.areas.count - 1
+                    self.selectArea(at: newIndex)
+                }
             }
-
-            ScrollModeController.isScrollModeActive = true
-
-            selectArea(at: 0)
-            startDeactivationTimer()
-
-            continueProgressiveDiscovery()
-            return
         }
-
-        // PHASE 2: No focus found — synchronous progressive discovery on main actor
-        var firstAreaFound = false
-        var nextHintNumber = 1
-        let maxAreas = 15
-
-        _ = ScrollableAreaService.shared.getScrollableAreas(onAreaFound: { [weak self] area in
-            guard let self = self else { return }
-            let hintNumber = nextHintNumber
-            nextHintNumber += 1
-
-            if !firstAreaFound {
-                firstAreaFound = true
-
-                let numbered = NumberedArea(area: area, number: "\(hintNumber)")
-                self.session = .active(areas: [numbered], selected: nil, pendingInput: "")
-
-                print("[HINT] #\(hintNumber) → \(area.frame)")
-
-                self.overlayWindow = ScrollOverlayWindow(numberedAreas: self.areas)
-                self.overlayWindow?.show()
-
-                guard self.startEventTap() else {
-                    self.overlayWindow?.orderOut(nil)
-                    self.overlayWindow?.close()
-                    self.overlayWindow = nil
-                    self.session = .inactive
-                    return
-                }
-
-                ScrollModeController.isScrollModeActive = true
-                self.startDeactivationTimer()
-
-                let initialElapsed = Date().timeIntervalSince(activationStartTime)
-                print("[PERF] Scroll mode activated with first area in \(String(format: "%.2f", initialElapsed * 1000))ms")
-
-                let cursorLocation = NSEvent.mouseLocation
-                if area.frame.contains(cursorLocation) {
-                    self.selectArea(at: 0)
-                    print("[PERF] Auto-selected first area via cursor position")
-                }
-            } else {
-                let numbered = NumberedArea(area: area, number: "\(hintNumber)")
-                if case .active(let current, let sel, let input) = self.session {
-                    self.session = .active(areas: current + [numbered], selected: sel, pendingInput: input)
-                }
-                self.overlayWindow?.addArea(numbered)
-
-                print("[HINT] #\(hintNumber) → \(area.frame)")
-            }
-        }, maxAreas: maxAreas)
     }
 
-    private func continueProgressiveDiscovery() {
-        // Run on main actor — ScrollableAreaService is @MainActor and AX calls must run on main thread.
-        // The onAreaFound callback fires inline during traversal, providing progressive UI updates.
-        //
-        // The service's shouldAddArea gate already deduplicates areas within a single traversal
-        // wave, but it starts with an empty local list and therefore cannot see the focused area
-        // we pre-loaded in Phase 1.  We therefore evaluate each incoming area against our live
-        // cross-wave list using the same ScrollableAreaMerger policy.
+    /// Open the overlay window and start the event tap for the first discovered area.
+    ///
+    /// Returns false if the tap failed to start (permission denied); in that case the
+    /// session is reset to `.inactive` and the caller should not proceed.
+    private func openOverlayAndStartTap(firstArea: ScrollableArea, activationStart: Date) -> Bool {
+        let numbered = NumberedArea(area: firstArea, number: "1")
+        session = .active(areas: [numbered], selected: nil, pendingInput: "")
 
-        var areasFound = 0
-        let maxAreas = 15
+        print("[HINT] #1 → \(firstArea.frame)")
 
-        _ = ScrollableAreaService.shared.getScrollableAreas(onAreaFound: { [weak self] area in
-            guard let self = self else { return }
-            if areasFound >= maxAreas { return }
-            areasFound += 1
+        overlayWindow = ScrollOverlayWindow(numberedAreas: areas)
+        overlayWindow?.show()
 
-            let existingFrames = self.areas.map(\.area.frame)
-            let decision = self.merger.decision(for: area.frame, against: existingFrames)
+        guard startEventTap() else {
+            overlayWindow?.orderOut(nil)
+            overlayWindow?.close()
+            overlayWindow = nil
+            session = .inactive
+            return false
+        }
 
-            switch decision {
-            case .discard, .nestedInExisting:
-                return
+        ScrollModeController.isScrollModeActive = true
+        startDeactivationTimer()
 
-            case .replaceExisting(let indices):
-                for index in indices.sorted().reversed() {
-                    if case .active(var current, var sel, let input) = self.session {
-                        let removedIdentity = current[index].identity
-                        self.overlayWindow?.removeArea(withIdentity: removedIdentity)
-                        current.remove(at: index)
-                        // Shift selected index down if the removed area was before it
-                        if let s = sel {
-                            if index < s {
-                                sel = s - 1
-                            } else if index == s {
-                                sel = nil
-                            }
-                        }
-                        self.session = .active(areas: current, selected: sel, pendingInput: input)
-                    }
-                }
-                self.reassignNumbers()
+        let elapsed = Date().timeIntervalSince(activationStart)
+        print("[PERF] Scroll mode activated with first area in \(String(format: "%.2f", elapsed * 1000))ms")
+        return true
+    }
 
-            case .add:
-                break
+    /// Append a new area to the end of the current session and update the overlay.
+    private func appendArea(_ area: ScrollableArea) {
+        let nextNumber = "\(areas.count + 1)"
+        let numbered = NumberedArea(area: area, number: nextNumber)
+        if case .active(let current, let sel, let input) = session {
+            session = .active(areas: current + [numbered], selected: sel, pendingInput: input)
+        }
+        overlayWindow?.addArea(numbered)
+        print("[HINT] #\(nextNumber) → \(area.frame)")
+    }
+
+    /// Remove areas at the given indices and reassign contiguous numbers.
+    ///
+    /// The coordinator's `replacedIndices` are indices into `crossWaveFrames`,
+    /// which mirrors the controller's session areas list.
+    private func removeAreas(at indices: [Int]) {
+        for index in indices.sorted().reversed() {
+            guard case .active(var current, var sel, let input) = session,
+                  index < current.count else { continue }
+            let removedIdentity = current[index].identity
+            overlayWindow?.removeArea(withIdentity: removedIdentity)
+            current.remove(at: index)
+            if let s = sel {
+                if index < s { sel = s - 1 }
+                else if index == s { sel = nil }
             }
-
-            let nextNumber = "\(self.areas.count + 1)"
-            let numbered = NumberedArea(area: area, number: nextNumber)
-            if case .active(let current, let sel, let input) = self.session {
-                self.session = .active(areas: current + [numbered], selected: sel, pendingInput: input)
-            }
-            self.overlayWindow?.addArea(numbered)
-            print("[HINT] #\(nextNumber) → \(area.frame)")
-        }, maxAreas: maxAreas)
+            session = .active(areas: current, selected: sel, pendingInput: input)
+        }
+        reassignNumbers()
     }
 
     private func deactivateScrollMode() {
@@ -212,7 +186,6 @@ class ScrollModeController {
         deactivationTimer?.invalidate()
         deactivationTimer = nil
 
-        // Update static state before stopping the tap so the gate sees false immediately.
         ScrollModeController.isScrollModeActive = false
 
         eventTap.stop()
@@ -224,54 +197,6 @@ class ScrollModeController {
         overlayWindow = nil
 
         session = .inactive
-    }
-
-    private func loadSettings() {
-        scrollKeys = AppSettings.scrollKeys
-        arrowMode = AppSettings.scrollArrowMode
-        scrollSpeed = UserDefaults.standard.double(forKey: AppSettings.Keys.scrollSpeed)
-        dashSpeed = UserDefaults.standard.double(forKey: AppSettings.Keys.dashSpeed)
-        autoDeactivation = UserDefaults.standard.bool(forKey: AppSettings.Keys.autoScrollDeactivation)
-        deactivationDelay = UserDefaults.standard.double(forKey: AppSettings.Keys.scrollDeactivationDelay)
-
-        if scrollSpeed == 0 { scrollSpeed = 5.0 }
-        if dashSpeed == 0 { dashSpeed = 9.0 }
-        if deactivationDelay == 0 { deactivationDelay = 5.0 }
-
-        ScrollModeController.scrollKeysCache = scrollKeys
-    }
-
-    /// Reassign sequential numbers after a replaceExisting merge removes areas.
-    ///
-    /// Gaps in numbering are eliminated so visible hints remain contiguous
-    /// (1, 2, 3… rather than 1, 3, 4…).
-    private func reassignNumbers() {
-        guard case .active(var current, let sel, let input) = session else { return }
-        for i in 0..<current.count {
-            let newNumber = "\(i + 1)"
-            if current[i].number != newNumber {
-                let oldIdentity = current[i].identity
-                current[i] = NumberedArea(area: current[i].area, number: newNumber)
-                overlayWindow?.updateNumber(forIdentity: oldIdentity, newNumber: newNumber)
-            }
-        }
-        session = .active(areas: current, selected: sel, pendingInput: input)
-    }
-
-    private func startDeactivationTimer() {
-        guard autoDeactivation else { return }
-
-        deactivationTimer?.invalidate()
-        deactivationTimer = Timer.scheduledTimer(withTimeInterval: deactivationDelay, repeats: false) { [weak self] _ in
-            Task { @MainActor in
-                self?.deactivateScrollMode()
-            }
-        }
-    }
-
-    private func resetDeactivationTimer() {
-        guard autoDeactivation else { return }
-        startDeactivationTimer()
     }
 
     // MARK: - Event tap
@@ -289,40 +214,10 @@ class ScrollModeController {
                 )
                 let command = ScrollInputDecoder.decode(type: type, event: event, context: context)
 
-                switch command {
-                case .escape:
-                    DispatchQueue.main.async {
-                        ScrollModeController.sharedInstance?.deactivateScrollMode()
-                    }
-                    return nil
-
-                case .backspace:
-                    DispatchQueue.main.async {
-                        ScrollModeController.sharedInstance?.handleBackspace()
-                    }
-                    return nil
-
-                case .digit(let n):
-                    DispatchQueue.main.async {
-                        ScrollModeController.sharedInstance?.handleDigit(n)
-                    }
-                    return nil
-
-                case .arrowKey(let direction, let isShift):
-                    DispatchQueue.main.async {
-                        ScrollModeController.sharedInstance?.handleArrowKey(direction, isShift: isShift)
-                    }
-                    return nil
-
-                case .scrollKey(let direction, let isShift):
-                    DispatchQueue.main.async {
-                        ScrollModeController.sharedInstance?.handleScrollKey(direction, isShift: isShift)
-                    }
-                    return nil
-
-                case .consume:
-                    return nil
+                DispatchQueue.main.async {
+                    ScrollModeController.sharedInstance?.dispatch(command)
                 }
+                return nil
             }
         )
 
@@ -332,76 +227,51 @@ class ScrollModeController {
         return started
     }
 
-    // MARK: - Input handling (main thread only)
+    // MARK: - Dispatch (main actor command entry)
 
-    private func handleDigit(_ number: Int) {
-        resetDeactivationTimer()
+    private func dispatch(_ command: ScrollInputCommand) {
+        guard isActive else { return }
 
-        guard case .active(let current, let sel, let pending) = session else { return }
-        let newInput = pending + "\(number)"
+        let (nextSession, effects) = ScrollSelectionReducer.reduce(
+            session: session,
+            command: command,
+            context: inputContext
+        )
+        session = nextSession
+        applyEffects(effects)
+    }
 
-        if let index = Int(newInput), index >= 1 && index <= current.count {
-            let couldExtend = (index * 10) <= current.count
-            if !couldExtend {
-                selectArea(at: index - 1)
-                // selectArea updates session; wipe pending input there
-            } else {
-                session = .active(areas: current, selected: sel, pendingInput: newInput)
+    // MARK: - Side effect execution
+
+    private func applyEffects(_ effects: [ScrollSideEffect]) {
+        for effect in effects {
+            switch effect {
+            case .performScroll(let direction, let speed):
+                executeScroll(direction: direction, speed: speed)
+
+            case .deactivate:
+                deactivateScrollMode()
+
+            case .selectArea(let index):
+                if let index {
+                    selectArea(at: index)
+                } else {
+                    overlayWindow?.clearSelection()
+                }
+
+            case .updateNumber(let identity, let newNumber):
+                overlayWindow?.updateNumber(forIdentity: identity, newNumber: newNumber)
+
+            case .resetDeactivationTimer:
+                resetDeactivationTimer()
+
+            case .clearSelection:
+                overlayWindow?.clearSelection()
             }
-        } else {
-            // Input doesn't match any area — clear pending
-            session = .active(areas: current, selected: sel, pendingInput: "")
         }
     }
 
-    private func handleArrowKey(_ direction: ScrollDirection, isShift: Bool) {
-        resetDeactivationTimer()
-
-        commitPendingInput()
-
-        if arrowMode == "select" {
-            handleArrowSelection(direction: direction)
-        } else {
-            if selectedIndex != nil {
-                let speed = isShift ? dashSpeed : scrollSpeed
-                performScroll(direction: direction, speed: speed)
-            }
-        }
-    }
-
-    private func handleScrollKey(_ direction: ScrollDirection, isShift: Bool) {
-        resetDeactivationTimer()
-
-        commitPendingInput()
-
-        if selectedIndex != nil {
-            let speed = isShift ? dashSpeed : scrollSpeed
-            performScroll(direction: direction, speed: speed)
-        }
-    }
-
-    private func handleBackspace() {
-        resetDeactivationTimer()
-
-        if case .active(let current, _, _) = session {
-            session = .active(areas: current, selected: nil, pendingInput: "")
-        }
-        overlayWindow?.clearSelection()
-    }
-
-    private func commitPendingInput() {
-        guard case .active(let current, let sel, let pending) = session,
-              !pending.isEmpty,
-              let index = Int(pending),
-              index >= 1, index <= current.count else {
-            // Clear any dangling pending input
-            if case .active(let current, let sel, _) = session {
-                session = .active(areas: current, selected: sel, pendingInput: "")
-            }
-            return
-        }
-        selectArea(at: index - 1)
-    }
+    // MARK: - Selection
 
     private func selectArea(at index: Int) {
         guard case .active(let current, _, _) = session,
@@ -411,30 +281,71 @@ class ScrollModeController {
         print("Selected scroll area \(index + 1)")
     }
 
-    private func handleArrowSelection(direction: ScrollDirection) {
-        guard case .active(let current, let sel, _) = session else { return }
+    // MARK: - Scroll execution
 
-        guard let current_sel = sel else {
-            selectArea(at: 0)
-            return
-        }
-
-        let newIndex: Int
-        switch direction {
-        case .up, .left:
-            newIndex = max(0, current_sel - 1)
-        case .down, .right:
-            newIndex = min(current.count - 1, current_sel + 1)
-        }
-
-        selectArea(at: newIndex)
-    }
-
-    private func performScroll(direction: ScrollDirection, speed: Double) {
+    private func executeScroll(direction: ScrollDirection, speed: Double) {
         guard let idx = selectedIndex, idx < areas.count else { return }
-
         let area = areas[idx]
         let clickPoint = ScreenGeometry.appKitCenterToQuartz(area.area.centerPoint)
-        ClickService.shared.scroll(at: clickPoint, direction: direction, speed: speed)
+        commandExecutor.execute(direction: direction, speed: speed, at: clickPoint)
+    }
+
+    // MARK: - Number reassignment
+
+    /// Reassign sequential numbers after a replaceExisting merge removes areas.
+    private func reassignNumbers() {
+        guard case .active(var current, let sel, let input) = session else { return }
+        for i in 0..<current.count {
+            let newNumber = "\(i + 1)"
+            if current[i].number != newNumber {
+                let oldIdentity = current[i].identity
+                current[i] = NumberedArea(area: current[i].area, number: newNumber)
+                overlayWindow?.updateNumber(forIdentity: oldIdentity, newNumber: newNumber)
+            }
+        }
+        session = .active(areas: current, selected: sel, pendingInput: input)
+    }
+
+    // MARK: - Settings
+
+    private func loadSettings() {
+        let scrollKeys = AppSettings.scrollKeys
+        let arrowMode = AppSettings.scrollArrowMode
+        let scrollSpeed = UserDefaults.standard.double(forKey: AppSettings.Keys.scrollSpeed)
+        let dashSpeed = UserDefaults.standard.double(forKey: AppSettings.Keys.dashSpeed)
+        let autoDeactivation = UserDefaults.standard.bool(forKey: AppSettings.Keys.autoScrollDeactivation)
+        let deactivationDelay = UserDefaults.standard.double(forKey: AppSettings.Keys.scrollDeactivationDelay)
+
+        inputContext = ScrollInputContext(
+            scrollKeys: scrollKeys,
+            arrowMode: arrowMode,
+            scrollSpeed: scrollSpeed == 0 ? 5.0 : scrollSpeed,
+            dashSpeed: dashSpeed == 0 ? 9.0 : dashSpeed,
+            autoDeactivation: autoDeactivation,
+            deactivationDelay: deactivationDelay == 0 ? 5.0 : deactivationDelay
+        )
+
+        ScrollModeController.scrollKeysCache = scrollKeys
+    }
+
+    // MARK: - Deactivation timer
+
+    private func startDeactivationTimer() {
+        guard inputContext.autoDeactivation else { return }
+
+        deactivationTimer?.invalidate()
+        deactivationTimer = Timer.scheduledTimer(
+            withTimeInterval: inputContext.deactivationDelay,
+            repeats: false
+        ) { [weak self] _ in
+            Task { @MainActor in
+                self?.deactivateScrollMode()
+            }
+        }
+    }
+
+    private func resetDeactivationTimer() {
+        guard inputContext.autoDeactivation else { return }
+        startDeactivationTimer()
     }
 }

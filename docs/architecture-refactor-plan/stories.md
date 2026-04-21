@@ -49,7 +49,7 @@ Sizing mode: **medium PRs per phase sub-area**.
   Depends on: P4-S1, P3-S1  
   Blocks: P5-S1, P5-S2
 
-- [ ] **P4-S3 — Scroll controller decomposition + service decomposition alignment**  
+- [x] **P4-S3 — Scroll controller decomposition + service decomposition alignment**  
   Depends on: P4-S1, P3-S2, P2-S2  
   Blocks: P5-S1, P5-S2
 
@@ -440,7 +440,7 @@ Blocks: P5-S1, P5-S2.
 
 ---
 
-### [ ] P4-S3 — Scroll controller decomposition + service decomposition alignment
+### [x] P4-S3 — Scroll controller decomposition + service decomposition alignment
 
 **Goal**  
 Refactor scroll mode and supporting services into cohesive modules, leaving `ScrollModeController` orchestration-only.
