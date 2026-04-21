@@ -42,12 +42,12 @@ class ScrollModeController {
 
     // Session settings (main-actor only; refreshed at each activation)
     private var inputContext = ScrollInputContext(
-        scrollKeys: "hjkl",
-        arrowMode: "select",
-        scrollSpeed: 5.0,
-        dashSpeed: 9.0,
-        autoDeactivation: true,
-        deactivationDelay: 5.0
+        scrollKeys: .default,
+        arrowMode: AppSettings.Defaults.scrollArrowMode,
+        scrollSpeed: AppSettings.Defaults.scrollSpeed,
+        dashSpeed: AppSettings.Defaults.dashSpeed,
+        autoDeactivation: AppSettings.Defaults.autoScrollDeactivation,
+        deactivationDelay: AppSettings.Defaults.scrollDeactivationDelay
     )
 
     // MARK: - Convenience accessors
@@ -319,13 +319,13 @@ class ScrollModeController {
         inputContext = ScrollInputContext(
             scrollKeys: scrollKeys,
             arrowMode: arrowMode,
-            scrollSpeed: scrollSpeed == 0 ? 5.0 : scrollSpeed,
-            dashSpeed: dashSpeed == 0 ? 9.0 : dashSpeed,
+            scrollSpeed: scrollSpeed == 0 ? AppSettings.Defaults.scrollSpeed : scrollSpeed,
+            dashSpeed: dashSpeed == 0 ? AppSettings.Defaults.dashSpeed : dashSpeed,
             autoDeactivation: autoDeactivation,
-            deactivationDelay: deactivationDelay == 0 ? 5.0 : deactivationDelay
+            deactivationDelay: deactivationDelay == 0 ? AppSettings.Defaults.scrollDeactivationDelay : deactivationDelay
         )
 
-        ScrollModeController.scrollKeysCache = scrollKeys
+        ScrollModeController.scrollKeysCache = scrollKeys.rawString
     }
 
     // MARK: - Deactivation timer

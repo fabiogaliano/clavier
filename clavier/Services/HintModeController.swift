@@ -319,9 +319,7 @@ class HintModeController {
     /// Pure mapping — no mutation of `UIElement` domain data; hint tokens live
     /// only in the returned `HintedElement` wrappers (F05/P3-S1).
     private func assignHints(to elements: [UIElement]) -> [HintedElement] {
-        var hintCharacters = AppSettings.hintCharacters
-        if hintCharacters.count < 2 { hintCharacters = AppSettings.Defaults.hintCharacters }
-        let chars = Array(hintCharacters)
+        let chars = AppSettings.hintCharacters.characters
         let count = elements.count
 
         var hints: [String] = []

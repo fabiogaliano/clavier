@@ -3,7 +3,7 @@ import SwiftUI
 struct ScrollingTabView: View {
     @AppStorage(AppSettings.Keys.scrollShortcutKeyCode) private var scrollShortcutKeyCode: Int = AppSettings.Defaults.scrollShortcutKeyCode
     @AppStorage(AppSettings.Keys.scrollShortcutModifiers) private var scrollShortcutModifiers: Int = AppSettings.Defaults.scrollShortcutModifiers
-    @AppStorage(AppSettings.Keys.scrollArrowMode) private var scrollArrowMode: String = AppSettings.Defaults.scrollArrowMode
+    @AppStorage(AppSettings.Keys.scrollArrowMode) private var scrollArrowMode: ScrollArrowMode = AppSettings.Defaults.scrollArrowMode
     @AppStorage(AppSettings.Keys.showScrollAreaNumbers) private var showScrollAreaNumbers: Bool = AppSettings.Defaults.showScrollAreaNumbers
     @AppStorage(AppSettings.Keys.scrollKeys) private var scrollKeys: String = AppSettings.Defaults.scrollKeys
     @AppStorage(AppSettings.Keys.scrollSpeed) private var scrollSpeed: Double = AppSettings.Defaults.scrollSpeed
@@ -30,8 +30,8 @@ struct ScrollingTabView: View {
                     }
                     Spacer()
                     Picker("", selection: $scrollArrowMode) {
-                        Text("Select").tag("select")
-                        Text("Scroll").tag("scroll")
+                        Text("Select").tag(ScrollArrowMode.select)
+                        Text("Scroll").tag(ScrollArrowMode.scroll)
                     }
                     .pickerStyle(.segmented)
                     .frame(width: 150)
@@ -57,8 +57,7 @@ struct ScrollingTabView: View {
                         .textFieldStyle(.roundedBorder)
                         .multilineTextAlignment(.center)
                         .onChange(of: scrollKeys) { _, newValue in
-                            var seen = Set<Character>()
-                            let cleaned = String(newValue.lowercased().filter { $0.isLetter && seen.insert($0).inserted }.prefix(4))
+                            let cleaned = AppSettings.sanitizeScrollKeys(newValue)
                             if cleaned != newValue { scrollKeys = cleaned }
                         }
                 }

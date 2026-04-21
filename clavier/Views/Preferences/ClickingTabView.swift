@@ -38,8 +38,7 @@ struct ClickingTabView: View {
                         .textFieldStyle(.roundedBorder)
                         .multilineTextAlignment(.center)
                         .onChange(of: hintCharacters) { _, newValue in
-                            var seen = Set<Character>()
-                            let cleaned = String(newValue.lowercased().filter { $0.isLetter && seen.insert($0).inserted })
+                            let cleaned = AppSettings.sanitizeHintCharacters(newValue)
                             if cleaned != newValue { hintCharacters = cleaned }
                         }
                 }
@@ -82,7 +81,8 @@ struct ClickingTabView: View {
                         .multilineTextAlignment(.center)
                         .font(.system(.body, design: .monospaced))
                         .onChange(of: manualRefreshTrigger) { _, newValue in
-                            if newValue.isEmpty { manualRefreshTrigger = "rr" }
+                            let cleaned = AppSettings.sanitizeManualRefreshTrigger(newValue)
+                            if cleaned != newValue { manualRefreshTrigger = cleaned }
                         }
                 }
                 .padding(.top, 4)

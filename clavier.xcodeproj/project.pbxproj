@@ -6,6 +6,16 @@
 	objectVersion = 77;
 	objects = {
 
+/* Begin PBXContainerItemProxy section */
+		05BF898F2F98005F004D2DE4 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 05D0DD782ECAEC16006046EA /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 05D0DD7F2ECAEC16006046EA;
+			remoteInfo = clavier;
+		};
+/* End PBXContainerItemProxy section */
+
 /* Begin PBXFileReference section */
 		05D0DD802ECAEC16006046EA /* clavier.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = clavier.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A1B2C3D4E5F60001000000AA /* clavierTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = clavierTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
@@ -177,6 +187,7 @@
 		A1B2C3D4E5F60001000000AF /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 05D0DD7F2ECAEC16006046EA /* clavier */;
+			targetProxy = 05BF898F2F98005F004D2DE4 /* PBXContainerItemProxy */;
 		};
 /* End PBXTargetDependency section */
 

@@ -44,8 +44,8 @@ enum ScrollSideEffect: ReducerSideEffect {
 /// so the controller snapshots them at activation and passes this value to
 /// every `reduce` call.
 struct ScrollInputContext {
-    let scrollKeys: String
-    let arrowMode: String
+    let scrollKeys: ScrollKeymap
+    let arrowMode: ScrollArrowMode
     let scrollSpeed: Double
     let dashSpeed: Double
     let autoDeactivation: Bool
@@ -143,7 +143,7 @@ enum ScrollSelectionReducer {
         let (afterCommit, commitEffects) = commitPendingInput(session: session)
         var effects = commitEffects
 
-        if context.arrowMode == "select" {
+        if context.arrowMode == .select {
             let (next, selEffects) = handleArrowSelection(direction: direction, session: afterCommit)
             return (next, effects + selEffects)
         } else {
