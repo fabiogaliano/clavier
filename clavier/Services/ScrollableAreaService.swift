@@ -78,7 +78,7 @@ class ScrollableAreaService {
 
         // Try app-specific detection first
         let detectors = DetectorRegistry.shared.detectorsForBundleId(bundleId)
-        var shouldContinueNormalTraversal = true
+        var traversalContinuation: DetectionContinuation = .continueTraversal
 
         for detector in detectors {
             let result = detector.detect(
@@ -89,23 +89,19 @@ class ScrollableAreaService {
                 maxAreas: maxAreas
             )
 
-            // Add any areas found by the detector
             areas.append(contentsOf: result.areas)
 
-            // Check if we should stop
             if let max = maxAreas, areas.count >= max {
                 return areas
             }
 
-            // If detector says skip normal traversal, note it
-            if !result.shouldContinueNormalTraversal {
-                shouldContinueNormalTraversal = false
+            if result.continuation == .stopTraversal {
+                traversalContinuation = .stopTraversal
                 break
             }
         }
 
-        // Continue with normal traversal if detectors allow it
-        if shouldContinueNormalTraversal {
+        if traversalContinuation == .continueTraversal {
             for (_, window) in windows.enumerated() {
                 guard !shouldStop else { break }
                 traverseElement(window, into: &areas, depth: 0, maxDepth: 10, elementCount: &elementCount, onAreaFound: onAreaFound, shouldStop: &shouldStop, maxAreas: maxAreas)

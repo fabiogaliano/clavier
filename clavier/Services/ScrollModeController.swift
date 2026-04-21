@@ -354,7 +354,7 @@ class ScrollModeController {
         }
     }
 
-    private func handleArrowKey(_ direction: ClickService.ScrollDirection, isShift: Bool) {
+    private func handleArrowKey(_ direction: ScrollDirection, isShift: Bool) {
         resetDeactivationTimer()
 
         commitPendingInput()
@@ -369,7 +369,7 @@ class ScrollModeController {
         }
     }
 
-    private func handleScrollKey(_ direction: ClickService.ScrollDirection, isShift: Bool) {
+    private func handleScrollKey(_ direction: ScrollDirection, isShift: Bool) {
         resetDeactivationTimer()
 
         commitPendingInput()
@@ -411,7 +411,7 @@ class ScrollModeController {
         print("Selected scroll area \(index + 1)")
     }
 
-    private func handleArrowSelection(direction: ClickService.ScrollDirection) {
+    private func handleArrowSelection(direction: ScrollDirection) {
         guard case .active(let current, let sel, _) = session else { return }
 
         guard let current_sel = sel else {
@@ -430,7 +430,7 @@ class ScrollModeController {
         selectArea(at: newIndex)
     }
 
-    private func performScroll(direction: ClickService.ScrollDirection, speed: Double) {
+    private func performScroll(direction: ScrollDirection, speed: Double) {
         guard let idx = selectedIndex, idx < areas.count else { return }
 
         let area = areas[idx]

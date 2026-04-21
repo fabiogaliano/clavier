@@ -35,10 +35,6 @@ class ClickService {
         }
     }
 
-    enum ScrollDirection {
-        case up, down, left, right
-    }
-
     func scroll(at point: CGPoint, direction: ScrollDirection, speed: Double) {
         // Convert speed (1-10) to scroll delta
         let baseDelta = Int32(speed * 10)

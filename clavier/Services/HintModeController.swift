@@ -496,7 +496,7 @@ class HintModeController {
         }
 
         let bundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        let delays = DetectorRegistry.shared.refreshDelays(for: bundleId)
+        let delays = AppTimingRegistry.shared.refreshDelays(for: bundleId)
 
         let optimisticDelay = delays?.optimistic ?? HintModeController.defaultOptimisticDelay
         let fallbackDelay = delays?.fallback ?? HintModeController.defaultFallbackDelay

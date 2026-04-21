@@ -41,7 +41,7 @@ Sizing mode: **medium PRs per phase sub-area**.
   Depends on: P2-S3, P1-S3  
   Blocks: P4-S1, P4-S3, P5-S2
 
-- [ ] **P4-S1 — Shared decomposition contracts + detector boundary split**  
+- [x] **P4-S1 — Shared decomposition contracts + detector boundary split**  
   Depends on: P3-S1, P3-S2  
   Blocks: P4-S2, P4-S3, P5-S3
 
@@ -366,7 +366,7 @@ Blocks: P4-S1, P4-S3, P5-S2.
 
 ---
 
-### [ ] P4-S1 — Shared decomposition contracts + detector boundary split
+### [x] P4-S1 — Shared decomposition contracts + detector boundary split
 
 **Goal**  
 Freeze shared contracts required by both controller decompositions and decouple detector concerns.

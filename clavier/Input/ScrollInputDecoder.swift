@@ -31,8 +31,8 @@ enum ScrollInputCommand {
     case escape
     case backspace
     case digit(Int)
-    case arrowKey(ClickService.ScrollDirection, isShift: Bool)
-    case scrollKey(ClickService.ScrollDirection, isShift: Bool)
+    case arrowKey(ScrollDirection, isShift: Bool)
+    case scrollKey(ScrollDirection, isShift: Bool)
     case consume
 }
 
@@ -91,7 +91,7 @@ enum ScrollInputDecoder {
         22: 6, 26: 7, 28: 8, 25: 9, 29: 0,
     ]
 
-    private static let arrowKeyMap: [Int64: ClickService.ScrollDirection] = [
+    private static let arrowKeyMap: [Int64: ScrollDirection] = [
         126: .up,
         125: .down,
         123: .left,
@@ -101,7 +101,7 @@ enum ScrollInputDecoder {
     private static func scrollDirection(
         for keyCode: Int64,
         scrollKeys: String
-    ) -> ClickService.ScrollDirection? {
+    ) -> ScrollDirection? {
         guard scrollKeys.count == 4,
               let character = keyCodeToCharacter(keyCode) else { return nil }
 
