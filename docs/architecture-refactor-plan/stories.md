@@ -21,7 +21,7 @@ Sizing mode: **medium PRs per phase sub-area**.
   Depends on: _none_  
   Blocks: P2-S2, P3-S1, P3-S2
 
-- [ ] **P2-S1 — Shared input infrastructure + hint-mode adoption**  
+- [x] **P2-S1 — Shared input infrastructure + hint-mode adoption**  
   Depends on: P1-S1, P1-S2, P1-S3  
   Blocks: P2-S3, P3-S1, P4-S2
 
@@ -190,7 +190,7 @@ Blocks: P2-S2, P3-S1, P3-S2.
 
 ---
 
-### [ ] P2-S1 — Shared input infrastructure + hint-mode adoption
+### [x] P2-S1 — Shared input infrastructure + hint-mode adoption
 
 **Goal**  
 Replace hint-mode-specific hotkey/event-tap plumbing with shared input infrastructure.
