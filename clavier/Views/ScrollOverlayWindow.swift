@@ -1,10 +1,3 @@
-//
-//  ScrollOverlayWindow.swift
-//  clavier
-//
-//  Transparent overlay window for displaying scroll area hints
-//
-
 import AppKit
 import SwiftUI
 
@@ -61,40 +54,13 @@ class ScrollOverlayWindow: NSWindow {
 
         if showNumbers {
             for numbered in numberedAreas {
-                let hintView = createHintLabel(for: numbered)
+                let hintView = AreaLabelRenderer.createHintLabel(for: numbered)
                 containerView.addSubview(hintView)
                 hintViews[numbered.identity] = hintView
             }
         }
 
         self.contentView = containerView
-    }
-
-    private func createHintLabel(for numbered: NumberedArea) -> NSView {
-        let label = NSTextField(labelWithString: numbered.number)
-        label.font = NSFont.monospacedSystemFont(ofSize: 14, weight: .bold)
-        label.textColor = .white
-        label.backgroundColor = NSColor.systemOrange.withAlphaComponent(0.9)
-        label.isBordered = false
-        label.isBezeled = false
-        label.drawsBackground = true
-        label.alignment = .center
-        label.wantsLayer = true
-        label.layer?.cornerRadius = 4
-
-        label.sizeToFit()
-
-        let padding: CGFloat = 6
-        let width = label.frame.width + padding * 2
-        let height = label.frame.height + padding
-
-        let localOrigin = ScreenGeometry.toWindowLocal(
-            CGRect(x: numbered.area.frame.maxX - width - 8, y: numbered.area.frame.minY + 8, width: width, height: height)
-        )
-
-        label.frame = CGRect(x: localOrigin.minX, y: localOrigin.minY, width: width, height: height)
-
-        return label
     }
 
     func show() {
@@ -108,11 +74,10 @@ class ScrollOverlayWindow: NSWindow {
         let showNumbers = UserDefaults.standard.bool(forKey: AppSettings.Keys.showScrollAreaNumbers)
         guard showNumbers else { return }
 
-        let hintView = createHintLabel(for: numbered)
+        let hintView = AreaLabelRenderer.createHintLabel(for: numbered)
         contentView?.addSubview(hintView)
         hintViews[numbered.identity] = hintView
 
-        // Dim the new hint if an area is already selected
         if selectedAreaIndex != nil {
             hintView.alphaValue = 0.3
         }
@@ -148,24 +113,16 @@ class ScrollOverlayWindow: NSWindow {
 
     func selectArea(at index: Int) {
         guard index >= 0 && index < numberedAreas.count else { return }
-
         selectedAreaIndex = index
-        let numbered = numberedAreas[index]
-
-        highlightView?.frame = ScreenGeometry.toWindowLocal(numbered.area.frame)
-        highlightView?.isHidden = false
-
-        for (identity, view) in hintViews {
-            view.alphaValue = identity == numbered.identity ? 1.0 : 0.3
-        }
+        SelectionHighlightRenderer.select(
+            area: numberedAreas[index],
+            highlightView: highlightView,
+            hintViews: hintViews
+        )
     }
 
     func clearSelection() {
         selectedAreaIndex = nil
-        highlightView?.isHidden = true
-
-        for (_, view) in hintViews {
-            view.alphaValue = 1.0
-        }
+        SelectionHighlightRenderer.clearSelection(highlightView: highlightView, hintViews: hintViews)
     }
 }

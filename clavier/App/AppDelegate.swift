@@ -1,105 +1,5 @@
-//
-//  clavierApp.swift
-//  clavier
-//
-//  Created by fábio on 17/11/2025.
-//
-
-import SwiftUI
 import AppKit
 import Carbon
-
-@main
-struct clavierApp: App {
-    @NSApplicationDelegateAdaptor(AppDelegate.self) var appDelegate
-
-    var body: some Scene {
-        // Hidden window provides SwiftUI context for openSettings()
-        Window("Hidden", id: "HiddenWindow") {
-            SettingsOpenerView()
-        }
-        .windowResizability(.contentSize)
-        .defaultSize(width: 1, height: 1)
-
-        Settings {
-            PreferencesView()
-                .onDisappear {
-                    NotificationCenter.default.post(name: .settingsWindowClosed, object: nil)
-                }
-        }
-    }
-}
-
-// MARK: - Settings Opener View (Hidden SwiftUI Bridge)
-
-struct SettingsOpenerView: View {
-    @Environment(\.openSettings) private var openSettings
-    @State private var windowObserver: NSObjectProtocol?
-
-    var body: some View {
-        Color.clear
-            .frame(width: 1, height: 1)
-            .onReceive(NotificationCenter.default.publisher(for: .openSettingsRequest)) { _ in
-                Task { @MainActor in
-                    // Temporarily show dock icon for proper window focus
-                    NSApp.setActivationPolicy(.regular)
-                    NSApp.activate(ignoringOtherApps: true)
-
-                    // Set up observer to detect when Settings window becomes key
-                    windowObserver = NotificationCenter.default.addObserver(
-                        forName: NSWindow.didBecomeKeyNotification,
-                        object: nil,
-                        queue: .main
-                    ) { notification in
-                        guard let window = notification.object as? NSWindow,
-                              Self.isSettingsWindow(window) else { return }
-
-                        // Settings window is now key, ensure it's focused
-                        window.makeKeyAndOrderFront(nil)
-                        window.orderFrontRegardless()
-
-                        // Remove observer after handling
-                        if let observer = windowObserver {
-                            NotificationCenter.default.removeObserver(observer)
-                            windowObserver = nil
-                        }
-                    }
-
-                    openSettings()
-                }
-            }
-            .onReceive(NotificationCenter.default.publisher(for: .settingsWindowClosed)) { _ in
-                // Hide dock icon when settings closes
-                NSApp.setActivationPolicy(.accessory)
-
-                // Clean up observer if still active
-                if let observer = windowObserver {
-                    NotificationCenter.default.removeObserver(observer)
-                    windowObserver = nil
-                }
-            }
-    }
-
-    private static func isSettingsWindow(_ window: NSWindow) -> Bool {
-        window.identifier?.rawValue == "com.apple.SwiftUI.Settings" ||
-        (window.isVisible && window.title.localizedCaseInsensitiveContains("settings"))
-    }
-
-    private static func findSettingsWindow() -> NSWindow? {
-        NSApp.windows.first { isSettingsWindow($0) }
-    }
-}
-
-// MARK: - Notification Names
-
-extension Notification.Name {
-    static let openSettingsRequest = Notification.Name("openSettingsRequest")
-    static let settingsWindowClosed = Notification.Name("settingsWindowClosed")
-    static let disableGlobalHotkeys = Notification.Name("disableGlobalHotkeys")
-    static let enableGlobalHotkeys = Notification.Name("enableGlobalHotkeys")
-}
-
-// MARK: - App Delegate
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -139,7 +39,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItem?.menu = menu
 
-        // Listen for settings changes to update menu titles
         NotificationCenter.default.addObserver(
             self,
             selector: #selector(updateMenuTitles),
@@ -195,7 +94,6 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     @objc private func openPreferences() {
-        // Use NotificationCenter to trigger SwiftUI's openSettings()
         NotificationCenter.default.post(name: .openSettingsRequest, object: nil)
     }
 

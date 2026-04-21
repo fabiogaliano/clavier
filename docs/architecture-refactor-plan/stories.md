@@ -57,7 +57,7 @@ Sizing mode: **medium PRs per phase sub-area**.
   Depends on: P4-S2, P4-S3  
   Blocks: P5-S3
 
-- [ ] **P5-S2 — App shell + overlay modularization**  
+- [x] **P5-S2 — App shell + overlay modularization**  
   Depends on: P4-S2, P4-S3  
   Blocks: P5-S3
 
@@ -515,7 +515,7 @@ Blocks: P5-S3.
 
 ---
 
-### [ ] P5-S2 — App shell + overlay modularization
+### [x] P5-S2 — App shell + overlay modularization
 
 **Goal**  
 Split app entry/bridge/delegate concerns and modularize overlay windows without behavior changes.
