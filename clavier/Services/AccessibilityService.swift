@@ -96,32 +96,10 @@ class AccessibilityService {
     }
 
     private func getWindowBounds(_ window: AXUIElement) -> CGRect? {
-        let attributes = [
-            kAXPositionAttribute as CFString,
-            kAXSizeAttribute as CFString
-        ] as CFArray
-
-        var values: CFArray?
-        guard AXUIElementCopyMultipleAttributeValues(window, attributes, [], &values) == .success,
-              let valuesArray = values as? [Any],
-              valuesArray.count == 2 else {
-            return nil
+        switch AXReader.axFrameBatched(of: window) {
+        case .success(let frame): return frame
+        case .failure: return nil
         }
-
-        var position = CGPoint.zero
-        var size = CGSize.zero
-
-        // Check CFTypeID to ensure it's actually an AXValue
-        if let posRef = valuesArray[0] as CFTypeRef?,
-           CFGetTypeID(posRef) == AXValueGetTypeID() {
-            AXValueGetValue(posRef as! AXValue, .cgPoint, &position)
-        }
-        if let sizeRef = valuesArray[1] as CFTypeRef?,
-           CFGetTypeID(sizeRef) == AXValueGetTypeID() {
-            AXValueGetValue(sizeRef as! AXValue, .cgSize, &size)
-        }
-
-        return CGRect(origin: position, size: size)
     }
 
     private func deduplicateElements(_ elements: [UIElement]) -> [UIElement] {
@@ -164,23 +142,8 @@ class AccessibilityService {
         }
 
         // Extract position and size for visibility check
-        var position = CGPoint.zero
-        var size = CGSize.zero
-
-        // Check CFTypeID to ensure it's actually an AXValue
-        if let posRef = valuesArray[1] as CFTypeRef?,
-           CFGetTypeID(posRef) == AXValueGetTypeID() {
-            AXValueGetValue(posRef as! AXValue, .cgPoint, &position)
-        } else {
-            return // No position means we can't process this element
-        }
-
-        if let sizeRef = valuesArray[2] as CFTypeRef?,
-           CFGetTypeID(sizeRef) == AXValueGetTypeID() {
-            AXValueGetValue(sizeRef as! AXValue, .cgSize, &size)
-        } else {
-            return // No size means we can't process this element
-        }
+        guard let position = AXReader.decodeCGPoint(from: valuesArray[1]) else { return }
+        guard let size = AXReader.decodeCGSize(from: valuesArray[2]) else { return }
 
         let elementFrame = CGRect(origin: position, size: size)
 

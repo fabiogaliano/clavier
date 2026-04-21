@@ -13,7 +13,7 @@ Sizing mode: **medium PRs per phase sub-area**.
   Depends on: _none_  
   Blocks: P2-S1, P2-S3, P5-S1
 
-- [ ] **P1-S2 — Shared AX reader + cast-safety baseline**  
+- [x] **P1-S2 — Shared AX reader + cast-safety baseline**  
   Depends on: _none_  
   Blocks: P2-S2, P4-S3
 
@@ -113,7 +113,7 @@ Blocks: P2-S1, P2-S3, P5-S1.
 
 ---
 
-### [ ] P1-S2 — Shared AX reader + cast-safety baseline
+### [x] P1-S2 — Shared AX reader + cast-safety baseline
 
 **Goal**  
 Centralize AX attribute/frame decoding behind a typed boundary and remove force-cast usage in touched AX paths.

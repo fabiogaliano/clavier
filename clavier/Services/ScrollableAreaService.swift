@@ -220,9 +220,7 @@ class ScrollableAreaService {
         let appElement = AXUIElementCreateApplication(pid)
 
         // Get the focused element
-        var focusedElementRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElementRef) == .success,
-              let focusedElement = focusedElementRef as! AXUIElement? else {
+        guard case .success(let focusedElement) = AXReader.element(kAXFocusedUIElementAttribute as CFString, of: appElement) else {
             print("[PERF] No focused element found")
             return nil
         }
@@ -235,9 +233,7 @@ class ScrollableAreaService {
             stepCount += 1
 
             // Check if this element is scrollable
-            var roleRef: CFTypeRef?
-            if AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef) == .success,
-               let role = roleRef as? String,
+            if case .success(let role) = AXReader.string(kAXRoleAttribute as CFString, of: element),
                (scrollableRoles.contains(role) || hasScrollBars(element)) {
 
                 // Create scrollable area from this element
@@ -248,9 +244,7 @@ class ScrollableAreaService {
             }
 
             // Move to parent
-            var parentRef: CFTypeRef?
-            if AXUIElementCopyAttributeValue(element, kAXParentAttribute as CFString, &parentRef) == .success,
-               let parent = parentRef as! AXUIElement? {
+            if case .success(let parent) = AXReader.element(kAXParentAttribute as CFString, of: element) {
                 currentElement = parent
             } else {
                 break
@@ -270,9 +264,7 @@ class ScrollableAreaService {
         let appElement = AXUIElementCreateApplication(pid)
 
         // Get the focused element
-        var focusedElementRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXFocusedUIElementAttribute as CFString, &focusedElementRef) == .success,
-              let focusedElement = focusedElementRef as! AXUIElement? else {
+        guard case .success(let focusedElement) = AXReader.element(kAXFocusedUIElementAttribute as CFString, of: appElement) else {
             return nil
         }
 
@@ -286,9 +278,7 @@ class ScrollableAreaService {
             }
 
             // Move to parent
-            var parentRef: CFTypeRef?
-            if AXUIElementCopyAttributeValue(element, kAXParentAttribute as CFString, &parentRef) == .success,
-               let parent = parentRef as! AXUIElement? {
+            if case .success(let parent) = AXReader.element(kAXParentAttribute as CFString, of: element) {
                 currentElement = parent
             } else {
                 break
@@ -431,43 +421,27 @@ class ScrollableAreaService {
     }
 
     private func hasScrollBars(_ element: AXUIElement, validateEnabled: Bool = false) -> Bool {
-        // Check for vertical scroll bar
-        var vScrollBarRef: CFTypeRef?
-        let hasVScroll = AXUIElementCopyAttributeValue(element, "AXVerticalScrollBar" as CFString, &vScrollBarRef) == .success
+        let vResult = AXReader.element("AXVerticalScrollBar" as CFString, of: element)
+        let hResult = AXReader.element("AXHorizontalScrollBar" as CFString, of: element)
 
-        // Check for horizontal scroll bar
-        var hScrollBarRef: CFTypeRef?
-        let hasHScroll = AXUIElementCopyAttributeValue(element, "AXHorizontalScrollBar" as CFString, &hScrollBarRef) == .success
-
-        // If validation is not requested, just check for presence
         if !validateEnabled {
-            return hasVScroll || hasHScroll
+            if case .success = vResult { return true }
+            if case .success = hResult { return true }
+            return false
         }
 
         // Validate that at least one scroll bar is actually enabled (has scrollable content)
-        var isEnabled = false
-
-        if hasVScroll, let vScrollBar = vScrollBarRef as! AXUIElement? {
-            var enabledRef: CFTypeRef?
-            let result = AXUIElementCopyAttributeValue(vScrollBar, kAXEnabledAttribute as CFString, &enabledRef)
-            if result == .success, let enabled = enabledRef as? Bool {
-                if enabled {
-                    isEnabled = true
-                }
-            }
+        if case .success(let vScrollBar) = vResult,
+           case .success(true) = AXReader.bool(kAXEnabledAttribute as CFString, of: vScrollBar) {
+            return true
         }
 
-        if !isEnabled && hasHScroll, let hScrollBar = hScrollBarRef as! AXUIElement? {
-            var enabledRef: CFTypeRef?
-            let result = AXUIElementCopyAttributeValue(hScrollBar, kAXEnabledAttribute as CFString, &enabledRef)
-            if result == .success, let enabled = enabledRef as? Bool {
-                if enabled {
-                    isEnabled = true
-                }
-            }
+        if case .success(let hScrollBar) = hResult,
+           case .success(true) = AXReader.bool(kAXEnabledAttribute as CFString, of: hScrollBar) {
+            return true
         }
 
-        return isEnabled
+        return false
     }
 
     private func hasWebAncestor(_ element: AXUIElement) -> Bool {
@@ -475,9 +449,7 @@ class ScrollableAreaService {
         let maxLevels = 10
 
         for _ in 0..<maxLevels {
-            var roleRef: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(currentElement, kAXRoleAttribute as CFString, &roleRef) == .success,
-                  let role = roleRef as? String else {
+            guard case .success(let role) = AXReader.string(kAXRoleAttribute as CFString, of: currentElement) else {
                 break
             }
 
@@ -485,10 +457,7 @@ class ScrollableAreaService {
                 return true
             }
 
-            // Move to parent
-            var parentRef: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(currentElement, kAXParentAttribute as CFString, &parentRef) == .success,
-                  let parent = parentRef as! AXUIElement? else {
+            guard case .success(let parent) = AXReader.element(kAXParentAttribute as CFString, of: currentElement) else {
                 break
             }
 
@@ -500,33 +469,7 @@ class ScrollableAreaService {
 
 
     private func createScrollableArea(from axElement: AXUIElement) -> ScrollableArea? {
-        // Get position
-        var positionRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(axElement, kAXPositionAttribute as CFString, &positionRef) == .success else {
-            return nil
-        }
-
-        var position = CGPoint.zero
-        guard let posRef = positionRef,
-              CFGetTypeID(posRef) == AXValueGetTypeID(),
-              AXValueGetValue(posRef as! AXValue, .cgPoint, &position) else {
-            return nil
-        }
-
-        // Get size
-        var sizeRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(axElement, kAXSizeAttribute as CFString, &sizeRef) == .success else {
-            return nil
-        }
-
-        var size = CGSize.zero
-        guard let szRef = sizeRef,
-              CFGetTypeID(szRef) == AXValueGetTypeID(),
-              AXValueGetValue(szRef as! AXValue, .cgSize, &size) else {
-            return nil
-        }
-
-        let frame = ScreenGeometry.axToAppKit(position: position, size: size)
+        guard case .success(let frame) = AXReader.appKitFrame(of: axElement) else { return nil }
         return ScrollableArea(axElement: axElement, frame: frame)
     }
 }

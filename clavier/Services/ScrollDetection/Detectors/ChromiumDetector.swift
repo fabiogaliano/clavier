@@ -145,9 +145,7 @@ class ChromiumDetector: AppSpecificDetector {
         let maxLevels = 10
 
         for _ in 0..<maxLevels {
-            var roleRef: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(currentElement, kAXRoleAttribute as CFString, &roleRef) == .success,
-                  let role = roleRef as? String else {
+            guard case .success(let role) = AXReader.string(kAXRoleAttribute as CFString, of: currentElement) else {
                 break
             }
 
@@ -155,10 +153,7 @@ class ChromiumDetector: AppSpecificDetector {
                 return true
             }
 
-            // Move to parent
-            var parentRef: CFTypeRef?
-            guard AXUIElementCopyAttributeValue(currentElement, kAXParentAttribute as CFString, &parentRef) == .success,
-                  let parent = parentRef as! AXUIElement? else {
+            guard case .success(let parent) = AXReader.element(kAXParentAttribute as CFString, of: currentElement) else {
                 break
             }
 
@@ -170,33 +165,7 @@ class ChromiumDetector: AppSpecificDetector {
 
     /// Create ScrollableArea from AXUIElement
     private func createScrollableArea(from axElement: AXUIElement) -> ScrollableArea? {
-        // Get position
-        var positionRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(axElement, kAXPositionAttribute as CFString, &positionRef) == .success else {
-            return nil
-        }
-
-        var position = CGPoint.zero
-        guard let posRef = positionRef,
-              CFGetTypeID(posRef) == AXValueGetTypeID(),
-              AXValueGetValue(posRef as! AXValue, .cgPoint, &position) else {
-            return nil
-        }
-
-        // Get size
-        var sizeRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(axElement, kAXSizeAttribute as CFString, &sizeRef) == .success else {
-            return nil
-        }
-
-        var size = CGSize.zero
-        guard let szRef = sizeRef,
-              CFGetTypeID(szRef) == AXValueGetTypeID(),
-              AXValueGetValue(szRef as! AXValue, .cgSize, &size) else {
-            return nil
-        }
-
-        let frame = ScreenGeometry.axToAppKit(position: position, size: size)
+        guard case .success(let frame) = AXReader.appKitFrame(of: axElement) else { return nil }
         return ScrollableArea(axElement: axElement, frame: frame)
     }
 }
