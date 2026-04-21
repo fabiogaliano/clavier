@@ -19,19 +19,19 @@ private struct HintStyle {
     let horizontalOffset: CGFloat
 
     init() {
-        let size = UserDefaults.standard.double(forKey: "hintSize")
-        fontSize = size > 0 ? CGFloat(size) : 12
-        let bgHex = UserDefaults.standard.string(forKey: "hintBackgroundHex") ?? "#3B82F6"
-        let brHex = UserDefaults.standard.string(forKey: "hintBorderHex") ?? "#3B82F6"
-        let txHex = UserDefaults.standard.string(forKey: "hintTextHex") ?? "#FFFFFF"
+        let size = UserDefaults.standard.double(forKey: AppSettings.Keys.hintSize)
+        fontSize = size > 0 ? CGFloat(size) : CGFloat(AppSettings.Defaults.hintSize)
+        let bgHex = UserDefaults.standard.string(forKey: AppSettings.Keys.hintBackgroundHex) ?? AppSettings.Defaults.hintBackgroundHex
+        let brHex = UserDefaults.standard.string(forKey: AppSettings.Keys.hintBorderHex) ?? AppSettings.Defaults.hintBorderHex
+        let txHex = UserDefaults.standard.string(forKey: AppSettings.Keys.hintTextHex) ?? AppSettings.Defaults.hintTextHex
         backgroundColor = NSColor(hex: bgHex)
         borderColor = NSColor(hex: brHex)
         textColor = NSColor(hex: txHex)
-        let bgOp = UserDefaults.standard.double(forKey: "hintBackgroundOpacity")
-        bgOpacity = bgOp > 0 ? CGFloat(bgOp) : 0.3
-        let bdOp = UserDefaults.standard.double(forKey: "hintBorderOpacity")
-        bdrOpacity = bdOp > 0 ? CGFloat(bdOp) : 0.6
-        horizontalOffset = CGFloat(UserDefaults.standard.double(forKey: "hintHorizontalOffset"))
+        let bgOp = UserDefaults.standard.double(forKey: AppSettings.Keys.hintBackgroundOpacity)
+        bgOpacity = bgOp > 0 ? CGFloat(bgOp) : CGFloat(AppSettings.Defaults.hintBackgroundOpacity)
+        let bdOp = UserDefaults.standard.double(forKey: AppSettings.Keys.hintBorderOpacity)
+        bdrOpacity = bdOp > 0 ? CGFloat(bdOp) : CGFloat(AppSettings.Defaults.hintBorderOpacity)
+        horizontalOffset = CGFloat(UserDefaults.standard.double(forKey: AppSettings.Keys.hintHorizontalOffset))
     }
 }
 
@@ -293,8 +293,7 @@ class HintOverlayWindow: NSWindow {
         }
         elementHighlights.removeAll()
 
-        // Get custom text color from preferences
-        let textHex = UserDefaults.standard.string(forKey: "hintTextHex") ?? "#FFFFFF"
+        let textHex = UserDefaults.standard.string(forKey: AppSettings.Keys.hintTextHex) ?? AppSettings.Defaults.hintTextHex
         let textColor = NSColor(hex: textHex)
 
         // If we have text matches
@@ -376,9 +375,8 @@ class HintOverlayWindow: NSWindow {
     private func highlightPrefix(in textField: NSTextField?, prefix: String, hint: String) {
         guard let textField = textField else { return }
 
-        // Get custom colors from preferences
-        let highlightHex = UserDefaults.standard.string(forKey: "highlightTextHex") ?? "#FFFF00"
-        let textHex = UserDefaults.standard.string(forKey: "hintTextHex") ?? "#FFFFFF"
+        let highlightHex = UserDefaults.standard.string(forKey: AppSettings.Keys.highlightTextHex) ?? AppSettings.Defaults.highlightTextHex
+        let textHex = UserDefaults.standard.string(forKey: AppSettings.Keys.hintTextHex) ?? AppSettings.Defaults.hintTextHex
         let highlightColor = NSColor(hex: highlightHex)
         let textColor = NSColor(hex: textHex)
 

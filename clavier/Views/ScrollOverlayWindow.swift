@@ -63,7 +63,7 @@ class ScrollOverlayWindow: NSWindow {
         highlightView = highlight
 
         // Show hints only if setting is enabled
-        let showNumbers = UserDefaults.standard.bool(forKey: "showScrollAreaNumbers")
+        let showNumbers = UserDefaults.standard.bool(forKey: AppSettings.Keys.showScrollAreaNumbers)
 
         if showNumbers {
             for area in areas {
@@ -115,7 +115,7 @@ class ScrollOverlayWindow: NSWindow {
         areas.append(area)
 
         // Only create hint view if setting is enabled
-        let showNumbers = UserDefaults.standard.bool(forKey: "showScrollAreaNumbers")
+        let showNumbers = UserDefaults.standard.bool(forKey: AppSettings.Keys.showScrollAreaNumbers)
         guard showNumbers else { return }
 
         // Create and add hint view
@@ -166,7 +166,7 @@ class ScrollOverlayWindow: NSWindow {
         areas = newAreas
 
         // Recreate hints if enabled
-        let showNumbers = UserDefaults.standard.bool(forKey: "showScrollAreaNumbers")
+        let showNumbers = UserDefaults.standard.bool(forKey: AppSettings.Keys.showScrollAreaNumbers)
         guard showNumbers else { return }
 
         for area in areas {

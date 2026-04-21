@@ -100,8 +100,8 @@ class ScrollModeController {
     private func registerHotkeyInternal() {
         guard hotKeyRef == nil else { return }
 
-        let keyCode = UserDefaults.standard.integer(forKey: "scrollShortcutKeyCode")
-        let modifiers = UserDefaults.standard.integer(forKey: "scrollShortcutModifiers")
+        let keyCode = UserDefaults.standard.integer(forKey: AppSettings.Keys.scrollShortcutKeyCode)
+        let modifiers = UserDefaults.standard.integer(forKey: AppSettings.Keys.scrollShortcutModifiers)
 
         var hotKeyID = EventHotKeyID()
         hotKeyID.signature = OSType("KSCR".utf8.reduce(0) { ($0 << 8) + OSType($1) })
@@ -364,12 +364,12 @@ class ScrollModeController {
     }
 
     private func loadSettings() {
-        scrollKeys = UserDefaults.standard.string(forKey: "scrollKeys") ?? "hjkl"
-        arrowMode = UserDefaults.standard.string(forKey: "scrollArrowMode") ?? "select"
-        scrollSpeed = UserDefaults.standard.double(forKey: "scrollSpeed")
-        dashSpeed = UserDefaults.standard.double(forKey: "dashSpeed")
-        autoDeactivation = UserDefaults.standard.bool(forKey: "autoScrollDeactivation")
-        deactivationDelay = UserDefaults.standard.double(forKey: "scrollDeactivationDelay")
+        scrollKeys = AppSettings.scrollKeys
+        arrowMode = AppSettings.scrollArrowMode
+        scrollSpeed = UserDefaults.standard.double(forKey: AppSettings.Keys.scrollSpeed)
+        dashSpeed = UserDefaults.standard.double(forKey: AppSettings.Keys.dashSpeed)
+        autoDeactivation = UserDefaults.standard.bool(forKey: AppSettings.Keys.autoScrollDeactivation)
+        deactivationDelay = UserDefaults.standard.double(forKey: AppSettings.Keys.scrollDeactivationDelay)
 
         if scrollSpeed == 0 { scrollSpeed = 5.0 }
         if dashSpeed == 0 { dashSpeed = 9.0 }

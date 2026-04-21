@@ -110,36 +110,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var scrollMenuItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
-        // Register default values
-        UserDefaults.standard.register(defaults: [
-            "hintShortcutKeyCode": 49, // Space key
-            "hintShortcutModifiers": cmdKey | shiftKey,
-            "hintSize": 12.0,
-            "hintColor": "blue",
-            "continuousClickMode": false,
-            "autoHintDeactivation": true,
-            "hintDeactivationDelay": 5.0,
-            "hintCharacters": "asdfhjkl", // Home row keys for hint generation
-            "textSearchEnabled": true, // Enable text-based element search
-            "minSearchCharacters": 2, // Minimum characters to trigger text search
-            "manualRefreshTrigger": "rr", // Trigger phrase to manually refresh hints
-            "hintBackgroundHex": "#3B82F6", // Blue background tint
-            "hintBorderHex": "#3B82F6", // Blue border
-            "hintTextHex": "#FFFFFF", // White text
-            "highlightTextHex": "#FFFF00", // Yellow highlight
-            "hintBackgroundOpacity": 0.3,
-            "hintBorderOpacity": 0.6,
-            "hintHorizontalOffset": -25.0,
-            "scrollShortcutKeyCode": 14, // E key
-            "scrollShortcutModifiers": optionKey,
-            "scrollArrowMode": "select",
-            "showScrollAreaNumbers": true,
-            "scrollKeys": "hjkl",
-            "scrollSpeed": 5.0,
-            "dashSpeed": 9.0,
-            "autoScrollDeactivation": true,
-            "scrollDeactivationDelay": 5.0
-        ])
+        AppSettings.registerDefaults()
 
         setupMenuBar()
         setupHintMode()
@@ -183,16 +154,16 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     }
 
     private func formatHintMenuTitle() -> String {
-        let keyCode = UserDefaults.standard.integer(forKey: "hintShortcutKeyCode")
-        let modifiers = UserDefaults.standard.integer(forKey: "hintShortcutModifiers")
-        let shortcut = ShortcutRecorderView.formatShortcut(keyCode: keyCode, modifiers: modifiers)
+        let keyCode = UserDefaults.standard.integer(forKey: AppSettings.Keys.hintShortcutKeyCode)
+        let modifiers = UserDefaults.standard.integer(forKey: AppSettings.Keys.hintShortcutModifiers)
+        let shortcut = KeymapUtilities.formatShortcut(keyCode: keyCode, modifiers: modifiers)
         return "Activate Hints (\(shortcut))"
     }
 
     private func formatScrollMenuTitle() -> String {
-        let keyCode = UserDefaults.standard.integer(forKey: "scrollShortcutKeyCode")
-        let modifiers = UserDefaults.standard.integer(forKey: "scrollShortcutModifiers")
-        let shortcut = ShortcutRecorderView.formatShortcut(keyCode: keyCode, modifiers: modifiers)
+        let keyCode = UserDefaults.standard.integer(forKey: AppSettings.Keys.scrollShortcutKeyCode)
+        let modifiers = UserDefaults.standard.integer(forKey: AppSettings.Keys.scrollShortcutModifiers)
+        let shortcut = KeymapUtilities.formatShortcut(keyCode: keyCode, modifiers: modifiers)
         return "Activate Scroll (\(shortcut))"
     }
 

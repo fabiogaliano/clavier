@@ -10,37 +10,37 @@ import Carbon
 
 struct PreferencesView: View {
     // Click Mode Settings
-    @AppStorage("hintShortcutKeyCode") private var hintShortcutKeyCode: Int = 49 // Space
-    @AppStorage("hintShortcutModifiers") private var hintShortcutModifiers: Int = cmdKey | shiftKey
-    @AppStorage("hintSize") private var hintSize: Double = 12
-    @AppStorage("hintColor") private var hintColor: String = "blue"
-    @AppStorage("continuousClickMode") private var continuousClickMode: Bool = false
-    @AppStorage("autoHintDeactivation") private var autoHintDeactivation: Bool = true
-    @AppStorage("hintDeactivationDelay") private var hintDeactivationDelay: Double = 5.0
-    @AppStorage("hintCharacters") private var hintCharacters: String = "asdfhjkl"
-    @AppStorage("textSearchEnabled") private var textSearchEnabled: Bool = true
-    @AppStorage("minSearchCharacters") private var minSearchCharacters: Int = 2
-    @AppStorage("manualRefreshTrigger") private var manualRefreshTrigger: String = "rr"
+    @AppStorage(AppSettings.Keys.hintShortcutKeyCode) private var hintShortcutKeyCode: Int = AppSettings.Defaults.hintShortcutKeyCode
+    @AppStorage(AppSettings.Keys.hintShortcutModifiers) private var hintShortcutModifiers: Int = AppSettings.Defaults.hintShortcutModifiers
+    @AppStorage(AppSettings.Keys.hintSize) private var hintSize: Double = AppSettings.Defaults.hintSize
+    @AppStorage(AppSettings.Keys.hintColor) private var hintColor: String = AppSettings.Defaults.hintColor
+    @AppStorage(AppSettings.Keys.continuousClickMode) private var continuousClickMode: Bool = AppSettings.Defaults.continuousClickMode
+    @AppStorage(AppSettings.Keys.autoHintDeactivation) private var autoHintDeactivation: Bool = AppSettings.Defaults.autoHintDeactivation
+    @AppStorage(AppSettings.Keys.hintDeactivationDelay) private var hintDeactivationDelay: Double = AppSettings.Defaults.hintDeactivationDelay
+    @AppStorage(AppSettings.Keys.hintCharacters) private var hintCharacters: String = AppSettings.Defaults.hintCharacters
+    @AppStorage(AppSettings.Keys.textSearchEnabled) private var textSearchEnabled: Bool = AppSettings.Defaults.textSearchEnabled
+    @AppStorage(AppSettings.Keys.minSearchCharacters) private var minSearchCharacters: Int = AppSettings.Defaults.minSearchCharacters
+    @AppStorage(AppSettings.Keys.manualRefreshTrigger) private var manualRefreshTrigger: String = AppSettings.Defaults.manualRefreshTrigger
 
     // Appearance Settings
-    @AppStorage("hintBackgroundHex") private var hintBackgroundHex: String = "#3B82F6"
-    @AppStorage("hintBorderHex") private var hintBorderHex: String = "#3B82F6"
-    @AppStorage("hintTextHex") private var hintTextHex: String = "#FFFFFF"
-    @AppStorage("highlightTextHex") private var highlightTextHex: String = "#FFFF00"
-    @AppStorage("hintBackgroundOpacity") private var hintBackgroundOpacity: Double = 0.3
-    @AppStorage("hintBorderOpacity") private var hintBorderOpacity: Double = 0.6
-    @AppStorage("hintHorizontalOffset") private var hintHorizontalOffset: Double = -25.0
+    @AppStorage(AppSettings.Keys.hintBackgroundHex) private var hintBackgroundHex: String = AppSettings.Defaults.hintBackgroundHex
+    @AppStorage(AppSettings.Keys.hintBorderHex) private var hintBorderHex: String = AppSettings.Defaults.hintBorderHex
+    @AppStorage(AppSettings.Keys.hintTextHex) private var hintTextHex: String = AppSettings.Defaults.hintTextHex
+    @AppStorage(AppSettings.Keys.highlightTextHex) private var highlightTextHex: String = AppSettings.Defaults.highlightTextHex
+    @AppStorage(AppSettings.Keys.hintBackgroundOpacity) private var hintBackgroundOpacity: Double = AppSettings.Defaults.hintBackgroundOpacity
+    @AppStorage(AppSettings.Keys.hintBorderOpacity) private var hintBorderOpacity: Double = AppSettings.Defaults.hintBorderOpacity
+    @AppStorage(AppSettings.Keys.hintHorizontalOffset) private var hintHorizontalOffset: Double = AppSettings.Defaults.hintHorizontalOffset
 
     // Scroll Mode Settings
-    @AppStorage("scrollShortcutKeyCode") private var scrollShortcutKeyCode: Int = 14 // E
-    @AppStorage("scrollShortcutModifiers") private var scrollShortcutModifiers: Int = optionKey
-    @AppStorage("scrollArrowMode") private var scrollArrowMode: String = "select"
-    @AppStorage("showScrollAreaNumbers") private var showScrollAreaNumbers: Bool = true
-    @AppStorage("scrollKeys") private var scrollKeys: String = "hjkl"
-    @AppStorage("scrollSpeed") private var scrollSpeed: Double = 5.0
-    @AppStorage("dashSpeed") private var dashSpeed: Double = 9.0
-    @AppStorage("autoScrollDeactivation") private var autoScrollDeactivation: Bool = true
-    @AppStorage("scrollDeactivationDelay") private var scrollDeactivationDelay: Double = 5.0
+    @AppStorage(AppSettings.Keys.scrollShortcutKeyCode) private var scrollShortcutKeyCode: Int = AppSettings.Defaults.scrollShortcutKeyCode
+    @AppStorage(AppSettings.Keys.scrollShortcutModifiers) private var scrollShortcutModifiers: Int = AppSettings.Defaults.scrollShortcutModifiers
+    @AppStorage(AppSettings.Keys.scrollArrowMode) private var scrollArrowMode: String = AppSettings.Defaults.scrollArrowMode
+    @AppStorage(AppSettings.Keys.showScrollAreaNumbers) private var showScrollAreaNumbers: Bool = AppSettings.Defaults.showScrollAreaNumbers
+    @AppStorage(AppSettings.Keys.scrollKeys) private var scrollKeys: String = AppSettings.Defaults.scrollKeys
+    @AppStorage(AppSettings.Keys.scrollSpeed) private var scrollSpeed: Double = AppSettings.Defaults.scrollSpeed
+    @AppStorage(AppSettings.Keys.dashSpeed) private var dashSpeed: Double = AppSettings.Defaults.dashSpeed
+    @AppStorage(AppSettings.Keys.autoScrollDeactivation) private var autoScrollDeactivation: Bool = AppSettings.Defaults.autoScrollDeactivation
+    @AppStorage(AppSettings.Keys.scrollDeactivationDelay) private var scrollDeactivationDelay: Double = AppSettings.Defaults.scrollDeactivationDelay
 
     var body: some View {
         TabView {
@@ -376,14 +376,14 @@ struct PreferencesView: View {
 
             Section {
                 Button("Reset to Defaults") {
-                    hintBackgroundHex = "#3B82F6"
-                    hintBorderHex = "#3B82F6"
-                    hintTextHex = "#FFFFFF"
-                    highlightTextHex = "#FFFF00"
-                    hintBackgroundOpacity = 0.3
-                    hintBorderOpacity = 0.6
-                    hintSize = 12
-                    hintHorizontalOffset = -25.0
+                    hintBackgroundHex = AppSettings.Defaults.hintBackgroundHex
+                    hintBorderHex = AppSettings.Defaults.hintBorderHex
+                    hintTextHex = AppSettings.Defaults.hintTextHex
+                    highlightTextHex = AppSettings.Defaults.highlightTextHex
+                    hintBackgroundOpacity = AppSettings.Defaults.hintBackgroundOpacity
+                    hintBorderOpacity = AppSettings.Defaults.hintBorderOpacity
+                    hintSize = AppSettings.Defaults.hintSize
+                    hintHorizontalOffset = AppSettings.Defaults.hintHorizontalOffset
                 }
             }
         }

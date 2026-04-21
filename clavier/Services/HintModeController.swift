@@ -110,8 +110,8 @@ class HintModeController {
     private func registerHotkeyInternal() {
         guard hotKeyRef == nil else { return }
 
-        let keyCode = UserDefaults.standard.integer(forKey: "hintShortcutKeyCode")
-        let modifiers = UserDefaults.standard.integer(forKey: "hintShortcutModifiers")
+        let keyCode = UserDefaults.standard.integer(forKey: AppSettings.Keys.hintShortcutKeyCode)
+        let modifiers = UserDefaults.standard.integer(forKey: AppSettings.Keys.hintShortcutModifiers)
 
         var hotKeyID = EventHotKeyID()
         hotKeyID.signature = OSType("KNAV".utf8.reduce(0) { ($0 << 8) + OSType($1) })
@@ -170,9 +170,9 @@ class HintModeController {
         currentInput = ""
         previousElementCount = elements.count
         HintModeController.isHintModeActive = true
-        textSearchEnabled = UserDefaults.standard.bool(forKey: "textSearchEnabled")
-        minSearchChars = UserDefaults.standard.integer(forKey: "minSearchCharacters")
-        refreshTrigger = UserDefaults.standard.string(forKey: "manualRefreshTrigger") ?? "rr"
+        textSearchEnabled = UserDefaults.standard.bool(forKey: AppSettings.Keys.textSearchEnabled)
+        minSearchChars = AppSettings.minSearchCharacters
+        refreshTrigger = AppSettings.manualRefreshTrigger
 
         // Start auto-deactivation timer (if enabled)
         startDeactivationTimer()
@@ -264,8 +264,8 @@ class HintModeController {
     }
 
     private func assignHints() {
-        var hintCharacters = UserDefaults.standard.string(forKey: "hintCharacters") ?? "asdfhjkl"
-        if hintCharacters.count < 2 { hintCharacters = "asdfhjkl" }
+        var hintCharacters = AppSettings.hintCharacters
+        if hintCharacters.count < 2 { hintCharacters = AppSettings.Defaults.hintCharacters }
         let chars = Array(hintCharacters)
         let count = elements.count
 
@@ -588,7 +588,7 @@ class HintModeController {
     }
 
     private func handlePostClick() {
-        let continuousMode = UserDefaults.standard.bool(forKey: "continuousClickMode")
+        let continuousMode = UserDefaults.standard.bool(forKey: AppSettings.Keys.continuousClickMode)
         if continuousMode {
             refreshHints()
         } else {
@@ -748,7 +748,7 @@ class HintModeController {
     // MARK: - Auto-Deactivation Timer
 
     private func startDeactivationTimer() {
-        let continuousMode = UserDefaults.standard.bool(forKey: "continuousClickMode")
+        let continuousMode = UserDefaults.standard.bool(forKey: AppSettings.Keys.continuousClickMode)
         guard continuousMode && autoDeactivation else { return }
 
         deactivationTimer?.invalidate()
@@ -760,8 +760,8 @@ class HintModeController {
     }
 
     private func loadAutoDeactivationSettings() {
-        autoDeactivation = UserDefaults.standard.bool(forKey: "autoHintDeactivation")
-        deactivationDelay = UserDefaults.standard.double(forKey: "hintDeactivationDelay")
+        autoDeactivation = UserDefaults.standard.bool(forKey: AppSettings.Keys.autoHintDeactivation)
+        deactivationDelay = UserDefaults.standard.double(forKey: AppSettings.Keys.hintDeactivationDelay)
 
         // Default to 5.0 if not set
         if deactivationDelay == 0 {
