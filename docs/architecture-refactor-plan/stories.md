@@ -53,7 +53,7 @@ Sizing mode: **medium PRs per phase sub-area**.
   Depends on: P4-S1, P3-S2, P2-S2  
   Blocks: P5-S1, P5-S2
 
-- [ ] **P5-S1 — Preferences + shortcut recorder modularization**  
+- [x] **P5-S1 — Preferences + shortcut recorder modularization**  
   Depends on: P4-S2, P4-S3  
   Blocks: P5-S3
 
@@ -477,7 +477,7 @@ Blocks: P5-S1, P5-S2.
 
 ---
 
-### [ ] P5-S1 — Preferences + shortcut recorder modularization
+### [x] P5-S1 — Preferences + shortcut recorder modularization
 
 **Goal**  
 Decompose oversized settings UI files and remove known dead setting surface.

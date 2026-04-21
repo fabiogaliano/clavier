@@ -7,7 +7,6 @@ enum AppSettings {
         static let hintShortcutKeyCode = "hintShortcutKeyCode"
         static let hintShortcutModifiers = "hintShortcutModifiers"
         static let hintSize = "hintSize"
-        static let hintColor = "hintColor" // legacy; removed in P5-S1
         static let continuousClickMode = "continuousClickMode"
         static let autoHintDeactivation = "autoHintDeactivation"
         static let hintDeactivationDelay = "hintDeactivationDelay"
@@ -41,7 +40,6 @@ enum AppSettings {
         static let hintShortcutKeyCode = 49
         static let hintShortcutModifiers = cmdKey | shiftKey
         static let hintSize = 12.0
-        static let hintColor = "blue"
         static let continuousClickMode = false
         static let autoHintDeactivation = true
         static let hintDeactivationDelay = 5.0
@@ -72,7 +70,6 @@ enum AppSettings {
             Keys.hintShortcutKeyCode: Defaults.hintShortcutKeyCode,
             Keys.hintShortcutModifiers: Defaults.hintShortcutModifiers,
             Keys.hintSize: Defaults.hintSize,
-            Keys.hintColor: Defaults.hintColor,
             Keys.continuousClickMode: Defaults.continuousClickMode,
             Keys.autoHintDeactivation: Defaults.autoHintDeactivation,
             Keys.hintDeactivationDelay: Defaults.hintDeactivationDelay,
