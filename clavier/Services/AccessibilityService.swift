@@ -81,7 +81,7 @@ class AccessibilityService {
             let windowBounds = getWindowBounds(window) ?? desktopBoundsAX
             let visibleBounds = windowBounds.intersection(desktopBoundsAX)
 
-            traverseElementOptimized(window, clickableAncestor: nil, into: &elements, clipBounds: visibleBounds)
+            traverseElementOptimized(window, pid: pid, clickableAncestor: nil, into: &elements, clipBounds: visibleBounds)
         }
         let traverseEndTime = CFAbsoluteTimeGetCurrent()
         print("  ⏱️ traverseElements: \(String(format: "%.3f", traverseEndTime - traverseStartTime))s (\(elements.count) raw elements)")
@@ -119,7 +119,7 @@ class AccessibilityService {
         return unique
     }
 
-    private func traverseElementOptimized(_ element: AXUIElement, clickableAncestor: (element: AXUIElement, frame: CGRect)?, into elements: inout [UIElement], clipBounds: CGRect) {
+    private func traverseElementOptimized(_ element: AXUIElement, pid: pid_t, clickableAncestor: (element: AXUIElement, frame: CGRect)?, into elements: inout [UIElement], clipBounds: CGRect) {
         // BATCH FETCH: Get role, position, size, children, enabled in ONE IPC call
         let attributes = [
             kAXRoleAttribute as CFString,
@@ -178,6 +178,7 @@ class AccessibilityService {
                     size: visibleAX.size
                 )
                 var uiElement = UIElement(
+                    stableID: ElementIdentity(pid: pid, role: role, frame: frame),
                     axElement: element,
                     frame: frame,
                     visibleFrame: visibleFrame,
@@ -212,7 +213,7 @@ class AccessibilityService {
         let childClipBounds = elementFrame.intersection(clipBounds)
 
         for child in children {
-            traverseElementOptimized(child, clickableAncestor: newClickableAncestor, into: &elements, clipBounds: childClipBounds)
+            traverseElementOptimized(child, pid: pid, clickableAncestor: newClickableAncestor, into: &elements, clipBounds: childClipBounds)
         }
     }
 

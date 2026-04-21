@@ -17,7 +17,7 @@ Sizing mode: **medium PRs per phase sub-area**.
   Depends on: _none_  
   Blocks: P2-S2, P4-S3
 
-- [ ] **P1-S3 — Scroll merge policy contract + stable identity primitives**  
+- [x] **P1-S3 — Scroll merge policy contract + stable identity primitives**  
   Depends on: _none_  
   Blocks: P2-S2, P3-S1, P3-S2
 
@@ -151,7 +151,7 @@ Blocks: P2-S2, P4-S3.
 
 ---
 
-### [ ] P1-S3 — Scroll merge policy contract + stable identity primitives
+### [x] P1-S3 — Scroll merge policy contract + stable identity primitives
 
 **Goal**  
 Introduce one reusable scroll-area merge policy and stable identity types for discovered entities.

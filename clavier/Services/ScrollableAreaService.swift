@@ -27,125 +27,32 @@ class ScrollableAreaService {
     // Configuration constants
     private enum Config {
         static let minimumAreaSize: CGFloat = 100
-        static let duplicateTolerance: CGFloat = 10
-        static let nestedTolerance: CGFloat = 5
-        static let nestedSizeThreshold: CGFloat = 0.7  // Only filter nested areas >70% parent size
-        static let sameOriginTolerance: CGFloat = 2.0  // Strict tolerance for X-origin matching
     }
 
-    // Area relationship detection
-    private enum AreaRelationship {
-        case duplicate
-        case newNestedInExisting
-        case existingNestedInNew
-        case independent
+    private let merger = ScrollableAreaMerger()
 
-        static func detect(_ newArea: CGRect, _ existingArea: CGRect) -> AreaRelationship {
-            // Check for duplicate (within tolerance)
-            if abs(newArea.origin.x - existingArea.origin.x) < Config.duplicateTolerance &&
-               abs(newArea.origin.y - existingArea.origin.y) < Config.duplicateTolerance &&
-               abs(newArea.width - existingArea.width) < Config.duplicateTolerance &&
-               abs(newArea.height - existingArea.height) < Config.duplicateTolerance {
-                return .duplicate
-            }
-
-            // Check if new area is nested inside existing
-            if newArea.minX >= existingArea.minX - Config.nestedTolerance &&
-               newArea.maxX <= existingArea.maxX + Config.nestedTolerance &&
-               newArea.minY >= existingArea.minY - Config.nestedTolerance &&
-               newArea.maxY <= existingArea.maxY + Config.nestedTolerance {
-
-                // If they share the same X origin, they're the same scrollable (filter regardless of size)
-                let sameXOrigin = abs(newArea.origin.x - existingArea.origin.x) < Config.sameOriginTolerance
-
-                if sameXOrigin {
-                    return .newNestedInExisting
-                }
-
-                // Otherwise, only filter if >70% the size (near-duplicate)
-                let newAreaSize = newArea.width * newArea.height
-                let existingAreaSize = existingArea.width * existingArea.height
-                let sizeRatio = newAreaSize / existingAreaSize
-
-                if sizeRatio > Config.nestedSizeThreshold {
-                    return .newNestedInExisting
-                }
-            }
-
-            // Check if existing area is nested inside new
-            if existingArea.minX >= newArea.minX - Config.nestedTolerance &&
-               existingArea.maxX <= newArea.maxX + Config.nestedTolerance &&
-               existingArea.minY >= newArea.minY - Config.nestedTolerance &&
-               existingArea.maxY <= newArea.maxY + Config.nestedTolerance {
-
-                // If they share the same X origin, they're the same scrollable (filter regardless of size)
-                let sameXOrigin = abs(newArea.origin.x - existingArea.origin.x) < Config.sameOriginTolerance
-
-                if sameXOrigin {
-                    return .existingNestedInNew
-                }
-
-                // Otherwise, only filter if >70% the size (near-duplicate)
-                let newAreaSize = newArea.width * newArea.height
-                let existingAreaSize = existingArea.width * existingArea.height
-                let sizeRatio = existingAreaSize / newAreaSize
-
-                if sizeRatio > Config.nestedSizeThreshold {
-                    return .existingNestedInNew
-                }
-            }
-
-            return .independent
-        }
-    }
-
-    /// Centralized logic to determine if a new area should be added
-    /// Returns true if should add, modifies areas array to remove nested ones
+    /// Canonical merge-policy gate: delegates to `ScrollableAreaMerger`.
+    ///
+    /// Returns true if the candidate should be appended; removes any existing
+    /// areas that the candidate supersedes.  The controller's progressive
+    /// discovery path (P2-S2) will converge on the same merger instance.
     private func shouldAddArea(_ newArea: ScrollableArea, to areas: inout [ScrollableArea]) -> Bool {
-        var indicesToRemove: [Int] = []
+        let existingFrames = areas.map(\.frame)
+        let decision = merger.decision(for: newArea.frame, against: existingFrames)
 
-        for (index, existing) in areas.enumerated() {
-            let relationship = AreaRelationship.detect(newArea.frame, existing.frame)
+        switch decision {
+        case .discard, .nestedInExisting:
+            return false
 
-            switch relationship {
-            case .duplicate:
-                return false // Skip duplicate
-
-            case .newNestedInExisting:
-                return false // Skip nested area
-
-            case .existingNestedInNew:
-                // Mark existing area for removal (keep larger new area)
-                indicesToRemove.append(index)
-
-            case .independent:
-                // Check if they're vertically stacked sections (same X/width, different Y/height)
-                if abs(newArea.frame.origin.x - existing.frame.origin.x) < Config.duplicateTolerance &&
-                   abs(newArea.frame.width - existing.frame.width) < Config.duplicateTolerance &&
-                   abs(newArea.frame.origin.y - existing.frame.origin.y) >= Config.duplicateTolerance {
-
-                    // They're sections in the same vertical column - keep the larger one
-                    let newSize = newArea.frame.width * newArea.frame.height
-                    let existingSize = existing.frame.width * existing.frame.height
-
-                    if newSize > existingSize {
-                        // New area is larger, remove existing
-                        indicesToRemove.append(index)
-                    } else {
-                        // Existing is larger, skip new
-                        return false
-                    }
-                }
-                continue
+        case .replaceExisting(let indices):
+            for index in indices.sorted().reversed() {
+                areas.remove(at: index)
             }
-        }
+            return true
 
-        // Remove marked areas (in reverse order to maintain indices)
-        for index in indicesToRemove.reversed() {
-            areas.remove(at: index)
+        case .add:
+            return true
         }
-
-        return true
     }
 
     func getScrollableAreas(onAreaFound: ((ScrollableArea) -> Void)? = nil, maxAreas: Int? = nil) -> [ScrollableArea] {
