@@ -44,6 +44,9 @@ final class GlobalHotkeyRegistrar {
     private var modifiersKey: String = ""
     // Stored as a property so the C callback can retrieve it via userData without capture.
     private var onActivation: (@MainActor () -> Void)?
+    // Guards against duplicate NotificationCenter observer installation when register()
+    // is called more than once on the same instance (e.g. during settings reload paths).
+    private var observersInstalled = false
 
     init(signature: String, hotkeyID: UInt32) {
         self.signature = OSType(signature.utf8.reduce(0) { ($0 << 8) + OSType($1) })
@@ -124,6 +127,9 @@ final class GlobalHotkeyRegistrar {
     }
 
     private func observeShortcutRecorderNotifications() {
+        guard !observersInstalled else { return }
+        observersInstalled = true
+
         NotificationCenter.default.addObserver(
             forName: .disableGlobalHotkeys,
             object: nil,

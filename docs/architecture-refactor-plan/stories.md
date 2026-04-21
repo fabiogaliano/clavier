@@ -29,7 +29,7 @@ Sizing mode: **medium PRs per phase sub-area**.
   Depends on: P1-S2, P1-S3  
   Blocks: P2-S3, P3-S2, P4-S3
 
-- [ ] **P2-S3 — Scroll-mode adoption of shared input + command boundary**  
+- [x] **P2-S3 — Scroll-mode adoption of shared input + command boundary**  
   Depends on: P2-S1, P2-S2  
   Blocks: P3-S2, P4-S1, P4-S3
 
@@ -260,7 +260,7 @@ Blocks: P2-S3, P3-S2, P4-S3.
 
 ---
 
-### [ ] P2-S3 — Scroll-mode adoption of shared input + command boundary
+### [x] P2-S3 — Scroll-mode adoption of shared input + command boundary
 
 **Goal**  
 Move scroll mode to shared input infra and establish a `ModeController`-style lifecycle/command boundary.

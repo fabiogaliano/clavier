@@ -17,24 +17,26 @@ class ScrollModeController {
     private var currentInput = ""
     private var areas: [ScrollableArea] = []
     private var selectedAreaIndex: Int = -1
-    private var eventTap: CFMachPort?
-    private var runLoopSource: CFRunLoopSource?
-    private var hotKeyRef: EventHotKeyRef?
     private var deactivationTimer: Timer?
 
     // Callback-visible state: only simple scalars that are practically atomic on arm64.
+    // Read on the CF run loop thread from the isActiveGate closure and the tap handler.
     private nonisolated(unsafe) static var isScrollModeActive = false
-    private nonisolated(unsafe) static var currentEventTap: CFMachPort?
 
-    // Static reference for C callback
+    // Retained for the CF-thread dispatch path inside KeyboardEventTap's handler closure.
     private static var sharedInstance: ScrollModeController?
-
-    // Carbon event handler installed once, reused across hotkey re-registrations
-    private var eventHandlerRef: EventHandlerRef?
 
     private let merger = ScrollableAreaMerger()
 
-    // Settings cache
+    // Shared input infrastructure (P2-S3)
+    private let hotkeyRegistrar = GlobalHotkeyRegistrar(signature: "SCRL", hotkeyID: 2)
+    private let eventTap = KeyboardEventTap(slotIndex: 1)
+
+    // Scroll-decoder context accessible from the CF run loop thread.
+    // Refreshed from UserDefaults when scroll mode activates (main thread only).
+    private nonisolated(unsafe) static var scrollKeysCache = "hjkl"
+
+    // Settings cache (main thread only)
     private var scrollKeys = "hjkl"
     private var arrowMode = "select"
     private var scrollSpeed: Double = 5.0
@@ -44,79 +46,11 @@ class ScrollModeController {
 
     func registerGlobalHotkey() {
         ScrollModeController.sharedInstance = self
-
-        // Install Carbon event handler once
-        if eventHandlerRef == nil {
-            var eventType = EventTypeSpec(eventClass: OSType(kEventClassKeyboard), eventKind: UInt32(kEventHotKeyPressed))
-
-            InstallEventHandler(GetApplicationEventTarget(), { (_, event, userData) -> OSStatus in
-                guard let userData = userData, let event = event else { return OSStatus(eventNotHandledErr) }
-
-                var pressedHotKeyID = EventHotKeyID()
-                let err = GetEventParameter(
-                    event,
-                    EventParamName(kEventParamDirectObject),
-                    EventParamType(typeEventHotKeyID),
-                    nil,
-                    MemoryLayout<EventHotKeyID>.size,
-                    nil,
-                    &pressedHotKeyID
-                )
-
-                guard err == noErr else { return OSStatus(eventNotHandledErr) }
-
-                let expectedSignature = OSType("KSCR".utf8.reduce(0) { ($0 << 8) + OSType($1) })
-                guard pressedHotKeyID.signature == expectedSignature && pressedHotKeyID.id == 2 else {
-                    return OSStatus(eventNotHandledErr)
-                }
-
-                let controller = Unmanaged<ScrollModeController>.fromOpaque(userData).takeUnretainedValue()
-
-                Task { @MainActor in
-                    controller.toggleScrollMode()
-                }
-                return noErr
-            }, 1, &eventType, Unmanaged.passUnretained(self).toOpaque(), &eventHandlerRef)
-        }
-
-        // Listen for hotkey disable/enable notifications
-        NotificationCenter.default.addObserver(
-            forName: .disableGlobalHotkeys,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.unregisterHotkey()
-        }
-
-        NotificationCenter.default.addObserver(
-            forName: .enableGlobalHotkeys,
-            object: nil,
-            queue: .main
-        ) { [weak self] _ in
-            self?.registerHotkeyInternal()
-        }
-
-        registerHotkeyInternal()
-    }
-
-    private func registerHotkeyInternal() {
-        guard hotKeyRef == nil else { return }
-
-        let keyCode = UserDefaults.standard.integer(forKey: AppSettings.Keys.scrollShortcutKeyCode)
-        let modifiers = UserDefaults.standard.integer(forKey: AppSettings.Keys.scrollShortcutModifiers)
-
-        var hotKeyID = EventHotKeyID()
-        hotKeyID.signature = OSType("KSCR".utf8.reduce(0) { ($0 << 8) + OSType($1) })
-        hotKeyID.id = 2
-
-        RegisterEventHotKey(UInt32(keyCode), UInt32(modifiers), hotKeyID, GetApplicationEventTarget(), 0, &hotKeyRef)
-    }
-
-    private func unregisterHotkey() {
-        if let hotKeyRef = hotKeyRef {
-            UnregisterEventHotKey(hotKeyRef)
-            self.hotKeyRef = nil
-        }
+        hotkeyRegistrar.register(
+            keyCodeKey: AppSettings.Keys.scrollShortcutKeyCode,
+            modifiersKey: AppSettings.Keys.scrollShortcutModifiers,
+            onActivation: { [weak self] in self?.toggleScrollMode() }
+        )
     }
 
     func toggleScrollMode() {
@@ -283,11 +217,11 @@ class ScrollModeController {
         deactivationTimer?.invalidate()
         deactivationTimer = nil
 
-        // Update static state
+        // Update static state before stopping the tap so the gate sees false immediately.
         ScrollModeController.isScrollModeActive = false
 
         // Stop event tap
-        stopEventTap()
+        eventTap.stop()
 
         // Close overlay
         if let window = overlayWindow {
@@ -314,6 +248,9 @@ class ScrollModeController {
         if scrollSpeed == 0 { scrollSpeed = 5.0 }
         if dashSpeed == 0 { dashSpeed = 9.0 }
         if deactivationDelay == 0 { deactivationDelay = 5.0 }
+
+        // Mirror to CF-thread-readable static so the decoder context is current.
+        ScrollModeController.scrollKeysCache = scrollKeys
     }
 
     private func assignHints() {
@@ -324,7 +261,6 @@ class ScrollModeController {
 
     /// Reassign hints after removing nested areas (eliminates gaps in numbering)
     private func reassignHints() {
-        // Reassign sequential hints
         for i in 0..<areas.count {
             let oldHint = areas[i].hint
             let newHint = "\(i + 1)"
@@ -334,7 +270,6 @@ class ScrollModeController {
                 overlayWindow?.updateHint(oldHint: oldHint, newHint: newHint)
             }
         }
-
     }
 
     private func startDeactivationTimer() {
@@ -353,135 +288,127 @@ class ScrollModeController {
         startDeactivationTimer()
     }
 
+    // MARK: - Event tap
+
     @discardableResult
     private func startEventTap() -> Bool {
-        let eventMask = (1 << CGEventType.keyDown.rawValue)
+        let eventMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
 
-        eventTap = CGEvent.tapCreate(
-            tap: .cgSessionEventTap,
-            place: .headInsertEventTap,
-            options: .defaultTap,
-            eventsOfInterest: CGEventMask(eventMask),
-            callback: { (_, type, event, _) -> Unmanaged<CGEvent>? in
-                if type == .tapDisabledByTimeout || type == .tapDisabledByUserInput {
-                    if let tap = ScrollModeController.currentEventTap {
-                        CGEvent.tapEnable(tap: tap, enable: true)
-                    }
-                    return Unmanaged.passRetained(event)
-                }
+        let started = eventTap.start(
+            eventMask: eventMask,
+            isActiveGate: { ScrollModeController.isScrollModeActive },
+            handler: { type, event in
+                let context = ScrollInputDecoder.Context(
+                    scrollKeys: ScrollModeController.scrollKeysCache
+                )
+                let command = ScrollInputDecoder.decode(type: type, event: event, context: context)
 
-                guard ScrollModeController.isScrollModeActive else {
-                    return Unmanaged.passRetained(event)
-                }
-
-                let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
-                let flags = event.flags
-
-                // Escape key (53)
-                if keyCode == 53 {
+                switch command {
+                case .escape:
                     DispatchQueue.main.async {
                         ScrollModeController.sharedInstance?.deactivateScrollMode()
                     }
                     return nil
-                }
 
-                // Process input on main thread
-                DispatchQueue.main.async {
-                    ScrollModeController.sharedInstance?.handleKeyPress(keyCode: keyCode, flags: flags)
-                }
+                case .backspace:
+                    DispatchQueue.main.async {
+                        ScrollModeController.sharedInstance?.handleBackspace()
+                    }
+                    return nil
 
-                return nil // Consume all keys in scroll mode
-            },
-            userInfo: Unmanaged.passUnretained(self).toOpaque()
+                case .digit(let n):
+                    DispatchQueue.main.async {
+                        ScrollModeController.sharedInstance?.handleDigit(n)
+                    }
+                    return nil
+
+                case .arrowKey(let direction, let isShift):
+                    DispatchQueue.main.async {
+                        ScrollModeController.sharedInstance?.handleArrowKey(direction, isShift: isShift)
+                    }
+                    return nil
+
+                case .scrollKey(let direction, let isShift):
+                    DispatchQueue.main.async {
+                        ScrollModeController.sharedInstance?.handleScrollKey(direction, isShift: isShift)
+                    }
+                    return nil
+
+                case .consume:
+                    return nil
+                }
+            }
         )
 
-        guard let eventTap = eventTap else {
+        if !started {
             print("⚠️ Failed to create event tap for scroll mode. Check Accessibility permissions in System Settings > Privacy & Security > Accessibility.")
-            return false
         }
-
-        ScrollModeController.currentEventTap = eventTap
-
-        runLoopSource = CFMachPortCreateRunLoopSource(kCFAllocatorDefault, eventTap, 0)
-        CFRunLoopAddSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-        CGEvent.tapEnable(tap: eventTap, enable: true)
-        return true
+        return started
     }
 
-    private func stopEventTap() {
-        if let eventTap = eventTap {
-            CGEvent.tapEnable(tap: eventTap, enable: false)
-        }
+    // MARK: - Input handling (main thread only)
 
-        if let runLoopSource = runLoopSource {
-            CFRunLoopRemoveSource(CFRunLoopGetCurrent(), runLoopSource, .commonModes)
-        }
-
-        eventTap = nil
-        runLoopSource = nil
-        ScrollModeController.currentEventTap = nil
-    }
-
-    private func handleKeyPress(keyCode: Int64, flags: CGEventFlags) {
+    private func handleDigit(_ number: Int) {
         resetDeactivationTimer()
 
-        let isShift = flags.contains(.maskShift)
+        currentInput += "\(number)"
 
-        // Number keys (0-9) for area selection
-        if let number = keyCodeToNumber(keyCode) {
-            currentInput += "\(number)"
-
-            if let index = Int(currentInput), index >= 1 && index <= areas.count {
-                // Commit immediately if this number can't be a prefix of a larger valid area
-                let couldExtend = (index * 10) <= areas.count
-                if !couldExtend {
-                    selectArea(at: index - 1)
-                    currentInput = ""
-                }
-            } else {
+        if let index = Int(currentInput), index >= 1 && index <= areas.count {
+            let couldExtend = (index * 10) <= areas.count
+            if !couldExtend {
+                selectArea(at: index - 1)
                 currentInput = ""
             }
-            return
-        }
-
-        // Commit pending numeric input before processing non-digit keys
-        if !currentInput.isEmpty, let index = Int(currentInput), index >= 1 && index <= areas.count {
-            selectArea(at: index - 1)
+        } else {
             currentInput = ""
         }
+    }
 
-        // Arrow keys
-        if let arrowDirection = keyCodeToArrowDirection(keyCode) {
-            if arrowMode == "select" {
-                // Arrow keys select areas
-                handleArrowSelection(direction: arrowDirection)
-            } else {
-                // Arrow keys scroll
-                if selectedAreaIndex >= 0 {
-                    let speed = isShift ? dashSpeed : scrollSpeed
-                    performScroll(direction: arrowDirection, speed: speed)
-                }
-            }
-            return
-        }
+    private func handleArrowKey(_ direction: ClickService.ScrollDirection, isShift: Bool) {
+        resetDeactivationTimer()
 
-        // hjkl scroll keys
-        if let scrollDirection = keyCodeToScrollDirection(keyCode) {
+        // Commit any pending numeric input first
+        commitPendingInput()
+
+        if arrowMode == "select" {
+            handleArrowSelection(direction: direction)
+        } else {
             if selectedAreaIndex >= 0 {
                 let speed = isShift ? dashSpeed : scrollSpeed
-                performScroll(direction: scrollDirection, speed: speed)
+                performScroll(direction: direction, speed: speed)
             }
-            return
         }
+    }
 
-        // Backspace (51) - clear input
-        if keyCode == 51 {
+    private func handleScrollKey(_ direction: ClickService.ScrollDirection, isShift: Bool) {
+        resetDeactivationTimer()
+
+        // Commit any pending numeric input first
+        commitPendingInput()
+
+        if selectedAreaIndex >= 0 {
+            let speed = isShift ? dashSpeed : scrollSpeed
+            performScroll(direction: direction, speed: speed)
+        }
+    }
+
+    private func handleBackspace() {
+        resetDeactivationTimer()
+
+        currentInput = ""
+        overlayWindow?.clearSelection()
+        selectedAreaIndex = -1
+    }
+
+    private func commitPendingInput() {
+        guard !currentInput.isEmpty,
+              let index = Int(currentInput),
+              index >= 1, index <= areas.count else {
             currentInput = ""
-
-            overlayWindow?.clearSelection()
-            selectedAreaIndex = -1
             return
         }
+        selectArea(at: index - 1)
+        currentInput = ""
     }
 
     private func selectArea(at index: Int) {
@@ -515,52 +442,5 @@ class ScrollModeController {
         let area = areas[selectedAreaIndex]
         let clickPoint = ScreenGeometry.appKitCenterToQuartz(area.centerPoint)
         ClickService.shared.scroll(at: clickPoint, direction: direction, speed: speed)
-    }
-
-    private func keyCodeToNumber(_ keyCode: Int64) -> Int? {
-        let numberMap: [Int64: Int] = [
-            18: 1, 19: 2, 20: 3, 21: 4, 23: 5,
-            22: 6, 26: 7, 28: 8, 25: 9, 29: 0
-        ]
-        return numberMap[keyCode]
-    }
-
-    private func keyCodeToArrowDirection(_ keyCode: Int64) -> ClickService.ScrollDirection? {
-        switch keyCode {
-        case 126: return .up
-        case 125: return .down
-        case 123: return .left
-        case 124: return .right
-        default: return nil
-        }
-    }
-
-    private func keyCodeToScrollDirection(_ keyCode: Int64) -> ClickService.ScrollDirection? {
-        guard scrollKeys.count == 4 else { return nil }
-
-        let chars = Array(scrollKeys.lowercased())
-        let leftKey = chars[0]   // h
-        let downKey = chars[1]   // j
-        let upKey = chars[2]     // k
-        let rightKey = chars[3]  // l
-
-        guard let character = Self.keyCodeToCharacter(keyCode)?.lowercased() else { return nil }
-
-        if character == String(leftKey) { return .left }
-        if character == String(downKey) { return .down }
-        if character == String(upKey) { return .up }
-        if character == String(rightKey) { return .right }
-
-        return nil
-    }
-
-    nonisolated private static func keyCodeToCharacter(_ keyCode: Int64) -> String? {
-        let keyMap: [Int64: String] = [
-            0: "a", 1: "s", 2: "d", 3: "f", 4: "h", 5: "g", 6: "z", 7: "x",
-            8: "c", 9: "v", 11: "b", 12: "q", 13: "w", 14: "e", 15: "r",
-            16: "y", 17: "t", 31: "o", 32: "u", 34: "i", 35: "p", 37: "l",
-            38: "j", 40: "k", 45: "n", 46: "m"
-        ]
-        return keyMap[keyCode]
     }
 }

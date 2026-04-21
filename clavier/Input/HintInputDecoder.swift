@@ -112,9 +112,10 @@ enum HintInputDecoder {
     /// Maps hardware key codes to their primary character.
     ///
     /// Intentionally lower-case so callers get a uniform value without needing
-    /// `lowercased()` on every call path.  This duplicates the table in
-    /// `HintModeController` (which P4-S2 will remove) and `KeymapUtilities`
-    /// (display use); they differ by case and intended use.
+    /// `lowercased()` on every call path.  `KeymapUtilities.keyCodeToString` serves
+    /// display (title-cased, UI-facing); this table serves input recognition
+    /// (lower-case, consumer-agnostic).  The two tables are intentionally separate
+    /// because their case conventions and intended callers differ.
     private static func keyCodeToCharacter(_ keyCode: Int64) -> String? {
         let keyMap: [Int64: String] = [
             0: "a", 1: "s", 2: "d", 3: "f", 4: "h", 5: "g", 6: "z", 7: "x",
