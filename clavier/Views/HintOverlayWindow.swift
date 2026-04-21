@@ -38,15 +38,17 @@ private struct HintStyle {
 @MainActor
 class HintOverlayWindow: NSWindow {
 
-    private var elements: [UIElement]
-    private var hintViews: [String: NSView] = [:]
+    private var hintedElements: [HintedElement]
+    /// Keyed by stable element identity so view reuse survives hint-token
+    /// reassignment across session refreshes (F06).
+    private var hintViews: [ElementIdentity: NSView] = [:]
     private var elementHighlights: [UUID: NSView] = [:]
     private var searchBarView: NSView?
     private var searchTextField: NSTextField?
     private var matchCountLabel: NSTextField?
 
-    init(elements: [UIElement]) {
-        self.elements = elements
+    init(hintedElements: [HintedElement]) {
+        self.hintedElements = hintedElements
 
         // Cover the entire desktop so hints render correctly on every display.
         let desktopBounds = ScreenGeometry.desktopBoundsInAppKit
@@ -84,17 +86,17 @@ class HintOverlayWindow: NSWindow {
 
         let style = HintStyle()
         var engine = HintPlacementEngine(windowSize: self.frame.size)
-        for element in elements {
-            let hintView = createHintLabel(for: element, style: style, engine: &engine)
+        for hintedElement in hintedElements {
+            let hintView = createHintLabel(for: hintedElement, style: style, engine: &engine)
             containerView.addSubview(hintView)
-            hintViews[element.hint] = hintView
+            hintViews[hintedElement.identity] = hintView
         }
 
         self.contentView = containerView
     }
 
-    private func createHintLabel(for element: UIElement, style: HintStyle, engine: inout HintPlacementEngine) -> NSView {
-        let label = NSTextField(labelWithString: element.hint)
+    private func createHintLabel(for hintedElement: HintedElement, style: HintStyle, engine: inout HintPlacementEngine) -> NSView {
+        let label = NSTextField(labelWithString: hintedElement.hint)
         label.font = NSFont.monospacedSystemFont(ofSize: style.fontSize, weight: .bold)
         label.textColor = style.textColor
         label.backgroundColor = .clear
@@ -141,7 +143,7 @@ class HintOverlayWindow: NSWindow {
         glassContainer.addSubview(label)
 
         let hintFrame = engine.place(
-            element: element,
+            element: hintedElement.element,
             labelSize: CGSize(width: width, height: height),
             horizontalOffset: style.horizontalOffset
         )
@@ -248,29 +250,48 @@ class HintOverlayWindow: NSWindow {
         super.close()
     }
 
-    func updateHints(with newElements: [UIElement]) {
+    /// Diff the overlay against a new hint assignment list.
+    ///
+    /// Views are keyed by `ElementIdentity` so reuse is stable across refreshes
+    /// where only the hint token changed — the F06 bug this fixes.  The diff:
+    /// - removes views whose identity is no longer present
+    /// - updates the hint text of views whose token changed
+    /// - repositions views whose frame changed
+    /// - adds views for newly discovered elements
+    func updateHints(with newHintedElements: [HintedElement]) {
         // Clear element highlights
         for (_, view) in elementHighlights { view.removeFromSuperview() }
         elementHighlights.removeAll()
 
-        // Build set of hint strings needed by the new elements
-        let neededHints = Set(newElements.map { $0.hint })
+        let neededIdentities = Set(newHintedElements.map { $0.identity })
 
-        // Remove stale hint views that are no longer needed
-        for (hint, view) in hintViews where !neededHints.contains(hint) {
+        // Remove views no longer needed
+        for (identity, view) in hintViews where !neededIdentities.contains(identity) {
             view.removeFromSuperview()
-            hintViews[hint] = nil
+            hintViews[identity] = nil
         }
 
-        // Update elements and create only missing hint views
-        self.elements = newElements
+        self.hintedElements = newHintedElements
         let style = HintStyle()
         var engine = HintPlacementEngine(windowSize: self.frame.size)
-        for element in elements {
-            if hintViews[element.hint] == nil {
-                let hintView = createHintLabel(for: element, style: style, engine: &engine)
+        for hintedElement in hintedElements {
+            let identity = hintedElement.identity
+            if let existingView = hintViews[identity] {
+                // Update hint text if the token was reassigned
+                if let textField = findTextField(in: existingView) {
+                    textField.stringValue = hintedElement.hint
+                }
+                // Reposition to reflect any frame change
+                let newFrame = engine.place(
+                    element: hintedElement.element,
+                    labelSize: existingView.frame.size,
+                    horizontalOffset: style.horizontalOffset
+                )
+                existingView.frame = newFrame
+            } else {
+                let hintView = createHintLabel(for: hintedElement, style: style, engine: &engine)
                 self.contentView?.addSubview(hintView)
-                hintViews[element.hint] = hintView
+                hintViews[identity] = hintView
             }
         }
 
@@ -286,7 +307,7 @@ class HintOverlayWindow: NSWindow {
         filterHints(matching: prefix, textMatches: [], numberedMode: false)
     }
 
-    func filterHints(matching prefix: String, textMatches: [UIElement], numberedMode: Bool = false) {
+    func filterHints(matching prefix: String, textMatches: [HintedElement], numberedMode: Bool = false) {
         // Clear existing highlights
         for (_, highlightView) in elementHighlights {
             highlightView.removeFromSuperview()
@@ -308,17 +329,17 @@ class HintOverlayWindow: NSWindow {
                 // Create numbered hint views for each match
                 let style = HintStyle()
                 var engine = HintPlacementEngine(windowSize: self.frame.size)
-                for element in textMatches {
-                    let hintView = createHintLabel(for: element, style: style, engine: &engine)
+                for hintedElement in textMatches {
+                    let hintView = createHintLabel(for: hintedElement, style: style, engine: &engine)
                     self.contentView?.addSubview(hintView)
-                    elementHighlights[element.id] = hintView
+                    elementHighlights[hintedElement.element.id] = hintView
                 }
             } else {
                 // Regular text search - show green highlight boxes
-                for element in textMatches {
-                    let highlightView = createHighlightView(for: element)
+                for hintedElement in textMatches {
+                    let highlightView = createHighlightView(for: hintedElement.element)
                     self.contentView?.addSubview(highlightView)
-                    elementHighlights[element.id] = highlightView
+                    elementHighlights[hintedElement.element.id] = highlightView
                 }
                 // Hide all hint labels when showing text matches
                 for (_, view) in hintViews {
@@ -326,8 +347,15 @@ class HintOverlayWindow: NSWindow {
                 }
             }
         } else {
-            // Filter hint labels by prefix
-            for (hint, view) in hintViews {
+            // Filter hint labels by prefix using the identity-keyed cache.
+            // Each hint label's token is read from the text field so we don't
+            // need a separate identity→hint lookup table.
+            for (identity, view) in hintViews {
+                guard let hintedElement = hintedElements.first(where: { $0.identity == identity }) else {
+                    view.isHidden = true
+                    continue
+                }
+                let hint = hintedElement.hint
                 if prefix.isEmpty {
                     view.isHidden = false
                     // Reset text color to custom color

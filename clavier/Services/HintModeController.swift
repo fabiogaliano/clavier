@@ -12,11 +12,7 @@ import AppKit
 class HintModeController {
 
     private var overlayWindow: HintOverlayWindow?
-    private var isActive = false
-    private var currentInput = ""
-    private var elements: [UIElement] = []
-    private var isTextSearchMode = false
-    private var numberedElements: [UIElement] = []
+    private var session: HintSession = .inactive
     private var previousElementCount = 0
 
     // Auto-deactivation timer (for continuous mode)
@@ -48,6 +44,12 @@ class HintModeController {
 
     private var refreshStartTime: CFAbsoluteTime = 0
 
+    // MARK: - Convenience accessors into session
+
+    private var isActive: Bool { session.isActive }
+    private var currentInput: String { session.filter }
+    private var hintedElements: [HintedElement] { session.hintedElements }
+
     func registerGlobalHotkey() {
         HintModeController.sharedInstance = self
         hotkeyRegistrar.register(
@@ -70,12 +72,12 @@ class HintModeController {
 
         loadAutoDeactivationSettings()
 
-        elements = AccessibilityService.shared.getClickableElements()
-        guard !elements.isEmpty else { return }
+        let discoveredElements = AccessibilityService.shared.getClickableElements()
+        guard !discoveredElements.isEmpty else { return }
 
-        assignHints()
+        let hintedElements = assignHints(to: discoveredElements)
 
-        overlayWindow = HintOverlayWindow(elements: elements)
+        overlayWindow = HintOverlayWindow(hintedElements: hintedElements)
         overlayWindow?.show()
 
         guard startEventTap() else {
@@ -83,13 +85,11 @@ class HintModeController {
             overlayWindow?.orderOut(nil)
             overlayWindow?.close()
             overlayWindow = nil
-            elements = []
             return
         }
 
-        isActive = true
-        currentInput = ""
-        previousElementCount = elements.count
+        session = .active(hintedElements: hintedElements, filter: "")
+        previousElementCount = hintedElements.count
         HintModeController.isHintModeActive = true
         textSearchEnabled = UserDefaults.standard.bool(forKey: AppSettings.Keys.textSearchEnabled)
         minSearchChars = AppSettings.minSearchCharacters
@@ -101,7 +101,25 @@ class HintModeController {
 
     private func loadTextAttributesAsync() {
         Task { @MainActor in
-            AccessibilityService.shared.loadTextAttributes(for: &self.elements)
+            // Extract domain elements, load text attributes, then sync back
+            var domainElements = self.hintedElements.map { $0.element }
+            AccessibilityService.shared.loadTextAttributes(for: &domainElements)
+            guard self.isActive else { return }
+            // Rebuild hinted elements with updated domain data, preserving hints
+            let updatedHinted = zip(self.hintedElements, domainElements).map { hinted, updated in
+                HintedElement(element: updated, hint: hinted.hint)
+            }
+            switch self.session {
+            case .active(_, let filter):
+                self.session = .active(hintedElements: updatedHinted, filter: filter)
+            case .textSearch(_, let matches, let filter):
+                // Text search matches are a subset — re-derive from updated elements
+                let matchIDs = Set(matches.map { $0.identity })
+                let updatedMatches = updatedHinted.filter { matchIDs.contains($0.identity) }
+                self.session = .textSearch(hintedElements: updatedHinted, matches: updatedMatches, filter: filter)
+            case .inactive:
+                break
+            }
         }
     }
 
@@ -123,11 +141,7 @@ class HintModeController {
         }
         overlayWindow = nil
 
-        elements = []
-        isActive = false
-        currentInput = ""
-        isTextSearchMode = false
-        numberedElements = []
+        session = .inactive
     }
 
     @discardableResult
@@ -146,12 +160,12 @@ class HintModeController {
 
         let uiChanged = newElements.count != previousElementCount
 
-        self.elements = newElements
-        self.previousElementCount = newElements.count
-        self.assignHints()
+        let newHintedElements = assignHints(to: newElements)
+        previousElementCount = newElements.count
+        session = .active(hintedElements: newHintedElements, filter: "")
 
         let overlayStart = CFAbsoluteTimeGetCurrent()
-        self.overlayWindow?.updateHints(with: self.elements)
+        self.overlayWindow?.updateHints(with: newHintedElements)
         let overlayEnd = CFAbsoluteTimeGetCurrent()
         print("[CONTINUOUS] Update overlay: \(String(format: "%.0f", (overlayEnd - overlayStart) * 1000))ms")
 
@@ -164,7 +178,11 @@ class HintModeController {
         return uiChanged
     }
 
-    private func assignHints() {
+    /// Produce a `[HintedElement]` mapping from raw discovered elements.
+    ///
+    /// No mutation of the domain elements — hint tokens live only in the
+    /// returned `HintedElement` wrappers (F05/P3-S1).
+    private func assignHints(to elements: [UIElement]) -> [HintedElement] {
         var hintCharacters = AppSettings.hintCharacters
         if hintCharacters.count < 2 { hintCharacters = AppSettings.Defaults.hintCharacters }
         let chars = Array(hintCharacters)
@@ -191,17 +209,14 @@ class HintModeController {
             }
         }
 
-        for i in 0..<hintCount {
-            elements[i].hint = hints[i]
-        }
-        if hintCount < elements.count {
-            elements = Array(elements.prefix(hintCount))
+        return zip(elements.prefix(hintCount), hints).map { element, hint in
+            HintedElement(element: element, hint: hint)
         }
     }
 
-    private func assignNumberedHints(to elements: inout [UIElement]) {
-        for i in 0..<min(elements.count, 9) {
-            elements[i].hint = "\(i + 1)"
+    private func assignNumberedHints(to elements: [UIElement]) -> [HintedElement] {
+        elements.prefix(9).enumerated().map { index, element in
+            HintedElement(element: element, hint: "\(index + 1)")
         }
     }
 
@@ -272,7 +287,6 @@ class HintModeController {
     private func processInput(_ input: String) {
         guard isActive else { return }
 
-        currentInput = input
         overlayWindow?.updateSearchBar(text: input)
 
         if input == refreshTrigger {
@@ -282,83 +296,116 @@ class HintModeController {
             return
         }
 
-        if let matchedElement = elements.first(where: { $0.hint == input }) {
+        if let matched = hintedElements.first(where: { $0.hint == input }) {
             overlayWindow?.filterHints(matching: input, textMatches: [])
-            performClick(on: matchedElement)
+            performClick(on: matched.element)
             clearInputState()
             handlePostClick()
             return
         }
 
-        let hintMatchingElements = elements.filter { $0.hint.hasPrefix(input) }
+        let hintMatchingElements = hintedElements.filter { $0.hint.hasPrefix(input) }
         if !hintMatchingElements.isEmpty {
             overlayWindow?.filterHints(matching: input, textMatches: [])
+            // Update filter in session
+            switch session {
+            case .active(let elements, _):
+                session = .active(hintedElements: elements, filter: input)
+            default:
+                break
+            }
             return
         }
 
         if textSearchEnabled && input.count >= minSearchChars {
-            var textMatches = searchElementsByText(input)
+            let textMatchElements = searchElementsByText(input)
+            var textMatches = textMatchElements
 
             if textMatches.count == 1 {
-                performClick(on: textMatches[0])
+                performClick(on: textMatches[0].element)
                 clearInputState()
                 handlePostClick()
             } else if textMatches.isEmpty {
                 overlayWindow?.filterHints(matching: "", textMatches: [])
                 overlayWindow?.updateMatchCount(0)
-                isTextSearchMode = false
-                numberedElements = []
+                switch session {
+                case .active(let elements, _):
+                    session = .active(hintedElements: elements, filter: input)
+                default:
+                    break
+                }
                 HintModeController.isTextSearchActive = false
                 HintModeController.numberedElementsCount = 0
             } else if textMatches.count <= 9 {
-                isTextSearchMode = true
-                numberedElements = textMatches
-                assignNumberedHints(to: &textMatches)
+                let numberedMatches = assignNumberedHints(to: textMatches.map { $0.element })
                 HintModeController.isTextSearchActive = true
-                HintModeController.numberedElementsCount = textMatches.count
-                overlayWindow?.filterHints(matching: "", textMatches: textMatches, numberedMode: true)
-                overlayWindow?.updateMatchCount(textMatches.count)
+                HintModeController.numberedElementsCount = numberedMatches.count
+                session = .textSearch(hintedElements: hintedElements, matches: numberedMatches, filter: input)
+                overlayWindow?.filterHints(matching: "", textMatches: numberedMatches, numberedMode: true)
+                overlayWindow?.updateMatchCount(numberedMatches.count)
             } else {
                 overlayWindow?.filterHints(matching: "", textMatches: textMatches)
                 overlayWindow?.updateMatchCount(textMatches.count)
-                isTextSearchMode = false
-                numberedElements = []
+                switch session {
+                case .active(let elements, _):
+                    session = .active(hintedElements: elements, filter: input)
+                default:
+                    break
+                }
                 HintModeController.isTextSearchActive = false
                 HintModeController.numberedElementsCount = 0
             }
         } else {
             overlayWindow?.filterHints(matching: "", textMatches: [])
-            isTextSearchMode = false
-            numberedElements = []
+            switch session {
+            case .active(let elements, _):
+                session = .active(hintedElements: elements, filter: input)
+            case .textSearch(let elements, _, _):
+                session = .active(hintedElements: elements, filter: input)
+            default:
+                break
+            }
             HintModeController.isTextSearchActive = false
             HintModeController.numberedElementsCount = 0
         }
     }
 
     private func clearInputState() {
-        currentInput = ""
         overlayWindow?.updateSearchBar(text: "")
         overlayWindow?.updateMatchCount(-1)
+        switch session {
+        case .active(let elements, _):
+            session = .active(hintedElements: elements, filter: "")
+        case .textSearch(let elements, _, _):
+            session = .active(hintedElements: elements, filter: "")
+        case .inactive:
+            break
+        }
+        HintModeController.isTextSearchActive = false
+        HintModeController.numberedElementsCount = 0
     }
 
     // MARK: - Event handlers (main thread only)
 
     private func handleCharacterInput(_ char: String) {
         guard isActive else { return }
-        currentInput += char
-        processInput(currentInput)
+        let newInput = currentInput + char
+        updateSessionFilter(newInput)
+        processInput(newInput)
     }
 
     private func handleBackspace() {
         guard isActive, !currentInput.isEmpty else { return }
-        currentInput.removeLast()
-        processInput(currentInput)
+        var newInput = currentInput
+        newInput.removeLast()
+        updateSessionFilter(newInput)
+        processInput(newInput)
     }
 
     private func handleEscapeKey() {
         guard isActive else { return }
         if !currentInput.isEmpty {
-            currentInput = ""
+            updateSessionFilter("")
             processInput("")
         } else {
             deactivateHintMode()
@@ -371,20 +418,21 @@ class HintModeController {
     }
 
     private func selectNumberedElement(_ number: Int) {
-        guard isTextSearchMode, number > 0, number <= numberedElements.count else { return }
-        let element = numberedElements[number - 1]
-        performClick(on: element)
-        clearInputState()
-        isTextSearchMode = false
-        numberedElements = []
+        guard case .textSearch(let elements, let matches, _) = session,
+              number > 0, number <= matches.count else { return }
+        let hintedElement = matches[number - 1]
+        performClick(on: hintedElement.element)
+        session = .active(hintedElements: elements, filter: "")
+        overlayWindow?.updateSearchBar(text: "")
+        overlayWindow?.updateMatchCount(-1)
         HintModeController.isTextSearchActive = false
         HintModeController.numberedElementsCount = 0
         handlePostClick()
     }
 
-    private func searchElementsByText(_ searchText: String) -> [UIElement] {
+    private func searchElementsByText(_ searchText: String) -> [HintedElement] {
         let lowercasedSearch = searchText.lowercased()
-        return elements.filter { $0.searchableText.lowercased().contains(lowercasedSearch) }
+        return hintedElements.filter { $0.element.searchableText.lowercased().contains(lowercasedSearch) }
     }
 
     private func handlePostClick() {
@@ -397,10 +445,19 @@ class HintModeController {
     }
 
     private func clearSearch() {
-        currentInput = ""
         overlayWindow?.updateSearchBar(text: "")
         overlayWindow?.filterHints(matching: "", textMatches: [])
         overlayWindow?.updateMatchCount(-1)
+        switch session {
+        case .active(let elements, _):
+            session = .active(hintedElements: elements, filter: "")
+        case .textSearch(let elements, _, _):
+            session = .active(hintedElements: elements, filter: "")
+        case .inactive:
+            break
+        }
+        HintModeController.isTextSearchActive = false
+        HintModeController.numberedElementsCount = 0
     }
 
     private func handleEnterKey(withControl: Bool) {
@@ -408,9 +465,9 @@ class HintModeController {
             let textMatches = searchElementsByText(currentInput)
             if let firstMatch = textMatches.first {
                 if withControl {
-                    performRightClick(on: firstMatch)
+                    performRightClick(on: firstMatch.element)
                 } else {
-                    performClick(on: firstMatch)
+                    performClick(on: firstMatch.element)
                 }
                 handlePostClick()
             }
@@ -430,8 +487,13 @@ class HintModeController {
         refreshStartTime = CFAbsoluteTimeGetCurrent()
         print("[CONTINUOUS] Click performed, starting refresh...")
 
-        currentInput = ""
-        previousElementCount = elements.count
+        let currentHintedElements = hintedElements
+        previousElementCount = currentHintedElements.count
+
+        // Reset filter without changing the hinted elements
+        if case .active(let elements, _) = session {
+            session = .active(hintedElements: elements, filter: "")
+        }
 
         let bundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         let delays = DetectorRegistry.shared.refreshDelays(for: bundleId)
@@ -452,11 +514,11 @@ class HintModeController {
 
                 let uiChanged = self.performHintRefresh()
                 if uiChanged {
-                    print("[CONTINUOUS] UI changed: YES (\(self.elements.count) elements)")
+                    print("[CONTINUOUS] UI changed: YES (\(self.hintedElements.count) elements)")
                     return
                 }
 
-                print("[CONTINUOUS] UI changed: NO (still \(self.elements.count) elements)")
+                print("[CONTINUOUS] UI changed: NO (still \(self.hintedElements.count) elements)")
                 try await Task.sleep(for: .seconds(fallbackDelay))
                 guard self.isActive else { return }
 
@@ -480,10 +542,10 @@ class HintModeController {
             return
         }
 
-        self.elements = newElements
-        self.previousElementCount = newElements.count
-        self.assignHints()
-        self.overlayWindow?.updateHints(with: self.elements)
+        let newHintedElements = assignHints(to: newElements)
+        previousElementCount = newElements.count
+        session = .active(hintedElements: newHintedElements, filter: "")
+        self.overlayWindow?.updateHints(with: newHintedElements)
 
         let manualEndTime = CFAbsoluteTimeGetCurrent()
         let totalTime = (manualEndTime - manualStartTime) * 1000
@@ -520,5 +582,19 @@ class HintModeController {
         autoDeactivation = UserDefaults.standard.bool(forKey: AppSettings.Keys.autoHintDeactivation)
         deactivationDelay = UserDefaults.standard.double(forKey: AppSettings.Keys.hintDeactivationDelay)
         if deactivationDelay == 0 { deactivationDelay = 5.0 }
+    }
+
+    // MARK: - Session helpers
+
+    /// Update only the filter component of the current session without touching hinted elements.
+    private func updateSessionFilter(_ newFilter: String) {
+        switch session {
+        case .active(let elements, _):
+            session = .active(hintedElements: elements, filter: newFilter)
+        case .textSearch(let elements, let matches, _):
+            session = .textSearch(hintedElements: elements, matches: matches, filter: newFilter)
+        case .inactive:
+            break
+        }
     }
 }

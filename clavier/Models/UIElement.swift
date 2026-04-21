@@ -31,7 +31,6 @@ struct UIElement: Identifiable {
     var value: String?
     var elementDescription: String?
     var textAttributesLoaded: Bool = false
-    var hint: String = ""
 
     var centerPoint: CGPoint {
         CGPoint(x: visibleFrame.midX, y: visibleFrame.midY)

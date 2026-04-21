@@ -33,7 +33,7 @@ Sizing mode: **medium PRs per phase sub-area**.
   Depends on: P2-S1, P2-S2  
   Blocks: P3-S2, P4-S1, P4-S3
 
-- [ ] **P3-S1 — Hint domain/presentation split + identity-keyed overlay diff**  
+- [x] **P3-S1 — Hint domain/presentation split + identity-keyed overlay diff**  
   Depends on: P2-S1, P1-S3  
   Blocks: P4-S1, P4-S2, P5-S2
 
@@ -295,7 +295,7 @@ Blocks: P3-S2, P4-S1, P4-S3.
 
 ---
 
-### [ ] P3-S1 — Hint domain/presentation split + identity-keyed overlay diff
+### [x] P3-S1 — Hint domain/presentation split + identity-keyed overlay diff
 
 **Goal**  
 Separate discovered hintable entities from presentation state and key overlay reuse by stable entity identity.
