@@ -32,6 +32,8 @@ class ScrollModeController {
     // Carbon event handler installed once, reused across hotkey re-registrations
     private var eventHandlerRef: EventHandlerRef?
 
+    private let merger = ScrollableAreaMerger()
+
     // Settings cache
     private var scrollKeys = "hjkl"
     private var arrowMode = "select"
@@ -233,8 +235,12 @@ class ScrollModeController {
     private func continueProgressiveDiscovery() {
         // Run on main actor — ScrollableAreaService is @MainActor and AX calls must run on main thread.
         // The onAreaFound callback fires inline during traversal, providing progressive UI updates.
+        //
+        // The service's shouldAddArea gate already deduplicates areas within a single traversal
+        // wave, but it starts with an empty local list and therefore cannot see the focused area
+        // we pre-loaded in Phase 1.  We therefore evaluate each incoming area against self.areas
+        // (our live cross-wave list) using the same ScrollableAreaMerger policy.
 
-        let focusedAreaFrame = areas.first?.frame
         var areasFound = 0
         let maxAreas = 15
 
@@ -243,87 +249,22 @@ class ScrollModeController {
             if areasFound >= maxAreas { return }
             areasFound += 1
 
-            // Skip if this is the focused area we already have
-            if let focusedFrame = focusedAreaFrame,
-               abs(area.frame.origin.x - focusedFrame.origin.x) < 10 &&
-               abs(area.frame.origin.y - focusedFrame.origin.y) < 10 &&
-               abs(area.frame.width - focusedFrame.width) < 10 &&
-               abs(area.frame.height - focusedFrame.height) < 10 {
+            let existingFrames = self.areas.map(\.frame)
+            let decision = self.merger.decision(for: area.frame, against: existingFrames)
+
+            switch decision {
+            case .discard, .nestedInExisting:
                 return
-            }
 
-            // Check relationships with existing areas
-            var shouldAddNewArea = true
-            var removedAreas: [(index: Int, hint: String)] = []
-
-            for (index, existing) in self.areas.enumerated() {
-                if abs(area.frame.origin.x - existing.frame.origin.x) < 10 &&
-                   abs(area.frame.origin.y - existing.frame.origin.y) < 10 &&
-                   abs(area.frame.width - existing.frame.width) < 10 &&
-                   abs(area.frame.height - existing.frame.height) < 10 {
-                    shouldAddNewArea = false
-                    break
-                }
-
-                if area.frame.minX >= existing.frame.minX - 5 &&
-                   area.frame.maxX <= existing.frame.maxX + 5 &&
-                   area.frame.minY >= existing.frame.minY - 5 &&
-                   area.frame.maxY <= existing.frame.maxY + 5 {
-
-                    let sameXOrigin = abs(area.frame.origin.x - existing.frame.origin.x) < 2
-                    if sameXOrigin {
-                        shouldAddNewArea = false
-                        break
-                    }
-
-                    let newSize = area.frame.width * area.frame.height
-                    let existingSize = existing.frame.width * existing.frame.height
-                    if newSize / existingSize > 0.7 {
-                        shouldAddNewArea = false
-                        break
-                    }
-                }
-
-                if existing.frame.minX >= area.frame.minX - 5 &&
-                   existing.frame.maxX <= area.frame.maxX + 5 &&
-                   existing.frame.minY >= area.frame.minY - 5 &&
-                   existing.frame.maxY <= area.frame.maxY + 5 {
-
-                    let sameXOrigin = abs(area.frame.origin.x - existing.frame.origin.x) < 2
-                    if sameXOrigin {
-                        removedAreas.append((index, existing.hint))
-                    } else {
-                        let existingSize = existing.frame.width * existing.frame.height
-                        let newSize = area.frame.width * area.frame.height
-                        if existingSize / newSize > 0.7 {
-                            removedAreas.append((index, existing.hint))
-                        }
-                    }
-                }
-
-                if abs(area.frame.origin.x - existing.frame.origin.x) < 10 &&
-                   abs(area.frame.width - existing.frame.width) < 10 &&
-                   abs(area.frame.origin.y - existing.frame.origin.y) >= 10 {
-
-                    let newSize = area.frame.width * area.frame.height
-                    let existingSize = existing.frame.width * existing.frame.height
-                    if newSize > existingSize {
-                        removedAreas.append((index, existing.hint))
-                    } else {
-                        shouldAddNewArea = false
-                        break
-                    }
-                }
-            }
-
-            if !shouldAddNewArea { return }
-
-            if !removedAreas.isEmpty {
-                for (index, hint) in removedAreas.reversed() {
-                    self.overlayWindow?.removeArea(withHint: hint)
+            case .replaceExisting(let indices):
+                for index in indices.sorted().reversed() {
+                    self.overlayWindow?.removeArea(withHint: self.areas[index].hint)
                     self.areas.remove(at: index)
                 }
                 self.reassignHints()
+
+            case .add:
+                break
             }
 
             var areaWithHint = area
@@ -331,7 +272,6 @@ class ScrollModeController {
             areaWithHint.hint = nextHint
             self.areas.append(areaWithHint)
             self.overlayWindow?.addArea(areaWithHint)
-
             print("[HINT] #\(nextHint) → \(area.frame)")
         }, maxAreas: maxAreas)
     }

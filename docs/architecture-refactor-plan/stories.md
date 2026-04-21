@@ -25,7 +25,7 @@ Sizing mode: **medium PRs per phase sub-area**.
   Depends on: P1-S1, P1-S2, P1-S3  
   Blocks: P2-S3, P3-S1, P4-S2
 
-- [ ] **P2-S2 — Scroll progressive discovery converges on shared merger**  
+- [x] **P2-S2 — Scroll progressive discovery converges on shared merger**  
   Depends on: P1-S2, P1-S3  
   Blocks: P2-S3, P3-S2, P4-S3
 
@@ -226,7 +226,7 @@ Blocks: P2-S3, P3-S1, P4-S2.
 
 ---
 
-### [ ] P2-S2 — Scroll progressive discovery converges on shared merger
+### [x] P2-S2 — Scroll progressive discovery converges on shared merger
 
 **Goal**  
 Remove duplicated scroll dedupe/nesting geometry logic and route progressive updates through the shared merger policy.
