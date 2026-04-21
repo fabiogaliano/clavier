@@ -45,7 +45,7 @@ Sizing mode: **medium PRs per phase sub-area**.
   Depends on: P3-S1, P3-S2  
   Blocks: P4-S2, P4-S3, P5-S3
 
-- [ ] **P4-S2 — Hint controller decomposition to thin orchestrator**  
+- [x] **P4-S2 — Hint controller decomposition to thin orchestrator**  
   Depends on: P4-S1, P3-S1  
   Blocks: P5-S1, P5-S2
 
@@ -404,7 +404,7 @@ Blocks: P4-S2, P4-S3, P5-S3.
 
 ---
 
-### [ ] P4-S2 — Hint controller decomposition to thin orchestrator
+### [x] P4-S2 — Hint controller decomposition to thin orchestrator
 
 **Goal**  
 Refactor hint mode into cohesive modules with `HintModeController` as orchestration-only entry point.
