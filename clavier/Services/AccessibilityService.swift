@@ -8,23 +8,10 @@
 import Foundation
 import AppKit
 
-// Notification for UI changes
-extension Notification.Name {
-    static let accessibilityUIChanged = Notification.Name("accessibilityUIChanged")
-}
-
 @MainActor
 class AccessibilityService {
 
     static let shared = AccessibilityService()
-
-    // AXObserver for detecting UI changes
-    private var axObserver: AXObserver?
-    private var observedApp: pid_t = 0
-    private var debounceWorkItem: DispatchWorkItem?
-
-    // Track if we're waiting for changes
-    private var isObservingForChanges = false
 
     // Roles assumed interactive by default (capability check still gates on enabled state)
     private let interactiveRoles: Set<String> = [
@@ -268,120 +255,4 @@ class AccessibilityService {
         }
     }
 
-    // MARK: - AXObserver for UI Change Detection
-
-    /// Start observing UI changes for the frontmost application
-    func startObservingUIChanges() {
-        guard let focusedApp = NSWorkspace.shared.frontmostApplication,
-              let pid = focusedApp.processIdentifier as pid_t? else {
-            print("⚠️ Cannot start UI observer: no frontmost app")
-            return
-        }
-
-        // If already observing the same app, just mark as active
-        if pid == observedApp && axObserver != nil {
-            isObservingForChanges = true
-            print("✅ UI observer already active for PID \(pid)")
-            return
-        }
-
-        // Stop any existing observer
-        stopObservingUIChanges()
-
-        // Create AXObserver
-        var observer: AXObserver?
-        let result = AXObserverCreate(pid, axObserverCallback, &observer)
-
-        guard result == .success, let observer = observer else {
-            print("⚠️ Failed to create AXObserver: \(result.rawValue)")
-            return
-        }
-
-        self.axObserver = observer
-        self.observedApp = pid
-
-        // Get the app element to observe
-        let appElement = AXUIElementCreateApplication(pid)
-
-        // Register for relevant notifications
-        let notificationsToObserve: [String] = [
-            kAXLayoutChangedNotification as String,           // Layout/structure changes (key for web pages)
-            kAXUIElementDestroyedNotification as String,      // Elements removed
-            kAXCreatedNotification as String,                 // New elements
-            kAXFocusedUIElementChangedNotification as String, // Focus changes
-            kAXValueChangedNotification as String,            // Value changes
-            kAXSelectedChildrenChangedNotification as String  // Selection changes
-        ]
-
-        for notification in notificationsToObserve {
-            let addResult = AXObserverAddNotification(observer, appElement, notification as CFString, nil)
-            if addResult != .success && addResult != .notificationAlreadyRegistered {
-                print("⚠️ Failed to register for \(notification): \(addResult.rawValue)")
-            }
-        }
-
-        // Add observer to the current run loop
-        CFRunLoopAddSource(
-            CFRunLoopGetCurrent(),
-            AXObserverGetRunLoopSource(observer),
-            .defaultMode
-        )
-
-        isObservingForChanges = true
-        print("✅ Started UI observer for PID \(pid)")
-    }
-
-    /// Stop observing UI changes
-    func stopObservingUIChanges() {
-        debounceWorkItem?.cancel()
-        debounceWorkItem = nil
-
-        if let observer = axObserver {
-            CFRunLoopRemoveSource(
-                CFRunLoopGetCurrent(),
-                AXObserverGetRunLoopSource(observer),
-                .defaultMode
-            )
-            axObserver = nil
-        }
-
-        observedApp = 0
-        isObservingForChanges = false
-        print("🛑 Stopped UI observer")
-    }
-
-    /// Handle UI change notification from AXObserver (called from callback)
-    fileprivate func handleUIChangeNotification(_ notification: String) {
-        guard isObservingForChanges else { return }
-
-        print("🔔 UI change detected: \(notification)")
-
-        // Debounce rapid notifications (coalesce within 50ms)
-        debounceWorkItem?.cancel()
-
-        let workItem = DispatchWorkItem { [weak self] in
-            guard let self = self else { return }
-            Task { @MainActor in
-                guard self.isObservingForChanges else { return }
-                print("📢 Posting UI changed notification")
-                NotificationCenter.default.post(name: .accessibilityUIChanged, object: nil)
-            }
-        }
-
-        debounceWorkItem = workItem
-        DispatchQueue.main.asyncAfter(deadline: .now() + 0.05, execute: workItem)
-    }
-}
-
-// Global callback function for AXObserver (must be outside class for C interop)
-private func axObserverCallback(
-    _ observer: AXObserver,
-    _ element: AXUIElement,
-    _ notification: CFString,
-    _ refcon: UnsafeMutableRawPointer?
-) {
-    let notificationString = notification as String
-    Task { @MainActor in
-        AccessibilityService.shared.handleUIChangeNotification(notificationString)
-    }
 }

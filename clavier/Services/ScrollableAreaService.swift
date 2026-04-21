@@ -157,55 +157,6 @@ class ScrollableAreaService {
         return nil
     }
 
-    /// Find the index of a scrollable area that contains the currently focused element
-    func findFocusedScrollableAreaIndex(in areas: [ScrollableArea]) -> Int? {
-        guard let focusedApp = NSWorkspace.shared.frontmostApplication,
-              let pid = focusedApp.processIdentifier as pid_t? else {
-            return nil
-        }
-
-        let appElement = AXUIElementCreateApplication(pid)
-
-        // Get the focused element
-        guard case .success(let focusedElement) = AXReader.element(kAXFocusedUIElementAttribute as CFString, of: appElement) else {
-            return nil
-        }
-
-        // Walk up the parent chain to find a scrollable container
-        var currentElement: AXUIElement? = focusedElement
-
-        while let element = currentElement {
-            // Check if this element is one of our scrollable areas
-            if let index = findMatchingAreaIndex(element: element, in: areas) {
-                return index
-            }
-
-            // Move to parent
-            if case .success(let parent) = AXReader.element(kAXParentAttribute as CFString, of: element) {
-                currentElement = parent
-            } else {
-                break
-            }
-        }
-
-        return nil
-    }
-
-    /// Find the index of a scrollable area under the mouse cursor
-    func findScrollableAreaUnderCursorIndex(in areas: [ScrollableArea]) -> Int? {
-        // Get current mouse cursor position
-        let cursorLocation = NSEvent.mouseLocation
-
-        // Find which area contains the cursor
-        for (index, area) in areas.enumerated() {
-            if area.frame.contains(cursorLocation) {
-                return index
-            }
-        }
-
-        return nil
-    }
-
     /// Helper to find if an AXUIElement matches one of our scrollable areas
     private func findMatchingAreaIndex(element: AXUIElement, in areas: [ScrollableArea]) -> Int? {
         guard let elementArea = createScrollableArea(from: element) else {

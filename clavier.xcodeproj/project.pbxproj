@@ -8,6 +8,7 @@
 
 /* Begin PBXFileReference section */
 		05D0DD802ECAEC16006046EA /* clavier.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = clavier.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A1B2C3D4E5F60001000000AA /* clavierTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = clavierTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 /* End PBXFileReference section */
 
 /* Begin PBXFileSystemSynchronizedRootGroup section */
@@ -16,10 +17,22 @@
 			path = clavier;
 			sourceTree = "<group>";
 		};
+		A1B2C3D4E5F60001000000AB /* clavierTests */ = {
+			isa = PBXFileSystemSynchronizedRootGroup;
+			path = clavierTests;
+			sourceTree = "<group>";
+		};
 /* End PBXFileSystemSynchronizedRootGroup section */
 
 /* Begin PBXFrameworksBuildPhase section */
 		05D0DD7D2ECAEC16006046EA /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		A1B2C3D4E5F60001000000AC /* Frameworks */ = {
 			isa = PBXFrameworksBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
@@ -33,6 +46,7 @@
 			isa = PBXGroup;
 			children = (
 				05D0DD822ECAEC16006046EA /* clavier */,
+				A1B2C3D4E5F60001000000AB /* clavierTests */,
 				05D0DD812ECAEC16006046EA /* Products */,
 			);
 			sourceTree = "<group>";
@@ -41,6 +55,7 @@
 			isa = PBXGroup;
 			children = (
 				05D0DD802ECAEC16006046EA /* clavier.app */,
+				A1B2C3D4E5F60001000000AA /* clavierTests.xctest */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -70,6 +85,28 @@
 			productReference = 05D0DD802ECAEC16006046EA /* clavier.app */;
 			productType = "com.apple.product-type.application";
 		};
+		A1B2C3D4E5F60001000000AD /* clavierTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = A1B2C3D4E5F60001000000B0 /* Build configuration list for PBXNativeTarget "clavierTests" */;
+			buildPhases = (
+				A1B2C3D4E5F60001000000AE /* Sources */,
+				A1B2C3D4E5F60001000000AC /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				A1B2C3D4E5F60001000000AF /* PBXTargetDependency */,
+			);
+			fileSystemSynchronizedGroups = (
+				A1B2C3D4E5F60001000000AB /* clavierTests */,
+			);
+			name = clavierTests;
+			packageProductDependencies = (
+			);
+			productName = clavierTests;
+			productReference = A1B2C3D4E5F60001000000AA /* clavierTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -82,6 +119,10 @@
 				TargetAttributes = {
 					05D0DD7F2ECAEC16006046EA = {
 						CreatedOnToolsVersion = 16.2;
+					};
+					A1B2C3D4E5F60001000000AD = {
+						CreatedOnToolsVersion = 16.2;
+						TestTargetID = 05D0DD7F2ECAEC16006046EA;
 					};
 				};
 			};
@@ -100,6 +141,7 @@
 			projectRoot = "";
 			targets = (
 				05D0DD7F2ECAEC16006046EA /* clavier */,
+				A1B2C3D4E5F60001000000AD /* clavierTests */,
 			);
 		};
 /* End PBXProject section */
@@ -122,7 +164,21 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		A1B2C3D4E5F60001000000AE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		A1B2C3D4E5F60001000000AF /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 05D0DD7F2ECAEC16006046EA /* clavier */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		05D0DD8F2ECAEC17006046EA /* Debug */ = {
@@ -301,6 +357,44 @@
 			};
 			name = Release;
 		};
+		A1B2C3D4E5F60001000000B1 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 6MCP62F2D8;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fabiogaliano.clavierTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/clavier.app/Contents/MacOS/clavier";
+			};
+			name = Debug;
+		};
+		A1B2C3D4E5F60001000000B2 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 6MCP62F2D8;
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@loader_path/../Frameworks",
+				);
+				MACOSX_DEPLOYMENT_TARGET = 15.0;
+				PRODUCT_BUNDLE_IDENTIFIER = fabiogaliano.clavierTests;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_VERSION = 5.0;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/clavier.app/Contents/MacOS/clavier";
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -318,6 +412,15 @@
 			buildConfigurations = (
 				05D0DD922ECAEC17006046EA /* Debug */,
 				05D0DD932ECAEC17006046EA /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		A1B2C3D4E5F60001000000B0 /* Build configuration list for PBXNativeTarget "clavierTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				A1B2C3D4E5F60001000000B1 /* Debug */,
+				A1B2C3D4E5F60001000000B2 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;

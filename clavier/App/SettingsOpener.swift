@@ -52,9 +52,4 @@ struct SettingsOpenerView: View {
         window.identifier?.rawValue == "com.apple.SwiftUI.Settings" ||
         (window.isVisible && window.title.localizedCaseInsensitiveContains("settings"))
     }
-
-    // P5-S3: disposition pending — findSettingsWindow is currently unused.
-    private static func findSettingsWindow() -> NSWindow? {
-        NSApp.windows.first { isSettingsWindow($0) }
-    }
 }

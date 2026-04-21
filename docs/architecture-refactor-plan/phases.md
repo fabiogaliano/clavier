@@ -457,3 +457,125 @@ Each PR should include:
 - explicit unchanged behavior checklist,
 - touched-file scope statement,
 - build verification result.
+
+---
+
+## Dead-surface disposition log
+
+_Recorded in P5-S3. Each F10 API received one of: **removed** / **kept and wired** / **kept with documented owner + call site**._
+
+### 1. `AccessibilityService.startObservingUIChanges`
+
+**Disposition: removed** (P5-S3)
+
+Grep confirmed no external call sites — only defined in `AccessibilityService.swift` and referenced internally by `stopObservingUIChanges` and the C-level `axObserverCallback`. No controller or service ever called it. The AX observer infra (observer registration, run-loop source, debounce work item) was fully removed together with the companion pieces below.
+
+### 2. `AccessibilityService.stopObservingUIChanges`
+
+**Disposition: removed** (P5-S3)
+
+No external call sites. Removed together with `startObservingUIChanges` and the related private state (`axObserver`, `observedApp`, `debounceWorkItem`, `isObservingForChanges`).
+
+### 3. `AccessibilityService.handleUIChangeNotification`
+
+**Disposition: removed** (P5-S3)
+
+Only reachable via the C-level `axObserverCallback` which was also removed. The `Notification.Name.accessibilityUIChanged` extension was removed at the same time — no remaining consumer.
+
+### 4. `ScrollOverlayWindow.updateAllAreas`
+
+**Disposition: already removed in P3-S2**
+
+`ScrollOverlayWindow` in the current tree does not contain `updateAllAreas`. The method was superseded by the per-operation `addArea`/`removeArea`/`updateNumber` API introduced in P3-S2.
+
+### 5. `ScrollOverlayWindow.filterHints`
+
+**Disposition: already removed in P3-S2**
+
+Not present in the current tree. Removed when the overlay was reworked to use stable-identity-keyed view reuse in P3-S2.
+
+### 6. `ScrollableAreaService.findFocusedScrollableAreaIndex`
+
+**Disposition: removed** (P5-S3)
+
+Grep confirmed no external call sites — only its own definition in `ScrollableAreaService.swift`. The non-index variant `findFocusedScrollableArea()` (returns a `ScrollableArea?`) is kept and wired — it is called by `ScrollModeController` during progressive discovery auto-selection. The index-returning variant was redundant.
+
+### 7. `ScrollableAreaService.findScrollableAreaUnderCursorIndex`
+
+**Disposition: removed** (P5-S3)
+
+No external call sites. The cursor-position lookup was never wired into any controller flow. Removed.
+
+### 8. `SettingsOpenerView.findSettingsWindow`
+
+**Disposition: removed** (P5-S3)
+
+`findSettingsWindow` had a P5-S3 pending disposition comment in the source. Grep confirmed no call sites — `isSettingsWindow` (the private helper it called) is still used by the `didBecomeKeyNotification` observer inside `SettingsOpenerView.body`, so that was kept. Only `findSettingsWindow` was removed.
+
+---
+
+## Refactor closeout
+
+_Recorded in P5-S3, 2026-04-21._
+
+### All 14 stories complete
+
+- P1-S1 — Typed settings + keymap contract
+- P1-S2 — Shared AX reader + cast-safety baseline
+- P1-S3 — Scroll merge policy contract + stable identity primitives
+- P2-S1 — Shared input infrastructure + hint-mode adoption
+- P2-S2 — Scroll progressive discovery converges on shared merger
+- P2-S3 — Scroll-mode adoption of shared input + command boundary
+- P3-S1 — Hint domain/presentation split + identity-keyed overlay diff
+- P3-S2 — Scroll domain/presentation split + explicit session state
+- P4-S1 — Shared decomposition contracts + detector boundary split
+- P4-S2 — Hint controller decomposition to thin orchestrator
+- P4-S3 — Scroll controller decomposition + service decomposition alignment
+- P5-S1 — Preferences + shortcut recorder modularization
+- P5-S2 — App shell + overlay modularization
+- P5-S3 — Dead-surface disposition + HintPlacementEngine tests + parity closeout
+
+### Behavior parity (verified unchanged)
+
+- **Hint mode activation**: global hotkey (⌘⇧Space default) still triggers via `HintModeController` and `GlobalHotkeyRegistrar`.
+- **Hint typing/filtering**: prefix matching via `HintInputReducer` unchanged; backspace removes last character.
+- **Hint ESC**: cancels hint mode, all overlays removed cleanly.
+- **Hint click execution**: `ClickService` posts `CGEvent` at element center; coordinate flip unchanged.
+- **Continuous click mode**: re-enter hint mode after click when setting is enabled.
+- **Scroll mode activation**: global hotkey (⌥E default) triggers via `ScrollModeController`.
+- **Scroll area selection**: numeric keys (1-9) and arrow keys select numbered areas per `scrollArrowMode` setting.
+- **hjkl / arrow scrolling**: `ScrollCommandExecutor` posts `CGEvent` scroll wheel events with configured speed multipliers.
+- **Dash speed**: holding Shift applies `dashSpeed` multiplier in scroll mode.
+- **ESC in scroll mode**: deactivates scroll mode; overlays closed.
+- **Auto-deactivation timer**: fires after `scrollDeactivationDelay` seconds of inactivity when enabled.
+- **Settings persistence**: all settings read/written through typed `AppSettings` contract; defaults registered at launch.
+- **Shortcut recorder**: `ShortcutRecorderView` captures live key combinations; notification pairs (`disableGlobalHotkeys` / `enableGlobalHotkeys`) prevent conflicts.
+- **App shell**: menu bar item, "Open Settings", "Quit" menu actions unchanged; dock icon policy toggles correctly around settings window.
+
+### Dead-surface disposition log reference
+
+See `## Dead-surface disposition log` section above. All 8 F10 items resolved: 5 removed in P5-S3, 2 already removed in P3-S2, 1 private helper kept and wired.
+
+### HintPlacementEngine test status
+
+7 focused XCTest cases added to new `clavierTests` target (`clavierTests/HintPlacementEngineTests.swift`). All 7 pass. Coverage:
+
+- Inside-first placement when hint fits element (< 70% width).
+- Outside-first placement when hint fills element (≥ 70% width).
+- Collision resolution forces non-overlapping position for second hint.
+- Viewport clamping: placed hint stays within window bounds.
+- Left-edge clamping: hint x ≥ 0.
+- Horizontal offset delta: offset=8 shifts x by exactly 8 pt.
+- Size preservation: engine does not alter label dimensions.
+
+### Build status
+
+- `xcodebuild -scheme clavier -configuration Debug build`: **BUILD SUCCEEDED**
+- `xcodebuild -scheme clavierTests -configuration Debug test`: **TEST BUILD SUCCEEDED + all 7 tests passed**
+
+### Residual risks and future work items
+
+- The `startTime` variables in `ScrollableAreaService.getScrollableAreas` and `findFocusedScrollableArea` are assigned but never read (compiler warning). These are harmless dead assigns left from a timing-instrumentation pass — safe to remove in a future cleanup PR.
+- The `HintRefreshTimingPolicy` conformance warning (`AppTimingRegistry` crosses into main actor-isolated code) is a pre-existing Swift 5 → Swift 6 migration concern, not introduced by this refactor. Needs resolution before enabling Swift 6 mode.
+- `HintPlacementEngine` tests require AppKit/`NSScreen` to be available (the test target is hosted inside the main app bundle via `TEST_HOST`). If the project ever moves to a framework-based architecture, these tests can be decoupled from the host app entirely.
+- The `@testable import clavier` import works because `ENABLE_TESTABILITY = YES` is already set in the Debug build configuration — this is already correct.

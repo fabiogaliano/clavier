@@ -61,7 +61,7 @@ Sizing mode: **medium PRs per phase sub-area**.
   Depends on: P4-S2, P4-S3  
   Blocks: P5-S3
 
-- [ ] **P5-S3 — Dead-surface disposition + HintPlacementEngine tests + parity closeout**  
+- [x] **P5-S3 — Dead-surface disposition + HintPlacementEngine tests + parity closeout**  
   Depends on: P5-S1, P5-S2, P4-S1  
   Blocks: _final story_
 
@@ -551,7 +551,7 @@ Blocks: P5-S3.
 
 ---
 
-### [ ] P5-S3 — Dead-surface disposition + HintPlacementEngine tests + parity closeout
+### [x] P5-S3 — Dead-surface disposition + HintPlacementEngine tests + parity closeout
 
 **Goal**  
 Complete cleanup and validation: resolve all dead-surface items explicitly, add missing placement tests, and close refactor parity checks.
