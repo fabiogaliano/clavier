@@ -12,6 +12,10 @@ struct UIElement: Identifiable {
     let id = UUID()
     let axElement: AXUIElement
     let frame: CGRect
+    // Frame intersected with the propagated ancestor/screen clip bounds during
+    // AX traversal. Used as the anchor for hint placement and click targeting
+    // so partially-clipped elements stay reachable.
+    let visibleFrame: CGRect
     let role: String
     // Hash of nearest clickable ancestor (for deduplication)
     var clickableAncestorHash: Int? = nil
@@ -24,7 +28,7 @@ struct UIElement: Identifiable {
     var hint: String = ""
 
     var centerPoint: CGPoint {
-        CGPoint(x: frame.midX, y: frame.midY)
+        CGPoint(x: visibleFrame.midX, y: visibleFrame.midY)
     }
 
     /// Combined searchable text from all text properties

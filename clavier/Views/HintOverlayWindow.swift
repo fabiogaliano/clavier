@@ -114,8 +114,7 @@ class HintOverlayWindow: NSWindow {
 
         label.sizeToFit()
 
-        // Add padding
-        let padding: CGFloat = 4
+        let padding: CGFloat = 2
         let width = label.frame.width + padding * 2
         let height = label.frame.height + padding
 
@@ -125,7 +124,7 @@ class HintOverlayWindow: NSWindow {
         glassContainer.blendingMode = .behindWindow
         glassContainer.state = .active
         glassContainer.wantsLayer = true
-        glassContainer.layer?.cornerRadius = 4
+        glassContainer.layer?.cornerRadius = 3
         glassContainer.layer?.masksToBounds = true
         glassContainer.layer?.borderWidth = 1
         glassContainer.layer?.borderColor = style.borderColor.withAlphaComponent(style.bdrOpacity).cgColor
@@ -364,7 +363,7 @@ class HintOverlayWindow: NSWindow {
     }
 
     private func createHighlightView(for element: UIElement) -> NSView {
-        let localFrame = ScreenGeometry.toWindowLocal(element.frame.insetBy(dx: -2, dy: -2))
+        let localFrame = ScreenGeometry.toWindowLocal(element.visibleFrame.insetBy(dx: -2, dy: -2))
         let highlightView = NSView(frame: localFrame)
         highlightView.wantsLayer = true
         highlightView.layer?.borderWidth = 3

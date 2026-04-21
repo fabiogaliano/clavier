@@ -273,28 +273,32 @@ class HintModeController {
         // Always use 2-letter hints minimum, expand to 3-letter if needed
         var hints: [String] = []
 
-        let twoCharCombos = chars.count * chars.count // e.g., 8 * 8 = 64
+        let n = chars.count
+        let twoCharCombos = n * n
+        let threeCharCombos = n * n * n
+        // Cap at the 3-char alphabet maximum to prevent index overflow on dense pages.
+        let hintCount = min(count, threeCharCombos)
 
         if count <= twoCharCombos {
-            // Two character hints (e.g., aa, as, ad, af, ah, aj, ak, al, sa, ss...)
-            for i in 0..<count {
-                let first = chars[i / chars.count]
-                let second = chars[i % chars.count]
+            for i in 0..<hintCount {
+                let first = chars[i / n]
+                let second = chars[i % n]
                 hints.append("\(first)\(second)")
             }
         } else {
-            // Three character hints (e.g., aaa, aas, aad...)
-            for i in 0..<count {
-                let first = chars[i / (chars.count * chars.count)]
-                let second = chars[(i / chars.count) % chars.count]
-                let third = chars[i % chars.count]
+            for i in 0..<hintCount {
+                let first = chars[i / (n * n)]
+                let second = chars[(i / n) % n]
+                let third = chars[i % n]
                 hints.append("\(first)\(second)\(third)")
             }
         }
 
-        // Assign to elements
-        for i in 0..<elements.count {
+        for i in 0..<hintCount {
             elements[i].hint = hints[i]
+        }
+        if hintCount < elements.count {
+            elements = Array(elements.prefix(hintCount))
         }
     }
 
@@ -615,8 +619,11 @@ class HintModeController {
     }
 
     private func performRightClick(on element: UIElement) {
-        let clickPoint = ScreenGeometry.appKitCenterToQuartz(element.centerPoint)
-        ClickService.shared.rightClick(at: clickPoint)
+        let axResult = AXUIElementPerformAction(element.axElement, "AXShowMenu" as CFString)
+        if axResult != .success {
+            let clickPoint = ScreenGeometry.appKitCenterToQuartz(element.centerPoint)
+            ClickService.shared.rightClick(at: clickPoint)
+        }
 
         // Restart auto-deactivation timer after successful click
         startDeactivationTimer()
@@ -725,8 +732,14 @@ class HintModeController {
     }
 
     private func performClick(on element: UIElement) {
-        let clickPoint = ScreenGeometry.appKitCenterToQuartz(element.centerPoint)
-        ClickService.shared.click(at: clickPoint)
+        // AXPress works regardless of screen position (handles off-screen popovers,
+        // scroll-clipped elements, Electron apps with misreported AX frames).
+        // Fall back to CGEvent only when the element has no press action.
+        let axResult = AXUIElementPerformAction(element.axElement, kAXPressAction as CFString)
+        if axResult != .success {
+            let clickPoint = ScreenGeometry.appKitCenterToQuartz(element.centerPoint)
+            ClickService.shared.click(at: clickPoint)
+        }
 
         // Restart auto-deactivation timer after successful click
         startDeactivationTimer()

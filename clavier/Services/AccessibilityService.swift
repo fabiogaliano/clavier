@@ -205,9 +205,19 @@ class AccessibilityService {
             // The origin check is intentionally omitted: secondary displays can
             // have negative AppKit coordinates (screens left of or below main).
             if frame.width > 5 && frame.height > 5 {
+                // Compute the portion of the element that is actually visible
+                // after ancestor/scroll/viewport clipping. Vimium-style: anchor
+                // the hint to the visible rect so partially-clipped elements
+                // don't get hints placed off-screen or behind containers.
+                let visibleAX = elementFrame.intersection(clipBounds)
+                let visibleFrame = ScreenGeometry.axToAppKit(
+                    position: visibleAX.origin,
+                    size: visibleAX.size
+                )
                 var uiElement = UIElement(
                     axElement: element,
                     frame: frame,
+                    visibleFrame: visibleFrame,
                     role: role
                 )
                 // Frame-aware dedup: only mark as duplicate if frames nearly match ancestor

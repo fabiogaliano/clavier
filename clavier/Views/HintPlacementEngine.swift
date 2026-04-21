@@ -13,8 +13,6 @@ import AppKit
 struct HintPlacementEngine {
 
     private var placedFrames: [CGRect] = []
-
-    /// Window-local size of the overlay (used for edge clamping).
     private let windowSize: CGSize
 
     init(windowSize: CGSize) {
@@ -23,11 +21,6 @@ struct HintPlacementEngine {
 
     // MARK: - Public
 
-    /// Returns a window-local frame for a hint label.
-    ///
-    /// Tries candidate positions in priority order and picks the first one
-    /// that does not overlap an already-placed hint.  Falls back to the
-    /// primary candidate when all alternatives collide.
     mutating func place(element: UIElement, labelSize: CGSize, horizontalOffset: CGFloat) -> CGRect {
         let candidates = candidateFrames(element: element, labelSize: labelSize, horizontalOffset: horizontalOffset)
 
@@ -39,10 +32,21 @@ struct HintPlacementEngine {
             }
         }
 
-        // All candidates collide — use the primary position, clamped.
-        let fallback = clamp(candidates[0])
-        placedFrames.append(fallback)
-        return fallback
+        // All structured candidates collide — scan in label-width steps so
+        // stacked hints shift apart rather than drawing on top of each other.
+        let base = clamp(candidates[0])
+        let step = labelSize.width + 4
+        for multiplier: CGFloat in [1, -1, 2, -2, 3, -3] {
+            let shifted = clamp(CGRect(x: base.minX + step * multiplier, y: base.minY,
+                                      width: base.width, height: base.height))
+            if !collides(shifted) {
+                placedFrames.append(shifted)
+                return shifted
+            }
+        }
+
+        placedFrames.append(base)
+        return base
     }
 
     // MARK: - Private
@@ -50,21 +54,51 @@ struct HintPlacementEngine {
     private func candidateFrames(element: UIElement, labelSize: CGSize, horizontalOffset: CGFloat) -> [CGRect] {
         let w = labelSize.width
         let h = labelSize.height
-        let el = element.frame
+        let el = element.visibleFrame
+        let gap: CGFloat = 4
 
+        // Pre-clamp anchor in screen space so hints never escape the physical
+        // display the element lives on, regardless of window-local zero point.
+        let screen = NSScreen.screens.first(where: { $0.frame.intersects(el) }) ?? NSScreen.main
+        let sf = screen?.frame ?? CGRect(origin: .zero, size: windowSize)
+
+        func sx(_ x: CGFloat) -> CGFloat { max(sf.minX, min(x, sf.maxX - w)) }
+        func sy(_ y: CGFloat) -> CGFloat { max(sf.minY, min(y, sf.maxY - h)) }
         func local(x: CGFloat, y: CGFloat) -> CGRect {
-            ScreenGeometry.toWindowLocal(CGRect(x: x, y: y, width: w, height: h))
+            ScreenGeometry.toWindowLocal(CGRect(x: sx(x), y: sy(y), width: w, height: h))
         }
 
+        let ax   = el.minX + horizontalOffset
+        let midY = el.minY + (el.height - h) / 2
+
+        // Size-adaptive placement (key insight from label-placement research):
+        // When the hint is large relative to the element it labels, place it
+        // OUTSIDE the element boundary so the icon/content stays readable.
+        // 2024 user study (arxiv 2407.11996): preferred order is
+        //   above > below > right > top-right > bottom-right > left > inside
+        let fillsElement = w >= el.width * 0.7 || h >= el.height * 0.7
+
+        if fillsElement {
+            return [
+                local(x: ax,                y: el.maxY + gap),           // above ← most preferred
+                local(x: ax,                y: el.minY - h - gap),       // below
+                local(x: el.maxX + gap,     y: midY),                    // right, vertically centred
+                local(x: el.maxX + gap,     y: el.maxY - h),             // top-right
+                local(x: el.maxX + gap,     y: el.minY),                 // bottom-right
+                local(x: el.minX - w - gap, y: midY),                    // left, vertically centred
+                local(x: ax,                y: el.maxY - h),             // inside top-left (last resort)
+            ]
+        }
+
+        // Hint fits inside the element — inside-first, outside as escape hatches.
         return [
-            // Primary: top-left corner of element with the user's horizontal offset.
-            local(x: el.minX + horizontalOffset, y: el.maxY - h),
-            // Nudge right past the hint label itself.
-            local(x: el.minX + horizontalOffset + w + 4, y: el.maxY - h),
-            // Vertically centred inside the element.
-            local(x: el.minX + horizontalOffset, y: el.minY + (el.height - h) / 2),
-            // Top-right corner as a last resort.
-            local(x: el.maxX - w, y: el.maxY - h),
+            local(x: ax,            y: el.maxY - h),                     // inside top-left
+            local(x: ax + w + gap,  y: el.maxY - h),                    // nudge right inside
+            local(x: ax,            y: midY),                            // vertically centred inside
+            local(x: el.maxX - w,   y: el.maxY - h),                    // inside top-right
+            local(x: ax,            y: el.maxY + gap),                   // above element
+            local(x: ax,            y: el.minY - h - gap),              // below element
+            local(x: el.maxX + gap, y: midY),                           // right of element
         ]
     }
 
@@ -74,8 +108,8 @@ struct HintPlacementEngine {
         return CGRect(x: x, y: y, width: rect.width, height: rect.height)
     }
 
-    // Use a 1pt inset so labels that merely touch are still considered clear.
+    // 3 pt gap prevents visually-touching labels from passing as non-colliding.
     private func collides(_ rect: CGRect) -> Bool {
-        placedFrames.contains { $0.insetBy(dx: -1, dy: -1).intersects(rect) }
+        placedFrames.contains { $0.insetBy(dx: -3, dy: -3).intersects(rect) }
     }
 }
