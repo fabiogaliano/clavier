@@ -48,59 +48,45 @@ final class HintPlacementEngineTests: XCTestCase {
         ScreenGeometry.desktopBoundsInAppKit.size
     }
 
-    // MARK: - Placement ordering: inside-first for small hints
+    // MARK: - First-candidate placement (isolated element)
 
-    /// When the hint label fits comfortably inside the element (< 70 % of
-    /// element width), the engine must return a rect whose top-left corner lies
-    /// INSIDE the element bounds (window-local y ∈ [element.minY, element.maxY)).
-    func testInsideFirstPlacementWhenHintFitsElement() {
+    /// The current engine (see `HintPlacementEngine`, cluster-first cost-ranked
+    /// greedy) picks the first zero-cost candidate for an isolated element.
+    /// Candidate #0 is horizontally centred on the element (offset by the
+    /// configured `horizontalOffset`), so `placed.midX` should align with
+    /// `elLocal.midX` within a sub-pixel tolerance.
+    func testIsolatedElementPlacementIsHorizontallyCentred() {
         let screen = mainScreen
-        // Place a spacious element well inside the screen so no clamping fires.
         let el = CGRect(x: screen.midX - 60, y: screen.midY - 20, width: 120, height: 40)
         let element = makeElement(frame: el)
-        let ws = windowSize
 
-        var engine = HintPlacementEngine(windowSize: ws)
-        // Label 24 × 16 pt — well under 70 % of element width (120 pt)
+        var engine = HintPlacementEngine(windowSize: windowSize)
         let labelSize = CGSize(width: 24, height: 16)
         let placed = engine.place(element: element, labelSize: labelSize, horizontalOffset: 0)
 
-        // Convert element frame to window-local for comparison
         let elLocal = ScreenGeometry.toWindowLocal(el)
-
-        // Inside-first strategy: top of label should be at or below element.minY (in window-local),
-        // and bottom of label should be at or below element.maxY.
-        XCTAssertGreaterThanOrEqual(placed.minY, elLocal.minY - 1,
-            "inside placement: label top should not be below element bottom")
-        XCTAssertLessThanOrEqual(placed.maxY, elLocal.maxY + 1,
-            "inside placement: label should fit within element height")
+        XCTAssertEqual(placed.midX, elLocal.midX, accuracy: 1.0,
+            "isolated placement must keep the label centred on the element")
     }
 
-    // MARK: - Placement ordering: outside-first for large hints
-
-    /// When the hint label fills ≥ 70 % of the element width, the engine should
-    /// prefer placing the label OUTSIDE the element (above or below) rather than
-    /// inside.  The placed rect should not overlap the element's vertical range
-    /// (allowing a 1-pt tolerance for the gap).
-    func testOutsideFirstPlacementWhenHintFillsElement() {
+    /// An isolated small element must still receive a placement whose size
+    /// equals the requested label size and whose origin is on-screen.  This
+    /// is the minimum contract the renderer relies on when a tiny target
+    /// (e.g. a 30×20 icon) carries a wider hint label.
+    func testIsolatedSmallElementGetsValidPlacement() {
         let screen = mainScreen
-        // Small element with wide label to trigger fillsElement path.
-        // Place it far from edges so no edge clamping hides the placement choice.
         let el = CGRect(x: screen.midX - 15, y: screen.midY - 10, width: 30, height: 20)
         let element = makeElement(frame: el)
-        let ws = windowSize
 
-        var engine = HintPlacementEngine(windowSize: ws)
-        // Label 24 pt wide: 24/30 = 80 % → fillsElement = true
+        var engine = HintPlacementEngine(windowSize: windowSize)
         let labelSize = CGSize(width: 24, height: 16)
         let placed = engine.place(element: element, labelSize: labelSize, horizontalOffset: 0)
 
-        let elLocal = ScreenGeometry.toWindowLocal(el)
-
-        // Outside-first: label should not overlap the element's interior.
-        let labelIntersectsElement = placed.intersects(elLocal.insetBy(dx: 1, dy: 1))
-        XCTAssertFalse(labelIntersectsElement,
-            "outside-first placement \(placed) should not overlap element interior \(elLocal)")
+        XCTAssertEqual(placed.size, labelSize, "engine must preserve label size")
+        XCTAssertGreaterThanOrEqual(placed.minX, 0, "placement must stay in window bounds")
+        XCTAssertGreaterThanOrEqual(placed.minY, 0, "placement must stay in window bounds")
+        XCTAssertLessThanOrEqual(placed.maxX, windowSize.width)
+        XCTAssertLessThanOrEqual(placed.maxY, windowSize.height)
     }
 
     // MARK: - Collision resolution
