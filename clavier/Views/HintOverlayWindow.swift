@@ -20,6 +20,10 @@ class HintOverlayWindow: NSWindow {
     /// When true, all hint labels are hidden (search continues normally).
     /// Driven by `HintInputReducer.setLabelsHidden`.
     private var labelsForcedHidden: Bool = false
+    /// Placement frames from the previous render pass, keyed by stable
+    /// identity.  Used by the placement engine to bias toward prior
+    /// positions when valid and so reduce label jitter across refreshes.
+    private var previousPlacements: [ElementIdentity: CGRect] = [:]
 
     init(hintedElements: [HintedElement]) {
         self.hintedElements = hintedElements
@@ -63,6 +67,7 @@ class HintOverlayWindow: NSWindow {
         }
 
         self.contentView = containerView
+        snapshotPreviousPlacements()
     }
 
     private func setupSearchBar() {
@@ -125,7 +130,11 @@ class HintOverlayWindow: NSWindow {
         labelsForcedHidden = false
         let style = HintStyle()
         let obstacles = hintedElements.map { $0.element.visibleFrame }
-        var engine = HintPlacementEngine(windowSize: self.frame.size, elementFrames: obstacles)
+        var engine = HintPlacementEngine(
+            windowSize: self.frame.size,
+            elementFrames: obstacles,
+            previousPlacements: previousPlacements
+        )
         for hintedElement in hintedElements {
             let identity = hintedElement.identity
             if let existingView = hintViews[identity] {
@@ -145,11 +154,22 @@ class HintOverlayWindow: NSWindow {
             }
         }
 
+        snapshotPreviousPlacements()
         updateSearchBar(text: "")
         updateMatchCount(-1)
 
         self.contentView?.needsDisplay = true
         self.displayIfNeeded()
+    }
+
+    /// Record the current placement frames keyed by element identity so the
+    /// next refresh can bias toward stable positions.
+    private func snapshotPreviousPlacements() {
+        var snapshot: [ElementIdentity: CGRect] = [:]
+        for (identity, view) in hintViews {
+            snapshot[identity] = view.frame
+        }
+        previousPlacements = snapshot
     }
 
     /// Hide or reveal all hint labels while keeping search behaviour intact.

@@ -36,16 +36,27 @@ struct HintPlacementEngine {
     private let elementObstacles: [CGRect]
     private let windowSize: CGSize
     private let clusterDirection: [CGRect: PlacementDirection]
+    private let previousPlacements: [ElementIdentity: CGRect]
 
     enum PlacementDirection { case above, below, rightOf, leftOf }
 
-    init(windowSize: CGSize, elementFrames: [CGRect] = []) {
+    /// Maximum area-normalised collision cost we'll tolerate when reusing a
+    /// prior placement. 0.05 ≈ 5 % overlap with a single unit obstacle — still
+    /// visibly readable. Anything higher falls through to a fresh placement.
+    private static let stabilityCostThreshold: Double = 0.05
+
+    init(
+        windowSize: CGSize,
+        elementFrames: [CGRect] = [],
+        previousPlacements: [ElementIdentity: CGRect] = [:]
+    ) {
         self.windowSize = windowSize
         self.elementObstacles = elementFrames
         self.clusterDirection = Self.detectClusters(
             elementFrames,
             windowSize: windowSize
         )
+        self.previousPlacements = previousPlacements
     }
 
     // MARK: - Public
@@ -63,6 +74,23 @@ struct HintPlacementEngine {
         let candidates = candidateFrames(element: element, labelSize: labelSize, horizontalOffset: horizontalOffset)
         let ownFrame = element.visibleFrame
         let obstacleCount = elementObstacles.count
+
+        // Temporal coherence: if a previous placement for this identity is
+        // still geometrically valid (fits on screen, low overlap with current
+        // obstacles + already-placed labels), reuse it verbatim to avoid
+        // jitter when the underlying UI hasn't meaningfully changed.  Cluster
+        // members are intentionally excluded — they must re-join whatever
+        // direction the cluster picks for this pass.
+        if clusterDirection[ownFrame] == nil,
+           let previous = previousPlacements[element.stableID],
+           previous.size == labelSize,
+           canReusePreviousPlacement(previous, ownFrame: ownFrame) {
+            placedFrames.append(previous)
+            let elDesc = String(describing: ownFrame)
+            let rDesc = String(describing: previous)
+            Logger.hintMode.debug("place el=\(elDesc, privacy: .public) obstacles=\(obstacleCount) chose=STABLE rect=\(rDesc, privacy: .public)")
+            return previous
+        }
 
         // Cluster members commit to the pre-decided direction.  We skip
         // label-on-label cost for these (cluster mates tile tightly and
@@ -291,6 +319,17 @@ struct HintPlacementEngine {
         let x = max(0, min(rect.minX, windowSize.width - rect.width))
         let y = max(0, min(rect.minY, windowSize.height - rect.height))
         return CGRect(x: x, y: y, width: rect.width, height: rect.height)
+    }
+
+    /// True when a previously-chosen placement rect still clears the stability
+    /// bar: fully on-screen (clamping is a no-op) and its collision cost
+    /// against current obstacles + already-placed labels sits below
+    /// `stabilityCostThreshold`.
+    private func canReusePreviousPlacement(_ previous: CGRect, ownFrame: CGRect) -> Bool {
+        let clamped = clamp(previous)
+        guard clamped == previous else { return false }
+        let cost = collisionCost(previous, ownFrame: ownFrame)
+        return cost <= Self.stabilityCostThreshold
     }
 
     /// Area-normalised collision cost.  See Christensen, Marks & Shieber
