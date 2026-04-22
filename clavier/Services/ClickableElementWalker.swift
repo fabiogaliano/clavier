@@ -75,6 +75,7 @@ struct ClickableElementWalker {
             clickableAncestor: nil,
             clipBounds: clipBounds,
             depth: 0,
+            inWebArea: false,
             parentRecorderId: nil,
             recorder: recorder,
             into: &pending
@@ -97,6 +98,7 @@ struct ClickableElementWalker {
         clickableAncestor: (element: AXUIElement, frame: CGRect, recorderId: Int?)?,
         clipBounds: CGRect,
         depth: Int,
+        inWebArea: Bool,
         parentRecorderId: Int?,
         recorder: HintDiscoveryRecorder?,
         into pending: inout [PendingElement]
@@ -148,7 +150,19 @@ struct ClickableElementWalker {
             return
         }
 
-        let decision = clickability.evaluate(role: role, element: element, enabled: enabled)
+        // Web-area context is propagated in from the parent so AXWebArea
+        // *itself* classifies without the narrowing rules (its role is
+        // never AXStaticText).  Descendants see inWebArea == true.
+        let webContext = ClickabilityPolicy.WebContext(
+            inWebArea: inWebArea,
+            hasClickableAncestor: clickableAncestor != nil
+        )
+        let decision = clickability.evaluate(
+            role: role,
+            element: element,
+            enabled: enabled,
+            webContext: webContext
+        )
         let isClickable = decision.isClickable
 
         // Determine the node's final outcome (independent of pruning decision).
@@ -232,6 +246,10 @@ struct ClickableElementWalker {
         // Children inherit the tighter clip (intersection with current element).
         let childClipBounds = elementFrame.intersection(clipBounds)
 
+        // Children inherit web-area context: once we cross into an
+        // AXWebArea every descendant sees inWebArea == true.
+        let childInWebArea = inWebArea || role == "AXWebArea"
+
         for child in children {
             walkNode(
                 child,
@@ -239,6 +257,7 @@ struct ClickableElementWalker {
                 clickableAncestor: newClickableAncestor,
                 clipBounds: childClipBounds,
                 depth: depth + 1,
+                inWebArea: childInWebArea,
                 parentRecorderId: thisRecorderId,
                 recorder: recorder,
                 into: &pending

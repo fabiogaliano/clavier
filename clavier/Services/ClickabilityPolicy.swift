@@ -67,22 +67,88 @@ struct ClickabilityPolicy {
         case disabled
         case staticTextNoAction
         case roleNotInteractive
+        /// Pressable static text suppressed inside a web area because a
+        /// clickable ancestor already covers the same content — typical of
+        /// `<a>`/`<button>` wrapping inner text runs.
+        case staticTextDroppedByAncestor
+        /// Pressable static text suppressed inside a web area because it
+        /// exposes no `AXURL` and isn't wrapped by a clickable ancestor.
+        /// Filters out paragraph/label text that falsely advertises
+        /// `AXPress` without being a real link.
+        case staticTextDroppedNoURL
 
         var isClickable: Bool {
             switch self {
             case .interactiveRole, .staticTextPressable: return true
-            case .disabled, .staticTextNoAction, .roleNotInteractive: return false
+            case .disabled,
+                 .staticTextNoAction,
+                 .roleNotInteractive,
+                 .staticTextDroppedByAncestor,
+                 .staticTextDroppedNoURL:
+                return false
             }
         }
     }
 
+    /// Structural context supplied by the walker when the node being
+    /// classified lives inside a web page subtree.  Drives the narrowed
+    /// AXStaticText rules — everywhere else (native apps) the classifier
+    /// behaves as if this is absent.
+    struct WebContext {
+        /// `true` when any ancestor up the walk is an `AXWebArea`.
+        let inWebArea: Bool
+        /// `true` when the walker has already accepted some clickable
+        /// element strictly above this node.  Used to drop text nodes
+        /// that duplicate their wrapping link/button.
+        let hasClickableAncestor: Bool
+    }
+
     /// Classifying variant of `isClickable` — same decision points, plus
     /// a machine-readable reason tag used by the debug recorder.
-    func evaluate(role: String, element: AXUIElement, enabled: Bool?) -> Decision {
+    ///
+    /// `webContext` is `nil` for native-app traversal and for the pre-web
+    /// entry point; in both cases the classifier matches pre-WebArea
+    /// behaviour exactly.  Inside an `AXWebArea` the walker passes a
+    /// populated context, which activates the two narrowing rules.
+    func evaluate(
+        role: String,
+        element: AXUIElement,
+        enabled: Bool?,
+        webContext: WebContext? = nil
+    ) -> Decision {
         if let enabled, !enabled { return .disabled }
         if interactiveRoles.contains(role) { return .interactiveRole }
         if role == kAXStaticTextRole as String {
-            return hasClickAction(element) ? .staticTextPressable : .staticTextNoAction
+            guard hasClickAction(element) else { return .staticTextNoAction }
+            if let ctx = webContext, ctx.inWebArea {
+                if ctx.hasClickableAncestor { return .staticTextDroppedByAncestor }
+                if !hasURL(element) { return .staticTextDroppedNoURL }
+            }
+            return .staticTextPressable
+        }
+        return .roleNotInteractive
+    }
+
+    /// Pure sibling of `evaluate` — same decision tree with AX probes
+    /// hoisted out so tests can cover every branch without standing up a
+    /// live AX tree.  `hasClickAction` and `hasURL` are `false` by
+    /// default so callers only need to set what the test case exercises.
+    func classify(
+        role: String,
+        enabled: Bool?,
+        hasClickAction: Bool = false,
+        hasURL: Bool = false,
+        webContext: WebContext? = nil
+    ) -> Decision {
+        if let enabled, !enabled { return .disabled }
+        if interactiveRoles.contains(role) { return .interactiveRole }
+        if role == kAXStaticTextRole as String {
+            guard hasClickAction else { return .staticTextNoAction }
+            if let ctx = webContext, ctx.inWebArea {
+                if ctx.hasClickableAncestor { return .staticTextDroppedByAncestor }
+                if !hasURL { return .staticTextDroppedNoURL }
+            }
+            return .staticTextPressable
         }
         return .roleNotInteractive
     }
@@ -94,9 +160,21 @@ struct ClickabilityPolicy {
     ///   non-interactive elements) and is treated as "not disabled".
     /// - Interactive roles pass immediately.
     /// - `AXStaticText` is a special case: only clickable when it exposes
-    ///   `AXPress` or `AXShowMenu`.
-    func isClickable(role: String, element: AXUIElement, enabled: Bool?) -> Bool {
-        evaluate(role: role, element: element, enabled: enabled).isClickable
+    ///   `AXPress` or `AXShowMenu`.  Inside a web area the walker also
+    ///   suppresses duplicates (see `Decision.staticTextDroppedByAncestor`)
+    ///   and URL-less candidates (`staticTextDroppedNoURL`).
+    func isClickable(
+        role: String,
+        element: AXUIElement,
+        enabled: Bool?,
+        webContext: WebContext? = nil
+    ) -> Bool {
+        evaluate(
+            role: role,
+            element: element,
+            enabled: enabled,
+            webContext: webContext
+        ).isClickable
     }
 
     /// Pure predicate companion to `isClickable` — same decision based only
@@ -119,5 +197,18 @@ struct ClickabilityPolicy {
         }
         return actionNames.contains(kAXPressAction as String)
             || actionNames.contains("AXShowMenu")
+    }
+
+    /// Probe for the presence of `AXURL` — real web links carry one, plain
+    /// text runs that happen to inherit `AXPress` from a nearby focusable
+    /// ancestor do not.  Only called when the walker already knows we're
+    /// inside an `AXWebArea` without a clickable ancestor, so it costs at
+    /// most one extra IPC call per surviving static-text candidate.
+    private func hasURL(_ element: AXUIElement) -> Bool {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, "AXURL" as CFString, &ref) == .success else {
+            return false
+        }
+        return ref != nil
     }
 }
