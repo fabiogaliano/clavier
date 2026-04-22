@@ -96,8 +96,9 @@ struct ClickabilityPolicy {
         case staticTextDroppedByAncestor
         /// Pressable static text suppressed inside a web area because it
         /// exposes no `AXURL` and isn't wrapped by a clickable ancestor.
-        /// Filters out paragraph/label text that falsely advertises
-        /// `AXPress` without being a real link.
+        /// On Safari / Firefox the additional focusability probe also
+        /// reported the element as non-tabbable, so both signals agree
+        /// this is paragraph / label text rather than a real link.
         case staticTextDroppedNoURL
         /// Chromium-only: pressable static text suppressed because its
         /// `AXDOMRole` (HTML tag / ARIA role) is not an interactive
@@ -153,14 +154,20 @@ struct ClickabilityPolicy {
                 if ctx.hasClickableAncestor { return .staticTextDroppedByAncestor }
                 // Chromium exposes `AXDOMRole` (HTML tag or ARIA role) as
                 // an undocumented extra attribute.  When present it's
-                // ground truth — overrides the URL heuristic.
+                // ground truth — overrides the URL/focusable heuristics.
                 if let dr = readDOMRole(element) {
                     return interactiveDOMRoles.contains(dr)
                         ? .staticTextPressable
                         : .staticTextDroppedByDOMRole
                 }
-                // Safari / Firefox fallback: no `AXDOMRole`, use URL.
-                if !hasURL(element) { return .staticTextDroppedNoURL }
+                // Safari / Firefox fallback: no `AXDOMRole`.  Accept when
+                // the element is either a real link (has `AXURL`) or is
+                // focusable (supports `AXFocused`, i.e. is in the tab
+                // order).  Both signals independently indicate real
+                // interactivity; either one is enough.
+                if !isFocusable(element) && !hasURL(element) {
+                    return .staticTextDroppedNoURL
+                }
             }
             return .staticTextPressable
         }
@@ -169,14 +176,16 @@ struct ClickabilityPolicy {
 
     /// Pure sibling of `evaluate` — same decision tree with AX probes
     /// hoisted out so tests can cover every branch without standing up a
-    /// live AX tree.  `hasClickAction`, `hasURL` and `domRole` are
-    /// nil/false by default so callers only need to set what the test
-    /// case exercises.  `domRole` is compared case-insensitively.
+    /// live AX tree.  `hasClickAction`, `hasURL`, `isFocusable` and
+    /// `domRole` are nil/false by default so callers only need to set
+    /// what the test case exercises.  `domRole` is compared
+    /// case-insensitively.
     func classify(
         role: String,
         enabled: Bool?,
         hasClickAction: Bool = false,
         hasURL: Bool = false,
+        isFocusable: Bool = false,
         domRole: String? = nil,
         webContext: WebContext? = nil
     ) -> Decision {
@@ -191,7 +200,7 @@ struct ClickabilityPolicy {
                         ? .staticTextPressable
                         : .staticTextDroppedByDOMRole
                 }
-                if !hasURL { return .staticTextDroppedNoURL }
+                if !isFocusable && !hasURL { return .staticTextDroppedNoURL }
             }
             return .staticTextPressable
         }
@@ -260,7 +269,8 @@ struct ClickabilityPolicy {
     /// Read Chromium's `AXDOMRole` attribute (the HTML tag name or ARIA
     /// role of the underlying DOM node) and return it lowercased.  Returns
     /// nil when the attribute is absent — e.g., Safari and Firefox don't
-    /// expose it, so the classifier falls back to the URL rule for those.
+    /// expose it, so the classifier falls back to the focusable/URL rule
+    /// for those.
     private func readDOMRole(_ element: AXUIElement) -> String? {
         var ref: CFTypeRef?
         guard AXUIElementCopyAttributeValue(element, "AXDOMRole" as CFString, &ref) == .success,
@@ -269,5 +279,22 @@ struct ClickabilityPolicy {
             return nil
         }
         return value.lowercased()
+    }
+
+    /// Probe whether the element participates in keyboard focus — real
+    /// tab-reachable controls (anchors, buttons, `tabindex >= 0` widgets)
+    /// expose the `AXFocused` attribute; paragraph text nodes do not.
+    /// We check attribute *presence* rather than its boolean value: the
+    /// value tells us whether this element is *currently* focused, while
+    /// presence alone tells us whether it *can be* focused.  Only called
+    /// on the Safari / Firefox fallback path when `AXDOMRole` wasn't
+    /// available.
+    private func isFocusable(_ element: AXUIElement) -> Bool {
+        var ref: CFTypeRef?
+        return AXUIElementCopyAttributeValue(
+            element,
+            kAXFocusedAttribute as CFString,
+            &ref
+        ) == .success
     }
 }

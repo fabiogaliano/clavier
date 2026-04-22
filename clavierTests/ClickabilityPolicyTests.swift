@@ -302,6 +302,76 @@ final class ClickabilityPolicyTests: XCTestCase {
         )
     }
 
+    // MARK: - classify: Safari / Firefox focusable fallback (commit 3)
+
+    func test_classify_inWebArea_safariFocusableNoURL_isPressable() {
+        // Safari exposes no AXDOMRole. A focusable element (has AXFocused
+        // attribute) is accepted even without AXURL — e.g., <button>
+        // renders as a focusable AXStaticText in some cases.
+        XCTAssertEqual(
+            policy.classify(
+                role: kAXStaticTextRole as String,
+                enabled: true,
+                hasClickAction: true,
+                hasURL: false,
+                isFocusable: true,
+                domRole: nil,
+                webContext: .init(inWebArea: true, hasClickableAncestor: false)
+            ),
+            .staticTextPressable
+        )
+    }
+
+    func test_classify_inWebArea_safariNotFocusableNoURL_isDropped() {
+        // No DOM role, not focusable, no URL — paragraph / label text.
+        XCTAssertEqual(
+            policy.classify(
+                role: kAXStaticTextRole as String,
+                enabled: true,
+                hasClickAction: true,
+                hasURL: false,
+                isFocusable: false,
+                domRole: nil,
+                webContext: .init(inWebArea: true, hasClickableAncestor: false)
+            ),
+            .staticTextDroppedNoURL
+        )
+    }
+
+    func test_classify_inWebArea_safariNotFocusableWithURL_isPressable() {
+        // URL alone (genuine link) is sufficient in the Safari fallback.
+        XCTAssertEqual(
+            policy.classify(
+                role: kAXStaticTextRole as String,
+                enabled: true,
+                hasClickAction: true,
+                hasURL: true,
+                isFocusable: false,
+                domRole: nil,
+                webContext: .init(inWebArea: true, hasClickableAncestor: false)
+            ),
+            .staticTextPressable
+        )
+    }
+
+    func test_classify_inWebArea_chromiumFocusable_deferredToDOMRole() {
+        // When AXDOMRole is present (Chromium), focusability is NOT
+        // consulted — DOM role is authoritative.  A focusable element
+        // whose DOM role is "p" must still be dropped.
+        XCTAssertEqual(
+            policy.classify(
+                role: kAXStaticTextRole as String,
+                enabled: true,
+                hasClickAction: true,
+                hasURL: false,
+                isFocusable: true,
+                domRole: "p",
+                webContext: .init(inWebArea: true, hasClickableAncestor: false)
+            ),
+            .staticTextDroppedByDOMRole
+        )
+    }
+
     func test_classify_inWebArea_ancestorOverridesDOMRole() {
         // Rule A short-circuits before the DOM-role check — an already-
         // clickable ancestor means we drop the inner text regardless of
