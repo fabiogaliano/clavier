@@ -12,6 +12,7 @@
 
 import Foundation
 import AppKit
+import os
 
 @MainActor
 class HintModeController {
@@ -87,7 +88,7 @@ class HintModeController {
         renderer.open(session: .active(hintedElements: hintedElements, filter: ""))
 
         guard startEventTap() else {
-            print("⚠️ Failed to create event tap. Check Accessibility permissions in System Settings > Privacy & Security > Accessibility.")
+            Logger.hintMode.warning("Failed to create event tap. Check Accessibility permissions in System Settings > Privacy & Security > Accessibility.")
             renderer.close()
             return
         }
@@ -142,7 +143,7 @@ class HintModeController {
 
         if kind == .continuous {
             let queryEnd = CFAbsoluteTimeGetCurrent()
-            print("[CONTINUOUS] Query elements: \(String(format: "%.0f", (queryEnd - start) * 1000))ms")
+            Logger.hintMode.debug("continuous: query elements \(Int((queryEnd - start) * 1000), privacy: .public)ms")
         }
 
         let newHintedElements = assignHints(to: newElements)
@@ -155,10 +156,10 @@ class HintModeController {
         switch kind {
         case .continuous:
             let overlayEnd = CFAbsoluteTimeGetCurrent()
-            print("[CONTINUOUS] Update overlay: \(String(format: "%.0f", (overlayEnd - overlayStart) * 1000))ms")
+            Logger.hintMode.debug("continuous: update overlay \(Int((overlayEnd - overlayStart) * 1000), privacy: .public)ms")
         case .manual:
             let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
-            print("[MANUAL] Refreshed \(newElements.count) elements in \(String(format: "%.0f", elapsed))ms\n")
+            Logger.hintMode.debug("manual: refreshed \(newElements.count, privacy: .public) elements in \(Int(elapsed), privacy: .public)ms")
         }
 
         startDeactivationTimer()
@@ -291,7 +292,7 @@ class HintModeController {
     }
 
     private func scheduleRefresh() {
-        print("[CONTINUOUS] Click performed, starting refresh...")
+        Logger.hintMode.debug("continuous: click performed, starting refresh")
         let capturedCount = previousElementCount
         if case .active(let elements, _) = session {
             session = .active(hintedElements: elements, filter: "")

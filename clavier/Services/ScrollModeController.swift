@@ -14,6 +14,7 @@
 import Foundation
 import AppKit
 import Carbon
+import os
 
 @MainActor
 class ScrollModeController {
@@ -94,7 +95,7 @@ class ScrollModeController {
                 tapStarted = true
                 // Phase 1 always auto-selects: the focused area is the user's clear intent.
                 self.selectArea(at: 0)
-                print("[PERF] Auto-selected first area (focused area)")
+                Logger.scrollMode.debug("auto-selected first area (focused area)")
 
             case .areaAddedPhase2(let area, let isCursorInside):
                 if !tapStarted {
@@ -102,7 +103,7 @@ class ScrollModeController {
                     tapStarted = true
                     if isCursorInside {
                         self.selectArea(at: 0)
-                        print("[PERF] Auto-selected first area via cursor position")
+                        Logger.scrollMode.debug("auto-selected first area via cursor position")
                     }
                 } else {
                     self.appendArea(area)
@@ -128,7 +129,7 @@ class ScrollModeController {
         let numbered = NumberedArea(area: firstArea, number: "1")
         session = .active(areas: [numbered], selected: nil, pendingInput: "")
 
-        print("[HINT] #1 → \(firstArea.frame)")
+        Logger.scrollMode.debug("hint #1 → \(String(describing: firstArea.frame), privacy: .public)")
 
         renderer.open(initialAreas: areas)
 
@@ -142,7 +143,7 @@ class ScrollModeController {
         startDeactivationTimer()
 
         let elapsed = Date().timeIntervalSince(activationStart)
-        print("[PERF] Scroll mode activated with first area in \(String(format: "%.2f", elapsed * 1000))ms")
+        Logger.scrollMode.debug("scroll mode activated with first area in \(Int(elapsed * 1000), privacy: .public)ms")
         return true
     }
 
@@ -154,7 +155,7 @@ class ScrollModeController {
             session = .active(areas: current + [numbered], selected: sel, pendingInput: input)
         }
         renderer.addArea(numbered)
-        print("[HINT] #\(nextNumber) → \(area.frame)")
+        Logger.scrollMode.debug("hint #\(nextNumber, privacy: .public) → \(String(describing: area.frame), privacy: .public)")
     }
 
     /// Remove areas at the given indices and reassign contiguous numbers.
@@ -215,7 +216,7 @@ class ScrollModeController {
         )
 
         if !started {
-            print("⚠️ Failed to create event tap for scroll mode. Check Accessibility permissions in System Settings > Privacy & Security > Accessibility.")
+            Logger.scrollMode.warning("Failed to create event tap for scroll mode. Check Accessibility permissions in System Settings > Privacy & Security > Accessibility.")
         }
         return started
     }
@@ -267,7 +268,7 @@ class ScrollModeController {
               index >= 0 && index < current.count else { return }
         session = .active(areas: current, selected: index, pendingInput: "")
         renderer.selectArea(at: index)
-        print("Selected scroll area \(index + 1)")
+        Logger.scrollMode.debug("selected scroll area \(index + 1, privacy: .public)")
     }
 
     // MARK: - Scroll execution

@@ -10,6 +10,7 @@
 
 import Foundation
 import AppKit
+import os
 
 @MainActor
 class AccessibilityService {
@@ -48,12 +49,12 @@ class AccessibilityService {
             walker.walk(window, pid: pid, clipBounds: visibleBounds, into: &pending)
         }
         let traverseEndTime = CFAbsoluteTimeGetCurrent()
-        print("  ⏱️ traverseElements: \(String(format: "%.3f", traverseEndTime - traverseStartTime))s (\(pending.count) raw elements)")
+        Logger.accessibility.debug("traverseElements: \(Int((traverseEndTime - traverseStartTime) * 1000), privacy: .public)ms (\(pending.count, privacy: .public) raw)")
 
         let dedupeStartTime = CFAbsoluteTimeGetCurrent()
         let deduplicated = ClickableElementWalker.collect(pending: pending)
         let dedupeEndTime = CFAbsoluteTimeGetCurrent()
-        print("  ⏱️ deduplicateElements: \(String(format: "%.3f", dedupeEndTime - dedupeStartTime))s (\(deduplicated.count) unique)")
+        Logger.accessibility.debug("deduplicateElements: \(Int((dedupeEndTime - dedupeStartTime) * 1000), privacy: .public)ms (\(deduplicated.count, privacy: .public) unique)")
 
         return deduplicated
     }

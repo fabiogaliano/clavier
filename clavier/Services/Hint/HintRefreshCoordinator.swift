@@ -18,6 +18,7 @@
 
 import Foundation
 import AppKit
+import os
 
 // MARK: - Coordinator
 
@@ -75,7 +76,7 @@ final class HintRefreshCoordinator: ModeCoordinator {
         let fallbackDelay = delays?.fallback ?? HintRefreshCoordinator.defaultFallbackDelay
 
         let appName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "unknown"
-        print("[CONTINUOUS] App: \(appName) | Delays: optimistic=\(Int(optimisticDelay * 1000))ms, fallback=\(Int(fallbackDelay * 1000))ms")
+        Logger.hintMode.debug("continuous: app=\(appName, privacy: .public) optimistic=\(Int(optimisticDelay * 1000), privacy: .public)ms fallback=\(Int(fallbackDelay * 1000), privacy: .public)ms")
 
         refreshStartTime = CFAbsoluteTimeGetCurrent()
 
@@ -86,22 +87,22 @@ final class HintRefreshCoordinator: ModeCoordinator {
                 guard !Task.isCancelled else { return }
 
                 let optimisticTime = CFAbsoluteTimeGetCurrent()
-                print("[CONTINUOUS] Optimistic refresh at +\(String(format: "%.0f", (optimisticTime - self.refreshStartTime) * 1000))ms")
+                Logger.hintMode.debug("continuous: optimistic refresh at +\(Int((optimisticTime - self.refreshStartTime) * 1000), privacy: .public)ms")
 
                 let newCount = onRefresh()
                 let uiChanged = newCount != previousCount
 
                 if uiChanged {
-                    print("[CONTINUOUS] UI changed: YES (\(newCount) elements)")
+                    Logger.hintMode.debug("continuous: UI changed (\(newCount, privacy: .public) elements)")
                     return
                 }
 
-                print("[CONTINUOUS] UI changed: NO (still \(newCount) elements)")
+                Logger.hintMode.debug("continuous: UI unchanged (still \(newCount, privacy: .public) elements)")
                 try await Task.sleep(for: .seconds(fallbackDelay))
                 guard !Task.isCancelled else { return }
 
                 let fallbackTime = CFAbsoluteTimeGetCurrent()
-                print("[CONTINUOUS] Fallback refresh at +\(String(format: "%.0f", (fallbackTime - self.refreshStartTime) * 1000))ms")
+                Logger.hintMode.debug("continuous: fallback refresh at +\(Int((fallbackTime - self.refreshStartTime) * 1000), privacy: .public)ms")
 
                 _ = onRefresh()
             } catch {

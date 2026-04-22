@@ -1,5 +1,6 @@
 import AppKit
 import Carbon
+import os
 
 @MainActor
 class AppDelegate: NSObject, NSApplicationDelegate {
@@ -81,7 +82,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let trusted = AXIsProcessTrustedWithOptions(options as CFDictionary)
 
         if !trusted {
-            print("Accessibility permissions not granted. Please enable in System Preferences.")
+            Logger.app.warning("Accessibility permissions not granted. Enable in System Settings > Privacy & Security > Accessibility.")
         }
     }
 

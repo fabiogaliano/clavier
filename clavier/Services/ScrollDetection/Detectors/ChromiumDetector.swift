@@ -8,6 +8,7 @@
 
 import Foundation
 import AppKit
+import os
 
 @MainActor
 class ChromiumDetector: AppSpecificDetector {
@@ -62,7 +63,7 @@ class ChromiumDetector: AppSpecificDetector {
         // If we found dev tools, return them but continue normal traversal
         // (to also get main viewport, sidebars, etc.)
         if foundDevTools {
-            print("[ChromiumDetector] Found \(areas.count) DevTools panels")
+            Logger.scrollDetect.debug("ChromiumDetector: found \(areas.count, privacy: .public) DevTools panels")
             return .customAreasWithContinuation(areas)
         }
 
