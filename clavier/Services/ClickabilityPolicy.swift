@@ -243,6 +243,14 @@ struct ClickabilityPolicy {
         skipSubtreeRoles.contains(role)
     }
 
+    /// `AXShowMenu` used to be accepted here on the theory that it
+    /// represents a "menu action" on text-like controls.  In practice
+    /// every Chromium web node advertises `AXShowMenu` for the browser's
+    /// universal right-click context menu, which turns every paragraph
+    /// into a hint.  Only `AXPress` is a reliable click signal on
+    /// `AXStaticText`; interactive-role elements don't go through this
+    /// probe at all, so tightening it to press-only doesn't affect
+    /// buttons, popup buttons, or other native menu surfaces.
     private func hasClickAction(_ element: AXUIElement) -> Bool {
         var actions: CFArray?
         guard AXUIElementCopyActionNames(element, &actions) == .success,
@@ -250,7 +258,6 @@ struct ClickabilityPolicy {
             return false
         }
         return actionNames.contains(kAXPressAction as String)
-            || actionNames.contains("AXShowMenu")
     }
 
     /// Probe for the presence of `AXURL` — real web links carry one, plain
