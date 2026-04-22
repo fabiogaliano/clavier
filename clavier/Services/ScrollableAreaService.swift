@@ -19,6 +19,7 @@ class ScrollableAreaService {
     }
 
     private let merger = ScrollableAreaMerger()
+    private let focusedFinder = FocusedScrollableAreaFinder()
 
     /// Canonical merge-policy gate: delegates to `ScrollableAreaMerger`.
     ///
@@ -102,67 +103,7 @@ class ScrollableAreaService {
 
     /// Fast focus detection - finds the focused scrollable area directly without needing full area list
     func findFocusedScrollableArea() -> ScrollableArea? {
-        let startTime = Date()
-
-        guard let focusedApp = NSWorkspace.shared.frontmostApplication,
-              let pid = focusedApp.processIdentifier as pid_t? else {
-            return nil
-        }
-
-        let appElement = AXUIElementCreateApplication(pid)
-
-        // Get the focused element
-        guard case .success(let focusedElement) = AXReader.element(kAXFocusedUIElementAttribute as CFString, of: appElement) else {
-            print("[PERF] No focused element found")
-            return nil
-        }
-
-        // Walk up the parent chain to find a scrollable container
-        var currentElement: AXUIElement? = focusedElement
-        var stepCount = 0
-
-        while let element = currentElement {
-            stepCount += 1
-
-            // Check if this element is scrollable
-            if case .success(let role) = AXReader.string(kAXRoleAttribute as CFString, of: element),
-               (ScrollableAXProbe.scrollableRoles.contains(role) || ScrollableAXProbe.hasScrollBars(element)) {
-
-                // Create scrollable area from this element
-                if let area = ScrollableAXProbe.makeArea(from: element),
-                   area.frame.width > 100 && area.frame.height > 100 {
-                    return area
-                }
-            }
-
-            // Move to parent
-            if case .success(let parent) = AXReader.element(kAXParentAttribute as CFString, of: element) {
-                currentElement = parent
-            } else {
-                break
-            }
-        }
-
-        return nil
-    }
-
-    /// Helper to find if an AXUIElement matches one of our scrollable areas
-    private func findMatchingAreaIndex(element: AXUIElement, in areas: [ScrollableArea]) -> Int? {
-        guard let elementArea = ScrollableAXProbe.makeArea(from: element) else {
-            return nil
-        }
-
-        // Find matching area by comparing frames
-        for (index, area) in areas.enumerated() {
-            if abs(area.frame.origin.x - elementArea.frame.origin.x) < 5 &&
-               abs(area.frame.origin.y - elementArea.frame.origin.y) < 5 &&
-               abs(area.frame.width - elementArea.frame.width) < 5 &&
-               abs(area.frame.height - elementArea.frame.height) < 5 {
-                return index
-            }
-        }
-
-        return nil
+        focusedFinder.find()
     }
 
     private func traverseElement(
