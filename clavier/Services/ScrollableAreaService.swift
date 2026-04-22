@@ -13,17 +13,6 @@ class ScrollableAreaService {
 
     static let shared = ScrollableAreaService()
 
-    private let scrollableRoles: Set<String> = [
-        "AXScrollArea",
-        "AXScrollView",
-        kAXTableRole as String,
-        kAXOutlineRole as String,
-        kAXListRole as String
-        // Removed: "AXWebArea" - causes massive over-detection in browsers (every iframe, frame, document)
-        // Removed: "AXTextArea" - too generic, causes false positives
-        // Web content is still scrollable via scroll bar detection in hasScrollBars()
-    ]
-
     // Configuration constants
     private enum Config {
         static let minimumAreaSize: CGFloat = 100
@@ -137,10 +126,10 @@ class ScrollableAreaService {
 
             // Check if this element is scrollable
             if case .success(let role) = AXReader.string(kAXRoleAttribute as CFString, of: element),
-               (scrollableRoles.contains(role) || hasScrollBars(element)) {
+               (ScrollableAXProbe.scrollableRoles.contains(role) || ScrollableAXProbe.hasScrollBars(element)) {
 
                 // Create scrollable area from this element
-                if let area = createScrollableArea(from: element),
+                if let area = ScrollableAXProbe.makeArea(from: element),
                    area.frame.width > 100 && area.frame.height > 100 {
                     return area
                 }
@@ -159,7 +148,7 @@ class ScrollableAreaService {
 
     /// Helper to find if an AXUIElement matches one of our scrollable areas
     private func findMatchingAreaIndex(element: AXUIElement, in areas: [ScrollableArea]) -> Int? {
-        guard let elementArea = createScrollableArea(from: element) else {
+        guard let elementArea = ScrollableAXProbe.makeArea(from: element) else {
             return nil
         }
 
@@ -211,19 +200,19 @@ class ScrollableAreaService {
         }
 
         // Check if element is scrollable (with validation for progressive discovery)
-        let hasScrollableRole = scrollableRoles.contains(role)
-        let hasEnabledScrollBars = hasScrollBars(element, validateEnabled: true)
+        let hasScrollableRole = ScrollableAXProbe.scrollableRoles.contains(role)
+        let hasEnabledScrollBars = ScrollableAXProbe.hasScrollBars(element, validateEnabled: true)
 
         // For progressive discovery, require either a scrollable role with enabled scrollbars, or just enabled scrollbars
         if hasScrollableRole || hasEnabledScrollBars {
             // If it has a scrollable role but no enabled scrollbars, check if it's web content
             if hasScrollableRole && !hasEnabledScrollBars {
                 // Check if this is web content - web scrollables don't expose native scrollbar attributes
-                let isWebContent = hasWebAncestor(element)
+                let isWebContent = ScrollableAXProbe.hasWebAncestor(element)
 
                 if isWebContent {
                     // Web scrollables are accepted without native scrollbar validation
-                    if let area = createScrollableArea(from: element) {
+                    if let area = ScrollableAXProbe.makeArea(from: element) {
                         // Size filter only — origin check omitted because secondary displays
                         // can have negative AppKit coordinates (screens left of or below main).
                         if area.frame.width > Config.minimumAreaSize &&
@@ -242,7 +231,7 @@ class ScrollableAreaService {
                         }
                     }
                 }
-            } else if let area = createScrollableArea(from: element) {
+            } else if let area = ScrollableAXProbe.makeArea(from: element) {
                 // Size filter only — see comment above for why origin check is omitted.
                 if area.frame.width > Config.minimumAreaSize &&
                    area.frame.height > Config.minimumAreaSize {
@@ -274,56 +263,4 @@ class ScrollableAreaService {
         }
     }
 
-    private func hasScrollBars(_ element: AXUIElement, validateEnabled: Bool = false) -> Bool {
-        let vResult = AXReader.element("AXVerticalScrollBar" as CFString, of: element)
-        let hResult = AXReader.element("AXHorizontalScrollBar" as CFString, of: element)
-
-        if !validateEnabled {
-            if case .success = vResult { return true }
-            if case .success = hResult { return true }
-            return false
-        }
-
-        // Validate that at least one scroll bar is actually enabled (has scrollable content)
-        if case .success(let vScrollBar) = vResult,
-           case .success(true) = AXReader.bool(kAXEnabledAttribute as CFString, of: vScrollBar) {
-            return true
-        }
-
-        if case .success(let hScrollBar) = hResult,
-           case .success(true) = AXReader.bool(kAXEnabledAttribute as CFString, of: hScrollBar) {
-            return true
-        }
-
-        return false
-    }
-
-    private func hasWebAncestor(_ element: AXUIElement) -> Bool {
-        var currentElement = element
-        let maxLevels = 10
-
-        for _ in 0..<maxLevels {
-            guard case .success(let role) = AXReader.string(kAXRoleAttribute as CFString, of: currentElement) else {
-                break
-            }
-
-            if role == "AXWebArea" {
-                return true
-            }
-
-            guard case .success(let parent) = AXReader.element(kAXParentAttribute as CFString, of: currentElement) else {
-                break
-            }
-
-            currentElement = parent
-        }
-
-        return false
-    }
-
-
-    private func createScrollableArea(from axElement: AXUIElement) -> ScrollableArea? {
-        guard case .success(let frame) = AXReader.appKitFrame(of: axElement) else { return nil }
-        return ScrollableArea(axElement: axElement, frame: frame)
-    }
 }

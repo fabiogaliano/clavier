@@ -182,3 +182,40 @@ Sources:
 - `clavier/Services/HintModeController.swift` +
   `clavier/Services/ScrollModeController.swift` — construct the typed
   contexts from `AppSettings`.
+
+## ScrollableAreaService decomposition (this refactor)
+
+### Accessibility roles consulted
+
+- `kAXScrollAreaRole` (string `"AXScrollArea"`) — canonical macOS scroll
+  container. Apple's NSAccessibility documentation:
+  https://developer.apple.com/documentation/appkit/nsaccessibility/role
+- `kAXTableRole`, `kAXOutlineRole`, `kAXListRole` — list/grid-like
+  containers that scroll natively.
+- `"AXWebArea"` — web content root. WebKit assigns this role to the
+  document root in any `WKWebView`/`WebView`. We *do not* treat it as a
+  scrollable role itself (it would massively over-detect every iframe);
+  instead we use it as a marker via `hasWebAncestor` so a web descendant
+  with a scrollable role can be accepted without a native scroll-bar
+  attribute.
+- `"AXVerticalScrollBar"` / `"AXHorizontalScrollBar"` — these are
+  AX *attributes* (role-named), not children. NSScrollView exposes them
+  via `accessibilityVerticalScrollBar` /
+  `accessibilityHorizontalScrollBar`. The `AXEnabled` attribute on a
+  scroll bar reflects whether content actually exceeds the visible area
+  (Apple AppKit accessibility behaviour). We rely on this to filter out
+  inert "scrollable" containers whose content fits.
+  Source: NSAccessibilityProtocol —
+  https://developer.apple.com/documentation/appkit/nsaccessibilityprotocol
+
+### Decision
+
+The web-ancestor walk and the AX-frame → AppKit-frame lift are needed
+in three places (service traversal, focused-area finder, Chromium
+detector). They are pure functions of an `AXUIElement`, so they belong
+on a shared probe (`ScrollableAXProbe`) rather than being duplicated.
+The probe is a stateless `enum` with `@MainActor` static methods —
+matching `AXReader`'s shape and making the AX main-thread requirement
+explicit.
+
+This is a pure decomposition; no AX call sequences change.

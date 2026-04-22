@@ -108,49 +108,16 @@ class ChromiumDetector: AppSpecificDetector {
             }
 
             // Look for large AXGroup elements (console, elements panel, network, sources)
-            if role == "AXGroup" {
-                if let area = createScrollableArea(from: child),
-                   area.frame.width > 400 && area.frame.height > 400 {
-
-                    // Check if it's web content (dev tools panels are rendered as web content)
-                    if isWebContent(child) {
-                        areas.append(area)
-                    }
-                }
+            // that are rendered inside the embedded WebKit DevTools (AXWebArea ancestor).
+            if role == "AXGroup",
+               let area = ScrollableAXProbe.makeArea(from: child),
+               area.frame.width > 400 && area.frame.height > 400,
+               ScrollableAXProbe.hasWebAncestor(child) {
+                areas.append(area)
             }
 
             // Recursively check children (dev tools has nested structure)
             findDevToolsPanels(in: child, depth: depth + 1, maxDepth: maxDepth, into: &areas)
         }
-    }
-
-    /// Check if element is web content by walking parent chain for AXWebArea
-    private func isWebContent(_ element: AXUIElement) -> Bool {
-        var currentElement = element
-        let maxLevels = 10
-
-        for _ in 0..<maxLevels {
-            guard case .success(let role) = AXReader.string(kAXRoleAttribute as CFString, of: currentElement) else {
-                break
-            }
-
-            if role == "AXWebArea" {
-                return true
-            }
-
-            guard case .success(let parent) = AXReader.element(kAXParentAttribute as CFString, of: currentElement) else {
-                break
-            }
-
-            currentElement = parent
-        }
-
-        return false
-    }
-
-    /// Create ScrollableArea from AXUIElement
-    private func createScrollableArea(from axElement: AXUIElement) -> ScrollableArea? {
-        guard case .success(let frame) = AXReader.appKitFrame(of: axElement) else { return nil }
-        return ScrollableArea(axElement: axElement, frame: frame)
     }
 }
