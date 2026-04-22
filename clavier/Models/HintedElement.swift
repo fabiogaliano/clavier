@@ -76,8 +76,4 @@ enum HintSession {
         }
     }
 
-    var isTextSearch: Bool {
-        if case .textSearch = self { return true }
-        return false
-    }
 }

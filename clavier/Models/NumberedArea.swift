@@ -68,11 +68,4 @@ enum ScrollSession {
         case .active(_, let selected, _): return selected
         }
     }
-
-    var pendingInput: String {
-        switch self {
-        case .inactive: return ""
-        case .active(_, _, let input): return input
-        }
-    }
 }

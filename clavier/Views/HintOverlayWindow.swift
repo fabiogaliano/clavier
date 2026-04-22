@@ -140,10 +140,6 @@ class HintOverlayWindow: NSWindow {
         self.displayIfNeeded()
     }
 
-    func filterHints(matching prefix: String) {
-        filterHints(matching: prefix, textMatches: [], numberedMode: false)
-    }
-
     func filterHints(matching prefix: String, textMatches: [HintedElement], numberedMode: Bool = false) {
         for (_, highlightView) in elementHighlights {
             highlightView.removeFromSuperview()

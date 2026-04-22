@@ -14,7 +14,6 @@ import Foundation
 class DetectorRegistry {
     static let shared = DetectorRegistry()
 
-    private var detectors: [AppSpecificDetector] = []
     private var bundleIdToDetectors: [String: [AppSpecificDetector]] = [:]
 
     private init() {
@@ -22,13 +21,10 @@ class DetectorRegistry {
     }
 
     func register(_ detector: AppSpecificDetector) {
-        detectors.append(detector)
-
         for bundleId in detector.supportedBundleIdentifiers {
             bundleIdToDetectors[bundleId, default: []].append(detector)
         }
 
-        detectors.sort { $0.priority > $1.priority }
         for (bundleId, _) in bundleIdToDetectors {
             bundleIdToDetectors[bundleId]?.sort { $0.priority > $1.priority }
         }
@@ -36,10 +32,6 @@ class DetectorRegistry {
 
     func detectorsForBundleId(_ bundleId: String) -> [AppSpecificDetector] {
         bundleIdToDetectors[bundleId] ?? []
-    }
-
-    func hasDetectorFor(_ bundleId: String) -> Bool {
-        bundleIdToDetectors[bundleId] != nil
     }
 
     private func registerDefaultDetectors() {

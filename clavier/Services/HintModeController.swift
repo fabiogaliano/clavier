@@ -51,7 +51,6 @@ class HintModeController {
     // MARK: - Convenience accessors
 
     private var isActive: Bool { session.isActive }
-    private var currentFilter: String { session.filter }
     private var hintedElements: [HintedElement] { session.hintedElements }
 
     // MARK: - Registration
