@@ -92,6 +92,81 @@ main-thread-only is the safe default.
   cooperative yielding via `await Task.yield()` between per-element
   reads, not moving off the main actor.
 
+## AccessibilityService decomposition (P?-S?, current session)
+
+### Batched AX reads — error sentinel semantics
+
+`AXUIElementCopyMultipleAttributeValues(element, attrs, options, &values)` has
+a per-attribute error model that matters for the walker refactor:
+
+- With `options = 0` (the flag we pass — an empty `AXCopyMultipleAttributeOptions`
+  option set), the overall function still returns `.success` even when some
+  of the requested attributes are unsupported on the element. The mis-
+  matched slots in the returned array are filled with either a `CFNull`
+  or an `AXValueRef` of type `kAXValueAXErrorType` carrying the per-
+  attribute error.
+- With `options = kAXCopyMultipleAttributeOptionStopOnError`, the function
+  returns immediately on the first missing attribute — we do NOT use this
+  option, because non-interactive elements legitimately lack
+  `kAXEnabledAttribute`.
+
+Sources:
+- [AXUIElementCopyMultipleAttributeValues — Apple reference](https://developer.apple.com/documentation/applicationservices/1462025-axuielementcopymultipleattribute)
+- [AXUIElement.h header comments mirror (cdelouya/champ)](https://github.com/cdelouya/champ/blob/master/sdk/MacOSX10.9.sdk/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/HIServices.framework/Versions/A/Headers/AXUIElement.h)
+
+Consequences the walker must preserve:
+
+1. `valuesArray[i] as? Bool` / `as? [AXUIElement]` on an `AXValueError`
+   slot returns Swift `nil`. The existing code treats both of
+   "missing" and "present but wrong type" identically, which is the
+   intended behavior for `enabled` (non-interactive elements) and
+   `children` (leaf elements).
+2. For `position` / `size` the existing `AXReader.decodeCGPoint` /
+   `decodeCGSize` check `CFGetTypeID(ref) == AXValueGetTypeID()`. A
+   `kAXValueAXErrorType` sentinel IS an `AXValue`, so the type-ID check
+   passes; `AXValueGetValue(_, .cgPoint, &out)` silently returns false
+   for the wrong AXValue subtype, leaving the inout at `.zero`. The
+   walker then filters these via the `frame.width > 5 && frame.height > 5`
+   guard. This is a latent-but-harmless behavior and must not change
+   in this refactor (fixing it is out of scope and would alter what
+   gets discovered).
+3. We never request `options = kAXCopyMultipleAttributeOptionStopOnError`.
+   The walker extraction must keep the `[]` empty option set to preserve
+   "continue on missing attribute" semantics.
+
+### AXUIElementCopyActionNames
+
+- Returns an empty array (not an `AXError`) for elements with no actions.
+- `.success` with an empty list is the common case for static containers.
+- `hasClickAction` therefore only has to guard the overall return code
+  and the cast; it does not need a separate "no actions" branch.
+
+Source: [AXUIElement.h — AXUIElementCopyActionNames header](https://github.com/cdelouya/champ/blob/master/sdk/MacOSX10.9.sdk/System/Library/Frameworks/ApplicationServices.framework/Versions/A/Frameworks/HIServices.framework/Versions/A/Headers/AXUIElement.h)
+
+### Threading (re-confirmation)
+
+All `AXUIElement.h` functions — including
+`AXUIElementCopyMultipleAttributeValues`, `AXUIElementPerformAction`, and
+`AXUIElementCopyActionNames` — are documented by Apple DTS as
+main-thread-only.
+
+Source: [Apple Developer Forums thread 94878 — "Thread safety of AXUIElement.h functions"](https://developer.apple.com/forums/thread/94878)
+
+Consequence: the new `ClickableElementWalker` and `ClickabilityPolicy`
+types that call these APIs must be `@MainActor`. No off-main hops.
+
+### Xcode 16 synchronized root groups
+
+`clavier.xcodeproj/project.pbxproj` uses `PBXFileSystemSynchronizedRootGroup`
+for both `clavier` and `clavierTests`. New `.swift` files dropped under
+those folder trees are automatically picked up by the target on the next
+build — no `pbxproj` edit is required, and exceptions only need to be
+recorded when a file must be excluded.
+
+Sources:
+- [Pedro Piñera — "How synchronized groups work at the .pbxproj level"](https://pepicrft.me/blog/how-synchronized-groups-work-at-the-pbxproj-level/)
+- [EvanBacon/xcode issue #17 — PBXFileSystemSynchronizedRootGroup](https://github.com/EvanBacon/xcode/issues/17)
+
 ## Files touched (summary)
 
 - `clavier/Settings/AppSettings.swift` — introduce `ScrollArrowMode`,

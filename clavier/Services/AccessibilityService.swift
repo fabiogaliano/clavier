@@ -13,33 +13,7 @@ class AccessibilityService {
 
     static let shared = AccessibilityService()
 
-    // Roles assumed interactive by default (capability check still gates on enabled state)
-    private let interactiveRoles: Set<String> = [
-        kAXButtonRole as String,
-        "AXLink",
-        kAXTextFieldRole as String,
-        kAXCheckBoxRole as String,
-        kAXRadioButtonRole as String,
-        kAXPopUpButtonRole as String,
-        kAXMenuButtonRole as String,
-        "AXTab",
-        kAXMenuItemRole as String,
-        kAXIncrementorRole as String,
-        kAXComboBoxRole as String,
-        kAXSliderRole as String,
-        kAXColorWellRole as String,
-        "AXCell"
-    ]
-
-    // Roles that never contain clickable children - skip their subtrees
-    private let skipSubtreeRoles: Set<String> = [
-        kAXStaticTextRole as String,       // Text doesn't have clickable children
-        kAXImageRole as String,            // Images rarely have clickable children
-        "AXScrollBar",                     // Scroll bars themselves
-        kAXValueIndicatorRole as String,   // Value indicators
-        "AXBusyIndicator",                 // Loading spinners
-        "AXProgressIndicator"              // Progress bars
-    ]
+    private let clickability = ClickabilityPolicy.default
 
     /// Traversal-local wrapper carrying a discovered element plus the
     /// bookkeeping needed for ancestor-based deduplication.  The ancestor
@@ -137,7 +111,7 @@ class AccessibilityService {
         // Extract enabled state (may be absent for non-interactive elements)
         let enabled = valuesArray[4] as? Bool
 
-        let isClickable = isElementClickable(role: role, element: element, enabled: enabled)
+        let isClickable = clickability.isClickable(role: role, element: element, enabled: enabled)
 
         // If this element is clickable, it becomes the new ancestor for its children
         let newClickableAncestor: (element: AXUIElement, frame: CGRect)? = isClickable ? (element, frame) : clickableAncestor
@@ -181,7 +155,7 @@ class AccessibilityService {
         }
 
         // SMART PRUNING: Skip subtrees for roles that never contain clickable children
-        if skipSubtreeRoles.contains(role) {
+        if clickability.canPruneSubtree(role: role) {
             return // Don't traverse children of these roles
         }
 
@@ -196,25 +170,6 @@ class AccessibilityService {
         for child in children {
             traverseElementOptimized(child, pid: pid, clickableAncestor: newClickableAncestor, into: &pending, clipBounds: childClipBounds)
         }
-    }
-
-    // MARK: - Clickability Heuristics
-
-    private func isElementClickable(role: String, element: AXUIElement, enabled: Bool?) -> Bool {
-        if let enabled = enabled, !enabled { return false }
-        if interactiveRoles.contains(role) { return true }
-        // AXStaticText is only clickable when it exposes a press/showMenu action
-        if role == kAXStaticTextRole as String { return hasClickAction(element) }
-        return false
-    }
-
-    private func hasClickAction(_ element: AXUIElement) -> Bool {
-        var actions: CFArray?
-        guard AXUIElementCopyActionNames(element, &actions) == .success,
-              let actionNames = actions as? [String] else {
-            return false
-        }
-        return actionNames.contains(kAXPressAction as String) || actionNames.contains("AXShowMenu")
     }
 
 }
