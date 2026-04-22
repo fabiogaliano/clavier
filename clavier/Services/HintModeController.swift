@@ -273,20 +273,12 @@ class HintModeController {
     // MARK: - Click execution
 
     private func executeClick(on element: UIElement) {
-        let axResult = AXUIElementPerformAction(element.axElement, kAXPressAction as CFString)
-        if axResult != .success {
-            let clickPoint = ScreenGeometry.appKitCenterToQuartz(element.centerPoint)
-            ClickService.shared.click(at: clickPoint)
-        }
+        HintActionPerformer.performPrimary(on: element)
         startDeactivationTimer()
     }
 
     private func executeRightClick(on element: UIElement) {
-        let axResult = AXUIElementPerformAction(element.axElement, "AXShowMenu" as CFString)
-        if axResult != .success {
-            let clickPoint = ScreenGeometry.appKitCenterToQuartz(element.centerPoint)
-            ClickService.shared.rightClick(at: clickPoint)
-        }
+        HintActionPerformer.performSecondary(on: element)
         startDeactivationTimer()
     }
 
