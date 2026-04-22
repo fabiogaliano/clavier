@@ -97,7 +97,7 @@ class HintModeController {
         HintModeController.isHintModeActive = true
 
         startDeactivationTimer()
-        loadTextAttributesAsync()
+        scheduleMainActorHydration()
     }
 
     private func deactivateHintMode() {
@@ -143,7 +143,7 @@ class HintModeController {
         print("[CONTINUOUS] Update overlay: \(String(format: "%.0f", (overlayEnd - overlayStart) * 1000))ms")
 
         startDeactivationTimer()
-        loadTextAttributesAsync()
+        scheduleMainActorHydration()
 
         return newElements.count
     }
@@ -167,7 +167,7 @@ class HintModeController {
         print("[MANUAL] Refreshed \(newElements.count) elements in \(String(format: "%.0f", elapsed))ms\n")
 
         startDeactivationTimer()
-        loadTextAttributesAsync()
+        scheduleMainActorHydration()
     }
 
     // MARK: - Side effect execution
@@ -350,14 +350,18 @@ class HintModeController {
 
     // MARK: - Text attribute hydration
 
-    /// Load text attributes for search after initial display.
+    /// Schedule a main-actor hydration pass that fills in `textAttributes`
+    /// on each discovered element for text-search lookups.
     ///
-    /// Runs as a detached Task so it doesn't block the overlay appearing.
-    /// Updates the session in place if the mode is still active when it finishes.
-    private func loadTextAttributesAsync() {
+    /// The AX API requires main-thread access (see claudedocs/api-research.md),
+    /// so the hop here is *not* about moving work off-main — it is purely about
+    /// yielding to the current run loop turn so the overlay paints first, then
+    /// performing the AX reads synchronously on the main actor.  The name
+    /// `scheduleMainActorHydration` is kept deliberately unambiguous about that.
+    private func scheduleMainActorHydration() {
         Task { @MainActor in
             var domainElements = self.hintedElements.map { $0.element }
-            AccessibilityService.shared.loadTextAttributes(for: &domainElements)
+            AXTextHydrator.hydrate(&domainElements)
             guard self.isActive else { return }
             let updatedHinted = zip(self.hintedElements, domainElements).map { hinted, updated in
                 HintedElement(element: updated, hint: hinted.hint)

@@ -41,6 +41,15 @@ class AccessibilityService {
         "AXProgressIndicator"              // Progress bars
     ]
 
+    /// Traversal-local wrapper carrying a discovered element plus the
+    /// bookkeeping needed for ancestor-based deduplication.  The ancestor
+    /// hash is intentionally NOT stored on `UIElement` — it is a traversal
+    /// concern only, collapsed into a clean `[UIElement]` before return.
+    private struct PendingElement {
+        var element: UIElement
+        var clickableAncestorHash: Int?
+    }
+
     func getClickableElements() -> [UIElement] {
         guard let focusedApp = NSWorkspace.shared.frontmostApplication,
               let pid = focusedApp.processIdentifier as pid_t? else {
@@ -48,7 +57,7 @@ class AccessibilityService {
         }
 
         let appElement = AXUIElementCreateApplication(pid)
-        var elements: [UIElement] = []
+        var pending: [PendingElement] = []
 
         // Get all windows
         var windowsRef: CFTypeRef?
@@ -68,14 +77,14 @@ class AccessibilityService {
             let windowBounds = getWindowBounds(window) ?? desktopBoundsAX
             let visibleBounds = windowBounds.intersection(desktopBoundsAX)
 
-            traverseElementOptimized(window, pid: pid, clickableAncestor: nil, into: &elements, clipBounds: visibleBounds)
+            traverseElementOptimized(window, pid: pid, clickableAncestor: nil, into: &pending, clipBounds: visibleBounds)
         }
         let traverseEndTime = CFAbsoluteTimeGetCurrent()
-        print("  ⏱️ traverseElements: \(String(format: "%.3f", traverseEndTime - traverseStartTime))s (\(elements.count) raw elements)")
+        print("  ⏱️ traverseElements: \(String(format: "%.3f", traverseEndTime - traverseStartTime))s (\(pending.count) raw elements)")
 
-        // Deduplicate elements with the same frame (nested accessibility elements)
+        // Deduplicate elements whose clickable ancestor is already in the list.
         let dedupeStartTime = CFAbsoluteTimeGetCurrent()
-        let deduplicated = deduplicateElements(elements)
+        let deduplicated = pending.compactMap { $0.clickableAncestorHash == nil ? $0.element : nil }
         let dedupeEndTime = CFAbsoluteTimeGetCurrent()
         print("  ⏱️ deduplicateElements: \(String(format: "%.3f", dedupeEndTime - dedupeStartTime))s (\(deduplicated.count) unique)")
 
@@ -89,24 +98,7 @@ class AccessibilityService {
         }
     }
 
-    private func deduplicateElements(_ elements: [UIElement]) -> [UIElement] {
-        // Filter out elements that have a clickable parent
-        // If your parent is clickable, clicking the parent achieves the same result
-        // So we only keep top-level clickable elements (those with no clickable ancestor)
-        var unique: [UIElement] = []
-
-        for element in elements {
-            if element.clickableAncestorHash == nil {
-                // No clickable parent - this is a top-level clickable, keep it
-                unique.append(element)
-            }
-            // else: skip - parent is already clickable and in the list
-        }
-
-        return unique
-    }
-
-    private func traverseElementOptimized(_ element: AXUIElement, pid: pid_t, clickableAncestor: (element: AXUIElement, frame: CGRect)?, into elements: inout [UIElement], clipBounds: CGRect) {
+    private func traverseElementOptimized(_ element: AXUIElement, pid: pid_t, clickableAncestor: (element: AXUIElement, frame: CGRect)?, into pending: inout [PendingElement], clipBounds: CGRect) {
         // BATCH FETCH: Get role, position, size, children, enabled in ONE IPC call
         let attributes = [
             kAXRoleAttribute as CFString,
@@ -164,14 +156,16 @@ class AccessibilityService {
                     position: visibleAX.origin,
                     size: visibleAX.size
                 )
-                var uiElement = UIElement(
+                let uiElement = UIElement(
                     stableID: ElementIdentity(pid: pid, role: role, frame: frame),
                     axElement: element,
                     frame: frame,
                     visibleFrame: visibleFrame,
                     role: role
                 )
-                // Frame-aware dedup: only mark as duplicate if frames nearly match ancestor
+                // Frame-aware dedup: only mark as duplicate if frames nearly match ancestor.
+                // The ancestor hash lives on the traversal-local wrapper, not on UIElement.
+                var ancestorHash: Int? = nil
                 if let ancestor = clickableAncestor {
                     let tol: CGFloat = 10
                     let framesMatch = abs(frame.minX - ancestor.frame.minX) < tol &&
@@ -179,10 +173,10 @@ class AccessibilityService {
                                       abs(frame.maxX - ancestor.frame.maxX) < tol &&
                                       abs(frame.maxY - ancestor.frame.maxY) < tol
                     if framesMatch {
-                        uiElement.clickableAncestorHash = Int(CFHash(ancestor.element))
+                        ancestorHash = Int(CFHash(ancestor.element))
                     }
                 }
-                elements.append(uiElement)
+                pending.append(PendingElement(element: uiElement, clickableAncestorHash: ancestorHash))
             }
         }
 
@@ -200,7 +194,7 @@ class AccessibilityService {
         let childClipBounds = elementFrame.intersection(clipBounds)
 
         for child in children {
-            traverseElementOptimized(child, pid: pid, clickableAncestor: newClickableAncestor, into: &elements, clipBounds: childClipBounds)
+            traverseElementOptimized(child, pid: pid, clickableAncestor: newClickableAncestor, into: &pending, clipBounds: childClipBounds)
         }
     }
 
@@ -221,38 +215,6 @@ class AccessibilityService {
             return false
         }
         return actionNames.contains(kAXPressAction as String) || actionNames.contains("AXShowMenu")
-    }
-
-    /// Load all text attributes for elements (title, label, value, description)
-    /// Called asynchronously after initial display
-    func loadTextAttributes(for elements: inout [UIElement]) {
-        for i in 0..<elements.count {
-            guard !elements[i].textAttributesLoaded else { continue }
-
-            let axElement = elements[i].axElement
-
-            // Get title (optional)
-            var titleRef: CFTypeRef?
-            AXUIElementCopyAttributeValue(axElement, kAXTitleAttribute as CFString, &titleRef)
-            elements[i].title = titleRef as? String
-
-            // Get label (optional) - accessibility label
-            var labelRef: CFTypeRef?
-            AXUIElementCopyAttributeValue(axElement, "AXLabel" as CFString, &labelRef)
-            elements[i].label = labelRef as? String
-
-            // Get value (optional) - for text fields, sliders, etc.
-            var valueRef: CFTypeRef?
-            AXUIElementCopyAttributeValue(axElement, kAXValueAttribute as CFString, &valueRef)
-            elements[i].value = valueRef as? String
-
-            // Get description (optional) - accessibility description
-            var descriptionRef: CFTypeRef?
-            AXUIElementCopyAttributeValue(axElement, kAXDescriptionAttribute as CFString, &descriptionRef)
-            elements[i].elementDescription = descriptionRef as? String
-
-            elements[i].textAttributesLoaded = true
-        }
     }
 
 }

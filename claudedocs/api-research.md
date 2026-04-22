@@ -51,6 +51,47 @@ private var scrollArrowMode: ScrollArrowMode = .select
   base.  The reducers and controllers in this app should see parsed
   domain values, not raw strings.
 
+## Accessibility API threading (UIElement hydration cleanup)
+
+### Apple's guidance
+
+Apple DTS has stated publicly that **all Accessibility functions are only
+safe to call from an application's main thread**.  This covers
+`AXUIElementCopyAttributeValue`, `AXUIElementCopyMultipleAttributeValues`,
+`AXUIElementPerformAction`, and the full `AXUIElement.h` surface.
+
+Sources:
+- [AXUIElementCopyAttributeValue reference](https://developer.apple.com/documentation/applicationservices/1462085-axuielementcopyattributevalue)
+- [Apple Developer Forums: "Thread safety of AXUIElement.h functions"](https://developer.apple.com/forums/thread/94878)
+
+The docs themselves are silent on threading; the main-thread rule is
+enforced through DTS guidance and field experience.  Treating AX as
+main-thread-only is the safe default.
+
+### Consequences for this codebase
+
+- `AccessibilityService.getClickableElements()` is already `@MainActor`
+  and must stay that way.
+- `loadTextAttributes(for:)` performs four `AXUIElementCopyAttributeValue`
+  calls per element.  It **must** run on the main actor.  Moving it to a
+  detached background `Task` would be a correctness regression.
+- The existing implementation runs hydration inside `Task { @MainActor in
+  ... }` — i.e. it re-hops to the main actor but does NOT actually run
+  off-main.  The only benefit of the `Task` wrapper is scheduling the
+  work at the tail of the current run loop turn so the overlay can paint
+  first.  That design intent should be reflected in naming and comments
+  rather than hidden behind a generic "async" pattern.
+
+### Decision
+
+- Keep text-attribute hydration on `@MainActor`.
+- Rename the hydration path so the threading model is visible in the
+  code (e.g. `MainActorTextHydrator.hydrate(...)` or a similarly
+  suggestive name).  Document the reason inline.
+- If blocking becomes a problem in the future, the correct mitigation is
+  cooperative yielding via `await Task.yield()` between per-element
+  reads, not moving off the main actor.
+
 ## Files touched (summary)
 
 - `clavier/Settings/AppSettings.swift` — introduce `ScrollArrowMode`,
