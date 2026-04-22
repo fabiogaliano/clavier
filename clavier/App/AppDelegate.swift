@@ -24,23 +24,69 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         statusItem = NSStatusBar.system.statusItem(withLength: NSStatusItem.variableLength)
 
         if let button = statusItem?.button {
-            button.image = NSImage(systemSymbolName: "keyboard", accessibilityDescription: "clavier")
+            let image = NSImage(systemSymbolName: "keyboard.badge.ellipsis", accessibilityDescription: "clavier")
+                ?? NSImage(systemSymbolName: "keyboard", accessibilityDescription: "clavier")
+            image?.isTemplate = true
+            button.image = image
+            button.toolTip = "clavier — keyboard navigation"
         }
 
         let menu = NSMenu()
+        menu.autoenablesItems = false
 
-        hintMenuItem = NSMenuItem(title: formatHintMenuTitle(), action: #selector(activateHints), keyEquivalent: "")
-        scrollMenuItem = NSMenuItem(title: formatScrollMenuTitle(), action: #selector(activateScroll), keyEquivalent: "")
-        hintDebugMenuItem = NSMenuItem(title: formatHintDebugMenuTitle(), action: #selector(activateHintDebug), keyEquivalent: "")
+        // Brand header — disabled, not selectable. Using `headerTitle` on
+        // NSMenu would render a section style; using a disabled item gives
+        // us more control over typography.
+        let header = NSMenuItem()
+        header.attributedTitle = NSAttributedString(
+            string: "clavier",
+            attributes: [
+                .font: NSFont.systemFont(ofSize: 11, weight: .semibold),
+                .foregroundColor: NSColor.secondaryLabelColor
+            ]
+        )
+        header.isEnabled = false
+        menu.addItem(header)
+        menu.addItem(.separator())
+
+        hintMenuItem = buildModeItem(
+            title: "Activate Hints",
+            symbol: "cursorarrow.click.badge.clock",
+            action: #selector(activateHints),
+            subtitle: formatHintShortcut()
+        )
+        scrollMenuItem = buildModeItem(
+            title: "Activate Scroll",
+            symbol: "arrow.up.and.down.text.horizontal",
+            action: #selector(activateScroll),
+            subtitle: formatScrollShortcut()
+        )
+        hintDebugMenuItem = buildModeItem(
+            title: "Debug Hints",
+            symbol: "ant",
+            action: #selector(activateHintDebug),
+            subtitle: formatHintDebugShortcut()
+        )
 
         menu.addItem(hintMenuItem!)
         menu.addItem(scrollMenuItem!)
-        menu.addItem(NSMenuItem.separator())
+        menu.addItem(.separator())
         menu.addItem(hintDebugMenuItem!)
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Preferences...", action: #selector(openPreferences), keyEquivalent: ","))
-        menu.addItem(NSMenuItem.separator())
-        menu.addItem(NSMenuItem(title: "Quit clavier", action: #selector(quitApp), keyEquivalent: "q"))
+        menu.addItem(.separator())
+
+        let prefs = NSMenuItem(title: "Preferences…", action: #selector(openPreferences), keyEquivalent: ",")
+        prefs.image = NSImage(systemSymbolName: "gearshape", accessibilityDescription: nil)
+        menu.addItem(prefs)
+
+        let about = NSMenuItem(title: "About clavier", action: #selector(openAbout), keyEquivalent: "")
+        about.image = NSImage(systemSymbolName: "info.circle", accessibilityDescription: nil)
+        menu.addItem(about)
+
+        menu.addItem(.separator())
+
+        let quit = NSMenuItem(title: "Quit clavier", action: #selector(quitApp), keyEquivalent: "q")
+        quit.image = NSImage(systemSymbolName: "power", accessibilityDescription: nil)
+        menu.addItem(quit)
 
         statusItem?.menu = menu
 
@@ -52,31 +98,38 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         )
     }
 
-    @objc private func updateMenuTitles() {
-        hintMenuItem?.title = formatHintMenuTitle()
-        scrollMenuItem?.title = formatScrollMenuTitle()
-        hintDebugMenuItem?.title = formatHintDebugMenuTitle()
+    /// Builds a menu item with an SF Symbol leading glyph, a main title, and
+    /// the shortcut rendered as a subtitle (macOS 14.4+). Using the subtitle
+    /// API keeps the main title clean while still surfacing the hotkey.
+    private func buildModeItem(title: String, symbol: String, action: Selector, subtitle: String) -> NSMenuItem {
+        let item = NSMenuItem(title: title, action: action, keyEquivalent: "")
+        item.image = NSImage(systemSymbolName: symbol, accessibilityDescription: nil)
+        item.subtitle = subtitle
+        return item
     }
 
-    private func formatHintMenuTitle() -> String {
+    @objc private func updateMenuTitles() {
+        hintMenuItem?.subtitle = formatHintShortcut()
+        scrollMenuItem?.subtitle = formatScrollShortcut()
+        hintDebugMenuItem?.subtitle = formatHintDebugShortcut()
+    }
+
+    private func formatHintShortcut() -> String {
         let keyCode = UserDefaults.standard.integer(forKey: AppSettings.Keys.hintShortcutKeyCode)
         let modifiers = UserDefaults.standard.integer(forKey: AppSettings.Keys.hintShortcutModifiers)
-        let shortcut = KeymapUtilities.formatShortcut(keyCode: keyCode, modifiers: modifiers)
-        return "Activate Hints (\(shortcut))"
+        return KeymapUtilities.formatShortcut(keyCode: keyCode, modifiers: modifiers)
     }
 
-    private func formatScrollMenuTitle() -> String {
+    private func formatScrollShortcut() -> String {
         let keyCode = UserDefaults.standard.integer(forKey: AppSettings.Keys.scrollShortcutKeyCode)
         let modifiers = UserDefaults.standard.integer(forKey: AppSettings.Keys.scrollShortcutModifiers)
-        let shortcut = KeymapUtilities.formatShortcut(keyCode: keyCode, modifiers: modifiers)
-        return "Activate Scroll (\(shortcut))"
+        return KeymapUtilities.formatShortcut(keyCode: keyCode, modifiers: modifiers)
     }
 
-    private func formatHintDebugMenuTitle() -> String {
+    private func formatHintDebugShortcut() -> String {
         let keyCode = UserDefaults.standard.integer(forKey: AppSettings.Keys.hintDebugShortcutKeyCode)
         let modifiers = UserDefaults.standard.integer(forKey: AppSettings.Keys.hintDebugShortcutModifiers)
-        let shortcut = KeymapUtilities.formatShortcut(keyCode: keyCode, modifiers: modifiers)
-        return "Debug Hints (\(shortcut))"
+        return KeymapUtilities.formatShortcut(keyCode: keyCode, modifiers: modifiers)
     }
 
     private func setupHintMode() {
@@ -112,6 +165,11 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func openPreferences() {
         NotificationCenter.default.post(name: .openSettingsRequest, object: nil)
+    }
+
+    @objc private func openAbout() {
+        NSApp.activate(ignoringOtherApps: true)
+        NSApp.orderFrontStandardAboutPanel(nil)
     }
 
     @objc private func quitApp() {

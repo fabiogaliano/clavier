@@ -9,8 +9,9 @@ class HintOverlayWindow: NSWindow {
     /// reassignment across session refreshes (F06).
     private var hintViews: [ElementIdentity: NSView] = [:]
     private var elementHighlights: [UUID: NSView] = [:]
-    private var searchBarView: NSVisualEffectView?
+    private var searchBarView: NSView?
     private var searchTextField: NSTextField?
+    private var matchCountBadge: NSView?
     private var matchCountLabel: NSTextField?
 
     init(hintedElements: [HintedElement]) {
@@ -62,6 +63,7 @@ class HintOverlayWindow: NSWindow {
         let components = SearchBarView.make(windowOrigin: windowOrigin)
         self.searchBarView = components.container
         self.searchTextField = components.textField
+        self.matchCountBadge = components.countBadge
         self.matchCountLabel = components.countLabel
         self.contentView?.addSubview(components.container)
     }
@@ -72,18 +74,15 @@ class HintOverlayWindow: NSWindow {
 
     func updateSearchBar(text: String) {
         searchTextField?.stringValue = text
-        if text.isEmpty {
-            searchBarView?.layer?.borderColor = NSColor.systemBlue.cgColor
-        }
     }
 
     func updateMatchCount(_ count: Int) {
         let style = MatchCountPresenter.style(forCount: count)
         matchCountLabel?.stringValue = style.labelText
-        if !style.labelText.isEmpty {
-            matchCountLabel?.textColor = style.labelColor
-        }
-        searchBarView?.layer?.borderColor = style.borderColor.cgColor
+        matchCountLabel?.textColor = style.labelColor
+        matchCountBadge?.isHidden = style.labelText.isEmpty
+        matchCountBadge?.layer?.backgroundColor = style.labelColor.withAlphaComponent(0.18).cgColor
+        matchCountBadge?.layer?.borderColor = style.labelColor.withAlphaComponent(0.4).cgColor
     }
 
     override func close() {

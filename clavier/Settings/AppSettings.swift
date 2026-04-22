@@ -25,6 +25,10 @@ enum AppSettings {
         static let hintBackgroundOpacity = "hintBackgroundOpacity"
         static let hintBorderOpacity = "hintBorderOpacity"
         static let hintHorizontalOffset = "hintHorizontalOffset"
+        static let showHintTail = "showHintTail"
+        static let useSystemAccentColor = "useSystemAccentColor"
+        static let hintPaddingX = "hintPaddingX"
+        static let hintPaddingY = "hintPaddingY"
 
         // Scroll Mode
         static let scrollShortcutKeyCode = "scrollShortcutKeyCode"
@@ -36,6 +40,14 @@ enum AppSettings {
         static let dashSpeed = "dashSpeed"
         static let autoScrollDeactivation = "autoScrollDeactivation"
         static let scrollDeactivationDelay = "scrollDeactivationDelay"
+
+        // Scroll Appearance
+        static let scrollBackgroundHex = "scrollBackgroundHex"
+        static let scrollBorderHex = "scrollBorderHex"
+        static let scrollTextHex = "scrollTextHex"
+        static let scrollBackgroundOpacity = "scrollBackgroundOpacity"
+        static let scrollBorderOpacity = "scrollBorderOpacity"
+        static let scrollHintSize = "scrollHintSize"
     }
 
     enum Defaults {
@@ -58,6 +70,10 @@ enum AppSettings {
         static let hintBackgroundOpacity = 0.3
         static let hintBorderOpacity = 0.6
         static let hintHorizontalOffset = 0.0
+        static let showHintTail = true
+        static let useSystemAccentColor = false
+        static let hintPaddingX = 3.0
+        static let hintPaddingY = 1.0
         static let scrollShortcutKeyCode = 14
         static let scrollShortcutModifiers = optionKey
         static let scrollArrowMode = ScrollArrowMode.select
@@ -67,6 +83,12 @@ enum AppSettings {
         static let dashSpeed = 9.0
         static let autoScrollDeactivation = true
         static let scrollDeactivationDelay = 5.0
+        static let scrollBackgroundHex = "#8E8E93"
+        static let scrollBorderHex = "#8E8E93"
+        static let scrollTextHex = "#FFFFFF"
+        static let scrollBackgroundOpacity = 0.35
+        static let scrollBorderOpacity = 0.6
+        static let scrollHintSize = 14.0
 
         // Validation ranges — owned here so reducers & views agree on limits.
         static let minSearchCharactersRange: ClosedRange<Int> = 1...5
@@ -95,6 +117,10 @@ enum AppSettings {
             Keys.hintBackgroundOpacity: Defaults.hintBackgroundOpacity,
             Keys.hintBorderOpacity: Defaults.hintBorderOpacity,
             Keys.hintHorizontalOffset: Defaults.hintHorizontalOffset,
+            Keys.showHintTail: Defaults.showHintTail,
+            Keys.useSystemAccentColor: Defaults.useSystemAccentColor,
+            Keys.hintPaddingX: Defaults.hintPaddingX,
+            Keys.hintPaddingY: Defaults.hintPaddingY,
             Keys.scrollShortcutKeyCode: Defaults.scrollShortcutKeyCode,
             Keys.scrollShortcutModifiers: Defaults.scrollShortcutModifiers,
             Keys.scrollArrowMode: Defaults.scrollArrowMode.rawValue,
@@ -104,6 +130,12 @@ enum AppSettings {
             Keys.dashSpeed: Defaults.dashSpeed,
             Keys.autoScrollDeactivation: Defaults.autoScrollDeactivation,
             Keys.scrollDeactivationDelay: Defaults.scrollDeactivationDelay,
+            Keys.scrollBackgroundHex: Defaults.scrollBackgroundHex,
+            Keys.scrollBorderHex: Defaults.scrollBorderHex,
+            Keys.scrollTextHex: Defaults.scrollTextHex,
+            Keys.scrollBackgroundOpacity: Defaults.scrollBackgroundOpacity,
+            Keys.scrollBorderOpacity: Defaults.scrollBorderOpacity,
+            Keys.scrollHintSize: Defaults.scrollHintSize,
         ])
     }
 }

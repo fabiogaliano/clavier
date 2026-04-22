@@ -8,16 +8,18 @@ import AppKit
 /// produces or mutates views.
 enum MatchHighlightRenderer {
 
-    /// Creates a green border highlight box over a matched text-search element.
+    /// Creates a soft-filled highlight over a matched text-search element.
+    /// Thinner border + low-alpha fill reads as "this is the match" without
+    /// overpowering the underlying UI element.
     @MainActor
     static func createHighlightView(for element: UIElement) -> NSView {
         let localFrame = ScreenGeometry.toWindowLocal(element.visibleFrame.insetBy(dx: -2, dy: -2))
         let highlightView = NSView(frame: localFrame)
         highlightView.wantsLayer = true
-        highlightView.layer?.borderWidth = 3
-        highlightView.layer?.borderColor = NSColor.systemGreen.cgColor
-        highlightView.layer?.cornerRadius = 4
-        highlightView.layer?.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.1).cgColor
+        highlightView.layer?.borderWidth = 2
+        highlightView.layer?.borderColor = NSColor.systemGreen.withAlphaComponent(0.85).cgColor
+        highlightView.layer?.cornerRadius = 6
+        highlightView.layer?.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.08).cgColor
         return highlightView
     }
 
@@ -39,11 +41,13 @@ enum MatchHighlightRenderer {
         textField.attributedStringValue = attributedString
     }
 
-    /// Walks the glass container view hierarchy to find the `NSTextField` label.
+    /// Recursively walks the view hierarchy to find the hint's NSTextField.
+    /// The glass composition nests the label two levels deep (outer → glass →
+    /// label), so a one-level walk would miss it.
     static func findTextField(in view: NSView) -> NSTextField? {
         if let textField = view as? NSTextField { return textField }
         for subview in view.subviews {
-            if let textField = subview as? NSTextField { return textField }
+            if let found = findTextField(in: subview) { return found }
         }
         return nil
     }

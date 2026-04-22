@@ -21,11 +21,14 @@ struct ShortcutRecorderView: View {
             showingRecordSheet = true
         }) {
             Text(displayText)
+                .font(.system(size: 13, weight: .medium, design: .rounded))
                 .frame(minWidth: 80)
-                .padding(.horizontal, 12)
-                .padding(.vertical, 6)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 5)
+                .glassedEffect(in: RoundedRectangle(cornerRadius: 6, style: .continuous))
+                .contentShape(RoundedRectangle(cornerRadius: 6, style: .continuous))
         }
-        .buttonStyle(.bordered)
+        .buttonStyle(.plain)
         .onAppear {
             updateDisplayText()
         }
@@ -71,30 +74,30 @@ struct ShortcutRecorderSheet: View {
     @State private var flagsChangedMonitor: Any?
 
     var body: some View {
-        VStack(spacing: 20) {
-            Text("Record Shortcut")
-                .font(.headline)
-
-            VStack(spacing: 12) {
-                Text(currentPreview.isEmpty ? "..." : currentPreview)
-                    .font(.system(size: 36, weight: .medium, design: .rounded))
-                    .frame(height: 50)
-                    .frame(maxWidth: .infinity)
-                    .background(Color.secondary.opacity(0.1))
-                    .cornerRadius(8)
-
+        VStack(spacing: 24) {
+            VStack(spacing: 4) {
+                Text("Record Shortcut")
+                    .font(.headline)
                 Text("Press your key combination")
-                    .font(.subheadline)
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
-            .padding(.vertical, 20)
 
-            HStack {
+            Text(currentPreview.isEmpty ? "…" : currentPreview)
+                .font(.system(size: 42, weight: .semibold, design: .rounded))
+                .foregroundStyle(currentPreview.isEmpty ? .secondary : .primary)
+                .frame(maxWidth: .infinity)
+                .frame(height: 72)
+                .glassedEffect(in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                .animation(.easeInOut(duration: 0.12), value: currentPreview)
+
+            HStack(spacing: 10) {
                 Button("Cancel") {
                     cleanup()
                     onCancel()
                 }
                 .keyboardShortcut(.cancelAction)
+                .buttonStyle(.bordered)
 
                 Spacer()
 
@@ -105,11 +108,12 @@ struct ShortcutRecorderSheet: View {
                     onConfirm()
                 }
                 .keyboardShortcut(.defaultAction)
+                .buttonStyle(.borderedProminent)
                 .disabled(!hasValidShortcut)
             }
         }
         .padding(24)
-        .frame(width: 320)
+        .frame(width: 340)
         .onAppear {
             startMonitoring()
         }

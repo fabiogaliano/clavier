@@ -10,12 +10,12 @@ struct PreferencesView: View {
 
             ScrollingTabView()
                 .tabItem {
-                    Label("Scrolling", systemImage: "arrow.up.arrow.down")
+                    Label("Scrolling", systemImage: "arrow.up.and.down.text.horizontal")
                 }
 
             AppearanceTabView()
                 .tabItem {
-                    Label("Appearance", systemImage: "paintbrush")
+                    Label("Appearance", systemImage: "paintpalette")
                 }
 
             GeneralTabView()
@@ -23,8 +23,8 @@ struct PreferencesView: View {
                     Label("General", systemImage: "gearshape")
                 }
         }
-        .frame(width: 500, height: 500)
-        .padding()
+        .frame(width: 540, height: 620)
+        .scenePadding(.horizontal)
     }
 }
 

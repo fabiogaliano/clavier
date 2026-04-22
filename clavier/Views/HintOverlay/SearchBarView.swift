@@ -6,8 +6,9 @@ import AppKit
 /// drive subsequent `updateSearchBar` and `updateMatchCount` calls.
 enum SearchBarView {
     struct Components {
-        let container: NSVisualEffectView
+        let container: NSView
         let textField: NSTextField
+        let countBadge: NSView
         let countLabel: NSTextField
     }
 
@@ -18,50 +19,70 @@ enum SearchBarView {
     static func make(windowOrigin: CGPoint) -> Components {
         let mainFrame = NSScreen.main?.frame ?? .zero
 
-        let containerWidth: CGFloat = 300
-        let containerHeight: CGFloat = 40
+        let containerWidth: CGFloat = 320
+        let containerHeight: CGFloat = 44
         let containerX = mainFrame.minX + (mainFrame.width - containerWidth) / 2 - windowOrigin.x
         let containerY: CGFloat = 80 - windowOrigin.y
 
-        let visualEffectView = NSVisualEffectView(
-            frame: CGRect(x: containerX, y: containerY, width: containerWidth, height: containerHeight)
+        // Pill shape — corner radius ≈ half height reads as a capsule, which is
+        // the modern macOS search-field aesthetic (Spotlight, Raycast, etc.).
+        let pillRadius = containerHeight / 2
+
+        let container = GlassBackdrop.make(
+            size: CGSize(width: containerWidth, height: containerHeight),
+            cornerRadius: pillRadius,
+            tintColor: NSColor.black,
+            tintAlpha: 0.08,
+            borderAlpha: 0.35,
+            material: .popover
         )
-        visualEffectView.material = .hudWindow
-        visualEffectView.blendingMode = .behindWindow
-        visualEffectView.state = .active
-        visualEffectView.wantsLayer = true
-        visualEffectView.layer?.cornerRadius = 10
-        visualEffectView.layer?.masksToBounds = true
-        visualEffectView.layer?.borderWidth = 1.5
-        visualEffectView.layer?.borderColor = NSColor.white.withAlphaComponent(0.3).cgColor
+        container.frame.origin = CGPoint(x: containerX, y: containerY)
 
         let textField = NSTextField(labelWithString: "")
         textField.font = NSFont.monospacedSystemFont(ofSize: 16, weight: .medium)
-        textField.textColor = .white
+        textField.textColor = NSColor.labelColor
         textField.backgroundColor = .clear
         textField.isBordered = false
         textField.alignment = .center
-        textField.frame = CGRect(x: 10, y: 8, width: containerWidth - 80, height: 24)
-        textField.placeholderString = "Type to search..."
+        textField.frame = CGRect(x: 16, y: (containerHeight - 22) / 2,
+                                 width: containerWidth - 96, height: 22)
         textField.placeholderAttributedString = NSAttributedString(
-            string: "Type to search...",
+            string: "Type to search…",
             attributes: [
-                .foregroundColor: NSColor.white.withAlphaComponent(0.5),
+                .foregroundColor: NSColor.secondaryLabelColor,
                 .font: NSFont.monospacedSystemFont(ofSize: 14, weight: .regular)
             ]
         )
 
+        // Inline rounded tag instead of a loose digit — reads as a chip.
+        let badgeWidth: CGFloat = 58
+        let badgeHeight: CGFloat = 22
+        let badge = NSView(frame: CGRect(
+            x: containerWidth - badgeWidth - 10,
+            y: (containerHeight - badgeHeight) / 2,
+            width: badgeWidth,
+            height: badgeHeight
+        ))
+        badge.wantsLayer = true
+        badge.layer?.cornerRadius = badgeHeight / 2
+        badge.layer?.backgroundColor = NSColor.systemBlue.withAlphaComponent(0.18).cgColor
+        badge.layer?.borderColor = NSColor.systemBlue.withAlphaComponent(0.4).cgColor
+        badge.layer?.borderWidth = 0.5
+        badge.isHidden = true
+
         let countLabel = NSTextField(labelWithString: "")
-        countLabel.font = NSFont.monospacedSystemFont(ofSize: 12, weight: .medium)
-        countLabel.textColor = .systemYellow
+        countLabel.font = NSFont.monospacedSystemFont(ofSize: 11, weight: .semibold)
+        countLabel.textColor = .systemBlue
         countLabel.backgroundColor = .clear
         countLabel.isBordered = false
-        countLabel.alignment = .right
-        countLabel.frame = CGRect(x: containerWidth - 70, y: 10, width: 60, height: 20)
+        countLabel.alignment = .center
+        countLabel.frame = CGRect(x: 0, y: (badgeHeight - 14) / 2,
+                                  width: badgeWidth, height: 14)
+        badge.addSubview(countLabel)
 
-        visualEffectView.addSubview(textField)
-        visualEffectView.addSubview(countLabel)
+        container.addSubview(textField)
+        container.addSubview(badge)
 
-        return Components(container: visualEffectView, textField: textField, countLabel: countLabel)
+        return Components(container: container, textField: textField, countBadge: badge, countLabel: countLabel)
     }
 }

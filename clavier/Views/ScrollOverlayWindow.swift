@@ -42,11 +42,8 @@ class ScrollOverlayWindow: NSWindow {
         containerView.wantsLayer = true
 
         let highlight = NSView(frame: .zero)
-        highlight.wantsLayer = true
-        highlight.layer?.borderColor = NSColor.systemYellow.cgColor
-        highlight.layer?.borderWidth = 3
-        highlight.layer?.cornerRadius = 4
         highlight.isHidden = true
+        SelectionHighlightRenderer.applyActiveStyle(highlight)
         containerView.addSubview(highlight)
         highlightView = highlight
 
@@ -99,8 +96,8 @@ class ScrollOverlayWindow: NSWindow {
             numberedAreas[idx] = NumberedArea(area: numberedAreas[idx].area, number: newNumber)
         }
 
-        if let hintView = hintViews[identity] as? NSTextField {
-            hintView.stringValue = newNumber
+        if let hintView = hintViews[identity] {
+            AreaLabelRenderer.updateNumber(on: hintView, to: newNumber)
         }
     }
 
