@@ -316,36 +316,10 @@ class HintModeController {
 
     /// Assign hint tokens to discovered elements for a session.
     ///
-    /// Pure mapping — no mutation of `UIElement` domain data; hint tokens live
-    /// only in the returned `HintedElement` wrappers (F05/P3-S1).
+    /// Reads the current alphabet from `AppSettings` and delegates to
+    /// `HintAssigner` (pure mapping — no AX / UserDefaults interior state).
     private func assignHints(to elements: [UIElement]) -> [HintedElement] {
-        let chars = AppSettings.hintCharacters.characters
-        let count = elements.count
-
-        var hints: [String] = []
-        let n = chars.count
-        let twoCharCombos = n * n
-        let threeCharCombos = n * n * n
-        let hintCount = min(count, threeCharCombos)
-
-        if count <= twoCharCombos {
-            for i in 0..<hintCount {
-                let first = chars[i / n]
-                let second = chars[i % n]
-                hints.append("\(first)\(second)")
-            }
-        } else {
-            for i in 0..<hintCount {
-                let first = chars[i / (n * n)]
-                let second = chars[(i / n) % n]
-                let third = chars[i % n]
-                hints.append("\(first)\(second)\(third)")
-            }
-        }
-
-        return zip(elements.prefix(hintCount), hints).map { element, hint in
-            HintedElement(element: element, hint: hint)
-        }
+        HintAssigner.assign(to: elements, alphabet: AppSettings.hintCharacters)
     }
 
     // MARK: - Text attribute hydration
