@@ -280,3 +280,48 @@ splits that move **view caches** out of the window would risk
 double-release and aren't attempted here.
 
 Source: [NSWindow — Apple reference](https://developer.apple.com/documentation/appkit/nswindow)
+
+## Structured logging with `os.Logger` (final cleanup pass)
+
+### Apple recommendation
+
+Apple's current guidance is to use `os.Logger` (introduced in macOS 11 /
+iOS 14) for all production logging instead of `print` / `NSLog`.  Unified
+logging is archived on device, integrates with `Console.app`, and is
+cheap enough to leave in shipping code because the release build elides
+`.debug` messages from the persistent store by default.
+
+Sources:
+- [`Logger` — Apple reference](https://developer.apple.com/documentation/os/logger)
+- [`OSLog.Category` — Apple reference](https://developer.apple.com/documentation/os/oslog/category)
+- [SwiftLee: OSLog and Unified logging as recommended by Apple](https://www.avanderlee.com/debugging/oslog-unified-logging/)
+- [Donny Wals: Modern logging with the OSLog framework in Swift](https://www.donnywals.com/modern-logging-with-the-oslog-framework-in-swift/)
+
+### Usage decisions for this codebase
+
+- **Subsystem**: `fabiogaliano.clavier` (the app's bundle identifier).
+- **Categories**: one per domain area so `Console.app` filtering stays
+  meaningful — `hintMode`, `scrollMode`, `accessibility`, `scrollDetect`,
+  `app`.
+- **Levels**:
+  - `.warning` for operational failures that degrade the feature but do
+    not crash the app — event-tap creation failures, missing
+    Accessibility permissions.
+  - `.debug` for perf-timing traces (`[CONTINUOUS]`, `[PERF]`, `[HINT]`,
+    `[MANUAL]`, `[ChromiumDetector]`, `⏱️ traverseElements`, …).
+    These were previously `print(...)` lines; at `.debug` they stay out
+    of the default release log stream but remain available via
+    `log stream --level debug --predicate 'subsystem == "fabiogaliano.clavier"'`.
+- **No `.info` / `.notice`** for perf traces — Apple's guidance is that
+  `.info` is persisted while `.debug` is not, and these traces are purely
+  for active debugging.
+
+### Why not a custom logger wrapper
+
+The Swift Forums thread on wrapping `Logger` to toggle output is
+specifically about constrained environments where a compile-time
+`#if DEBUG` gate is required.  Unified logging already supports
+runtime-level filtering, so an extra wrapper layer would only obscure
+the API without adding value here.
+
+Source: [Swift Forums — Wrap os Logger to programmatically enable / disable the output](https://forums.swift.org/t/wrap-os-logger-to-programmatically-enable-disable-the-output/78070)
