@@ -57,7 +57,7 @@ enum AppSettings {
         static let highlightTextHex = "#FFFF00"
         static let hintBackgroundOpacity = 0.3
         static let hintBorderOpacity = 0.6
-        static let hintHorizontalOffset = -25.0
+        static let hintHorizontalOffset = 0.0
         static let scrollShortcutKeyCode = 14
         static let scrollShortcutModifiers = optionKey
         static let scrollArrowMode = ScrollArrowMode.select

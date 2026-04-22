@@ -46,7 +46,8 @@ class HintOverlayWindow: NSWindow {
         containerView.wantsLayer = true
 
         let style = HintStyle()
-        var engine = HintPlacementEngine(windowSize: self.frame.size)
+        let obstacles = hintedElements.map { $0.element.visibleFrame }
+        var engine = HintPlacementEngine(windowSize: self.frame.size, elementFrames: obstacles)
         for hintedElement in hintedElements {
             let hintView = HintLabelRenderer.createHintLabel(for: hintedElement, style: style, engine: &engine)
             containerView.addSubview(hintView)
@@ -113,7 +114,8 @@ class HintOverlayWindow: NSWindow {
 
         self.hintedElements = newHintedElements
         let style = HintStyle()
-        var engine = HintPlacementEngine(windowSize: self.frame.size)
+        let obstacles = hintedElements.map { $0.element.visibleFrame }
+        var engine = HintPlacementEngine(windowSize: self.frame.size, elementFrames: obstacles)
         for hintedElement in hintedElements {
             let identity = hintedElement.identity
             if let existingView = hintViews[identity] {
@@ -154,7 +156,8 @@ class HintOverlayWindow: NSWindow {
                 for (_, view) in hintViews { view.isHidden = true }
 
                 let style = HintStyle()
-                var engine = HintPlacementEngine(windowSize: self.frame.size)
+                let obstacles = textMatches.map { $0.element.visibleFrame }
+                var engine = HintPlacementEngine(windowSize: self.frame.size, elementFrames: obstacles)
                 for hintedElement in textMatches {
                     let hintView = HintLabelRenderer.createHintLabel(for: hintedElement, style: style, engine: &engine)
                     self.contentView?.addSubview(hintView)
