@@ -225,10 +225,105 @@ final class ClickabilityPolicyTests: XCTestCase {
         )
     }
 
+    // MARK: - classify: Chromium AXDOMRole gate (commit 2)
+
+    func test_classify_inWebArea_domRoleInteractive_overridesMissingURL() {
+        // Chromium exposes AXDOMRole: when the HTML tag is "a" or
+        // "button" we keep the element even without AXURL (rule B would
+        // otherwise drop it).
+        XCTAssertEqual(
+            policy.classify(
+                role: kAXStaticTextRole as String,
+                enabled: true,
+                hasClickAction: true,
+                hasURL: false,
+                domRole: "a",
+                webContext: .init(inWebArea: true, hasClickableAncestor: false)
+            ),
+            .staticTextPressable
+        )
+
+        XCTAssertEqual(
+            policy.classify(
+                role: kAXStaticTextRole as String,
+                enabled: true,
+                hasClickAction: true,
+                hasURL: false,
+                domRole: "BUTTON",
+                webContext: .init(inWebArea: true, hasClickableAncestor: false)
+            ),
+            .staticTextPressable,
+            "DOM role comparison must be case-insensitive"
+        )
+    }
+
+    func test_classify_inWebArea_domRoleNonInteractive_dropsEvenWithURL() {
+        // Ground truth from the DOM wins over the URL heuristic: a <p>
+        // that somehow reports both AXPress and AXURL is still paragraph
+        // text and should be suppressed.
+        XCTAssertEqual(
+            policy.classify(
+                role: kAXStaticTextRole as String,
+                enabled: true,
+                hasClickAction: true,
+                hasURL: true,
+                domRole: "p",
+                webContext: .init(inWebArea: true, hasClickableAncestor: false)
+            ),
+            .staticTextDroppedByDOMRole
+        )
+    }
+
+    func test_classify_inWebArea_domRoleAbsent_fallsBackToURLRule() {
+        // Safari / Firefox path: AXDOMRole unavailable, classifier
+        // continues using the existing URL rule from commit 1.
+        XCTAssertEqual(
+            policy.classify(
+                role: kAXStaticTextRole as String,
+                enabled: true,
+                hasClickAction: true,
+                hasURL: false,
+                domRole: nil,
+                webContext: .init(inWebArea: true, hasClickableAncestor: false)
+            ),
+            .staticTextDroppedNoURL
+        )
+
+        XCTAssertEqual(
+            policy.classify(
+                role: kAXStaticTextRole as String,
+                enabled: true,
+                hasClickAction: true,
+                hasURL: true,
+                domRole: nil,
+                webContext: .init(inWebArea: true, hasClickableAncestor: false)
+            ),
+            .staticTextPressable
+        )
+    }
+
+    func test_classify_inWebArea_ancestorOverridesDOMRole() {
+        // Rule A short-circuits before the DOM-role check — an already-
+        // clickable ancestor means we drop the inner text regardless of
+        // what AXDOMRole says.
+        XCTAssertEqual(
+            policy.classify(
+                role: kAXStaticTextRole as String,
+                enabled: true,
+                hasClickAction: true,
+                hasURL: true,
+                domRole: "a",
+                webContext: .init(inWebArea: true, hasClickableAncestor: true)
+            ),
+            .staticTextDroppedByAncestor
+        )
+    }
+
     // MARK: - Decision.isClickable truth table for new cases
 
     func test_newDecisions_areNotClickable() {
         XCTAssertFalse(ClickabilityPolicy.Decision.staticTextDroppedByAncestor.isClickable)
         XCTAssertFalse(ClickabilityPolicy.Decision.staticTextDroppedNoURL.isClickable)
+        XCTAssertFalse(ClickabilityPolicy.Decision.staticTextDroppedByDOMRole.isClickable)
     }
 }

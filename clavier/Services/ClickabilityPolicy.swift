@@ -30,6 +30,14 @@ struct ClickabilityPolicy {
     /// walker can skip recursion into their children.
     let skipSubtreeRoles: Set<String>
 
+    /// HTML tag names / ARIA roles that Chromium reports via its
+    /// undocumented `AXDOMRole` attribute for *interactive* web elements.
+    /// Compared case-insensitively (values stored lowercased).  Only
+    /// consulted inside `AXWebArea` when `AXDOMRole` is present on the
+    /// candidate — Safari/Firefox don't expose the attribute and fall
+    /// back to the URL rule.
+    let interactiveDOMRoles: Set<String>
+
     static let `default` = ClickabilityPolicy(
         interactiveRoles: [
             kAXButtonRole as String,
@@ -54,6 +62,21 @@ struct ClickabilityPolicy {
             kAXValueIndicatorRole as String,
             "AXBusyIndicator",
             "AXProgressIndicator"
+        ],
+        interactiveDOMRoles: [
+            "a",
+            "button",
+            "input",
+            "select",
+            "textarea",
+            "summary",
+            "details",
+            "link",
+            "menuitem",
+            "tab",
+            "checkbox",
+            "radio",
+            "switch"
         ]
     )
 
@@ -76,6 +99,11 @@ struct ClickabilityPolicy {
         /// Filters out paragraph/label text that falsely advertises
         /// `AXPress` without being a real link.
         case staticTextDroppedNoURL
+        /// Chromium-only: pressable static text suppressed because its
+        /// `AXDOMRole` (HTML tag / ARIA role) is not an interactive
+        /// element — e.g., a `<p>` or `<span>` that inherited `AXPress`
+        /// from a nearby focusable ancestor.
+        case staticTextDroppedByDOMRole
 
         var isClickable: Bool {
             switch self {
@@ -84,7 +112,8 @@ struct ClickabilityPolicy {
                  .staticTextNoAction,
                  .roleNotInteractive,
                  .staticTextDroppedByAncestor,
-                 .staticTextDroppedNoURL:
+                 .staticTextDroppedNoURL,
+                 .staticTextDroppedByDOMRole:
                 return false
             }
         }
@@ -122,6 +151,15 @@ struct ClickabilityPolicy {
             guard hasClickAction(element) else { return .staticTextNoAction }
             if let ctx = webContext, ctx.inWebArea {
                 if ctx.hasClickableAncestor { return .staticTextDroppedByAncestor }
+                // Chromium exposes `AXDOMRole` (HTML tag or ARIA role) as
+                // an undocumented extra attribute.  When present it's
+                // ground truth — overrides the URL heuristic.
+                if let dr = readDOMRole(element) {
+                    return interactiveDOMRoles.contains(dr)
+                        ? .staticTextPressable
+                        : .staticTextDroppedByDOMRole
+                }
+                // Safari / Firefox fallback: no `AXDOMRole`, use URL.
                 if !hasURL(element) { return .staticTextDroppedNoURL }
             }
             return .staticTextPressable
@@ -131,13 +169,15 @@ struct ClickabilityPolicy {
 
     /// Pure sibling of `evaluate` — same decision tree with AX probes
     /// hoisted out so tests can cover every branch without standing up a
-    /// live AX tree.  `hasClickAction` and `hasURL` are `false` by
-    /// default so callers only need to set what the test case exercises.
+    /// live AX tree.  `hasClickAction`, `hasURL` and `domRole` are
+    /// nil/false by default so callers only need to set what the test
+    /// case exercises.  `domRole` is compared case-insensitively.
     func classify(
         role: String,
         enabled: Bool?,
         hasClickAction: Bool = false,
         hasURL: Bool = false,
+        domRole: String? = nil,
         webContext: WebContext? = nil
     ) -> Decision {
         if let enabled, !enabled { return .disabled }
@@ -146,6 +186,11 @@ struct ClickabilityPolicy {
             guard hasClickAction else { return .staticTextNoAction }
             if let ctx = webContext, ctx.inWebArea {
                 if ctx.hasClickableAncestor { return .staticTextDroppedByAncestor }
+                if let dr = domRole?.lowercased() {
+                    return interactiveDOMRoles.contains(dr)
+                        ? .staticTextPressable
+                        : .staticTextDroppedByDOMRole
+                }
                 if !hasURL { return .staticTextDroppedNoURL }
             }
             return .staticTextPressable
@@ -210,5 +255,19 @@ struct ClickabilityPolicy {
             return false
         }
         return ref != nil
+    }
+
+    /// Read Chromium's `AXDOMRole` attribute (the HTML tag name or ARIA
+    /// role of the underlying DOM node) and return it lowercased.  Returns
+    /// nil when the attribute is absent — e.g., Safari and Firefox don't
+    /// expose it, so the classifier falls back to the URL rule for those.
+    private func readDOMRole(_ element: AXUIElement) -> String? {
+        var ref: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(element, "AXDOMRole" as CFString, &ref) == .success,
+              let value = ref as? String,
+              !value.isEmpty else {
+            return nil
+        }
+        return value.lowercased()
     }
 }
