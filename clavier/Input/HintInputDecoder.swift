@@ -15,9 +15,10 @@
 //  result to main.  All input logic (processInput, handleEscapeKey, etc.)
 //  stays in the controller for now — full reducer extraction is P4-S2.
 //
-//  Key-code → character mapping lives here rather than duplicated across
-//  controllers.  `KeymapUtilities.keyCodeToString` handles display; this
-//  handles input character recognition.
+//  Key-code → character mapping is shared with `ScrollInputDecoder` via
+//  `KeymapUtilities.asciiCharacter(forKeyCode:)`.  That table is the canonical
+//  input-recognition map; `KeymapUtilities.keyCodeToString` remains separate
+//  because it is upper-case and includes display-only glyphs (Space, ⎋, etc.).
 //
 
 import AppKit
@@ -89,7 +90,7 @@ enum HintInputDecoder {
         }
 
         // Character keys
-        guard var character = keyCodeToCharacter(keyCode) else {
+        guard var character = KeymapUtilities.asciiCharacter(forKeyCode: keyCode) else {
             return .passThrough
         }
 
@@ -107,25 +108,4 @@ enum HintInputDecoder {
         return .character(lower)
     }
 
-    // MARK: - Key map
-
-    /// Maps hardware key codes to their primary character.
-    ///
-    /// Intentionally lower-case so callers get a uniform value without needing
-    /// `lowercased()` on every call path.  `KeymapUtilities.keyCodeToString` serves
-    /// display (title-cased, UI-facing); this table serves input recognition
-    /// (lower-case, consumer-agnostic).  The two tables are intentionally separate
-    /// because their case conventions and intended callers differ.
-    private static func keyCodeToCharacter(_ keyCode: Int64) -> String? {
-        let keyMap: [Int64: String] = [
-            0: "a", 1: "s", 2: "d", 3: "f", 4: "h", 5: "g", 6: "z", 7: "x",
-            8: "c", 9: "v", 11: "b", 12: "q", 13: "w", 14: "e", 15: "r",
-            16: "y", 17: "t", 18: "1", 19: "2", 20: "3", 21: "4", 22: "6",
-            23: "5", 24: "=", 25: "9", 26: "7", 27: "-", 28: "8", 29: "0",
-            30: "]", 31: "o", 32: "u", 33: "[", 34: "i", 35: "p", 37: "l",
-            38: "j", 40: "k", 41: ";", 43: ",", 45: "n", 46: "m", 47: ".",
-            50: "`"
-        ]
-        return keyMap[keyCode]
-    }
 }

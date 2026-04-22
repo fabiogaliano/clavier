@@ -34,4 +34,23 @@ enum KeymapUtilities {
         if flags.contains(.command) { modifiers |= cmdKey }
         return modifiers
     }
+
+    /// Lower-case ASCII character for a hardware key code on a US-QWERTY layout.
+    ///
+    /// Input-recognition counterpart to `keyCodeToString` (which is upper-case,
+    /// `Int`-typed, and includes display-only glyphs like `Space` and `⎋`).
+    /// `HintInputDecoder` and `ScrollInputDecoder` share this table.
+    static func asciiCharacter(forKeyCode keyCode: Int64) -> String? {
+        keyCodeToASCII[keyCode]
+    }
+
+    private static let keyCodeToASCII: [Int64: String] = [
+        0: "a", 1: "s", 2: "d", 3: "f", 4: "h", 5: "g", 6: "z", 7: "x",
+        8: "c", 9: "v", 11: "b", 12: "q", 13: "w", 14: "e", 15: "r",
+        16: "y", 17: "t", 18: "1", 19: "2", 20: "3", 21: "4", 22: "6",
+        23: "5", 24: "=", 25: "9", 26: "7", 27: "-", 28: "8", 29: "0",
+        30: "]", 31: "o", 32: "u", 33: "[", 34: "i", 35: "p", 37: "l",
+        38: "j", 40: "k", 41: ";", 43: ",", 45: "n", 46: "m", 47: ".",
+        50: "`"
+    ]
 }

@@ -13,10 +13,9 @@
 //  decode time.  Numeric-input accumulation and arrow-mode routing remain in
 //  the controller for now — full reducer extraction is P4-S3.
 //
-//  Key mapping for scroll directions uses the same lower-case character table
-//  as `HintInputDecoder.keyCodeToCharacter`; the table is replicated here
-//  rather than shared because the two decoders have distinct inputs and the
-//  table is stable enough that a shared copy adds coupling without benefit.
+//  Key mapping for scroll directions uses the shared ASCII table from
+//  `KeymapUtilities.asciiCharacter(forKeyCode:)`.  Non-letter keycodes are
+//  filtered out here because scroll direction bindings must be letters.
 //
 
 import AppKit
@@ -103,7 +102,7 @@ enum ScrollInputDecoder {
         scrollKeys: String
     ) -> ScrollDirection? {
         guard scrollKeys.count == 4,
-              let character = keyCodeToCharacter(keyCode) else { return nil }
+              let character = letterCharacter(for: keyCode) else { return nil }
 
         let chars = Array(scrollKeys.lowercased())
         let leftKey  = String(chars[0])
@@ -120,19 +119,15 @@ enum ScrollInputDecoder {
         }
     }
 
-    /// Maps hardware key codes to their lower-case primary character.
+    /// Letter-only lookup from the shared key map.
     ///
-    /// Covers the letter keys used by default hjkl bindings and any custom
-    /// four-character `scrollKeys` string.  Number-row and punctuation keys
-    /// are intentionally omitted — they are handled by `numberKeyMap` above
-    /// and are not valid scroll-key characters.
-    private static func keyCodeToCharacter(_ keyCode: Int64) -> String? {
-        let keyMap: [Int64: String] = [
-            0: "a", 1: "s", 2: "d", 3: "f", 4: "h", 5: "g", 6: "z", 7: "x",
-            8: "c", 9: "v", 11: "b", 12: "q", 13: "w", 14: "e", 15: "r",
-            16: "y", 17: "t", 31: "o", 32: "u", 34: "i", 35: "p", 37: "l",
-            38: "j", 40: "k", 45: "n", 46: "m",
-        ]
-        return keyMap[keyCode]
+    /// Scroll direction bindings must be letters; number-row and punctuation
+    /// keys are handled by `numberKeyMap` or are not valid scroll-key
+    /// characters.  Filtering here keeps callers honest without maintaining
+    /// a second table.
+    private static func letterCharacter(for keyCode: Int64) -> String? {
+        guard let character = KeymapUtilities.asciiCharacter(forKeyCode: keyCode),
+              character.first?.isLetter == true else { return nil }
+        return character
     }
 }

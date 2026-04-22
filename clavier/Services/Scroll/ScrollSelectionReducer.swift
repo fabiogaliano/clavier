@@ -26,8 +26,11 @@ enum ScrollSideEffect: ReducerSideEffect {
     case performScroll(direction: ScrollDirection, speed: Double)
     /// Deactivate scroll mode entirely.
     case deactivate
-    /// Select the area at this index (nil clears selection).
-    case selectArea(at: Int?)
+    /// Select the area at this index.
+    ///
+    /// The reducer never emits this with a nil-equivalent; use `.clearSelection`
+    /// for selection removal.
+    case selectArea(at: Int)
     /// Update the visible number badge on an area that was renumbered.
     case updateNumber(identity: AreaIdentity, newNumber: String)
     /// Restart the inactivity deactivation countdown.

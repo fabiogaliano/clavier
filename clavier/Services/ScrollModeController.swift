@@ -6,9 +6,9 @@
 //
 //  Wires: GlobalHotkeyRegistrar → event tap → ScrollInputDecoder
 //       → ScrollSelectionReducer → [ScrollSideEffect]
-//       → ScrollCommandExecutor  (scroll events)
+//       → ScrollCommandExecutor     (scroll events)
 //       → ScrollDiscoveryCoordinator (two-phase area discovery)
-//       → ScrollOverlayWindow (overlay updates)
+//       → ScrollOverlayRenderer     (overlay updates)
 //
 
 import Foundation
@@ -18,7 +18,7 @@ import Carbon
 @MainActor
 class ScrollModeController {
 
-    private var overlayWindow: ScrollOverlayWindow?
+    private let renderer = ScrollOverlayRenderer()
     private var session: ScrollSession = .inactive
     private var deactivationTimer: Timer?
 
@@ -130,13 +130,10 @@ class ScrollModeController {
 
         print("[HINT] #1 → \(firstArea.frame)")
 
-        overlayWindow = ScrollOverlayWindow(numberedAreas: areas)
-        overlayWindow?.show()
+        renderer.open(initialAreas: areas)
 
         guard startEventTap() else {
-            overlayWindow?.orderOut(nil)
-            overlayWindow?.close()
-            overlayWindow = nil
+            renderer.close()
             session = .inactive
             return false
         }
@@ -156,7 +153,7 @@ class ScrollModeController {
         if case .active(let current, let sel, let input) = session {
             session = .active(areas: current + [numbered], selected: sel, pendingInput: input)
         }
-        overlayWindow?.addArea(numbered)
+        renderer.addArea(numbered)
         print("[HINT] #\(nextNumber) → \(area.frame)")
     }
 
@@ -169,7 +166,7 @@ class ScrollModeController {
             guard case .active(var current, var sel, let input) = session,
                   index < current.count else { continue }
             let removedIdentity = current[index].identity
-            overlayWindow?.removeArea(withIdentity: removedIdentity)
+            renderer.removeArea(withIdentity: removedIdentity)
             current.remove(at: index)
             if let s = sel {
                 if index < s { sel = s - 1 }
@@ -190,11 +187,7 @@ class ScrollModeController {
 
         eventTap.stop()
 
-        if let window = overlayWindow {
-            window.orderOut(nil)
-            window.close()
-        }
-        overlayWindow = nil
+        renderer.close()
 
         session = .inactive
     }
@@ -253,20 +246,16 @@ class ScrollModeController {
                 deactivateScrollMode()
 
             case .selectArea(let index):
-                if let index {
-                    selectArea(at: index)
-                } else {
-                    overlayWindow?.clearSelection()
-                }
+                selectArea(at: index)
 
             case .updateNumber(let identity, let newNumber):
-                overlayWindow?.updateNumber(forIdentity: identity, newNumber: newNumber)
+                renderer.updateNumber(forIdentity: identity, newNumber: newNumber)
 
             case .resetDeactivationTimer:
                 resetDeactivationTimer()
 
             case .clearSelection:
-                overlayWindow?.clearSelection()
+                renderer.clearSelection()
             }
         }
     }
@@ -277,7 +266,7 @@ class ScrollModeController {
         guard case .active(let current, _, _) = session,
               index >= 0 && index < current.count else { return }
         session = .active(areas: current, selected: index, pendingInput: "")
-        overlayWindow?.selectArea(at: index)
+        renderer.selectArea(at: index)
         print("Selected scroll area \(index + 1)")
     }
 
@@ -300,7 +289,7 @@ class ScrollModeController {
             if current[i].number != newNumber {
                 let oldIdentity = current[i].identity
                 current[i] = NumberedArea(area: current[i].area, number: newNumber)
-                overlayWindow?.updateNumber(forIdentity: oldIdentity, newNumber: newNumber)
+                renderer.updateNumber(forIdentity: oldIdentity, newNumber: newNumber)
             }
         }
         session = .active(areas: current, selected: sel, pendingInput: input)
