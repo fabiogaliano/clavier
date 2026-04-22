@@ -219,3 +219,64 @@ matching `AXReader`'s shape and making the AX main-thread requirement
 explicit.
 
 This is a pure decomposition; no AX call sequences change.
+
+## HintModeController thinning (this refactor)
+
+### AXUIElementPerformAction — press/right-click semantics
+
+`AXUIElementPerformAction(element, kAXPressAction as CFString)` performs
+the element's primary action (equivalent to a single click on a button,
+link, menu item, etc.).  It returns an `AXError`:
+
+- `.success` — action performed.
+- `.actionUnsupported` — the element does not expose this action.
+- `.cannotComplete` — process unreachable / AX subsystem transient.
+- `.failure` — generic failure.
+
+Source: [AXUIElementPerformAction — Apple reference](https://developer.apple.com/documentation/applicationservices/1462091-axuielementperformaction)
+
+`"AXShowMenu"` is the conventional action name for "open the element's
+context menu" (equivalent to right-click / Control-click).  It is
+declared in `AXActionConstants.h` as `kAXShowMenuAction` but we use the
+string literal so callers do not need `AppKit`/`HIServices` action
+constant imports in controller code.
+
+Source: [AXActionConstants.h reference — Apple developer search](https://developer.apple.com/documentation/applicationservices/axuielement_h/action_constants)
+
+Consequences preserved in the refactor:
+
+1. The controller-level pattern "try AX action, fall back to synthesized
+   CGEvent click" is the correct behaviour for both primary click and
+   right-click: elements that declare the action typically give a more
+   faithful click (e.g. focus transfer, menu spawn) while the CGEvent
+   fallback covers the long tail (Electron apps, elements that lack
+   AX actions).  The extracted `HintActionPerformer` must keep the
+   fallback path and must **not** treat `.actionUnsupported` specially
+   beyond "fall through to CGEvent".
+2. The AX calls must stay on `@MainActor`.  The extracted performer is
+   therefore `@MainActor` (same constraint as `AXTextHydrator`).
+3. Coordinate flip from AppKit top-left to Quartz bottom-left for the
+   synthesized click path continues to live in `ScreenGeometry`.
+
+### Hint token assignment
+
+Hint strings are alphabet permutations over the characters configured in
+`AppSettings.hintCharacters`:
+
+- `count ≤ n²`  → two-character tokens (`AA`, `AB`, … `ZZ`).
+- `count > n²`  → three-character tokens capped at `n³`.
+
+This is a pure mapping (no AX reads, no UserDefaults outside the initial
+`hintCharacters` fetch) and belongs in its own type for testability.
+
+### AppKit window lifecycle (overlay split)
+
+`NSWindow.close()` triggers `isReleasedWhenClosed = false`-aware teardown
+on our overlay — safe to call from the renderer.  Subview removal and
+view-cache clearing must run on the main actor.  Presenter-style splits
+that move pure *mappings* (state → colors, state → text) out of the
+window are safe because they don't touch the `NSWindow` retain graph;
+splits that move **view caches** out of the window would risk
+double-release and aren't attempted here.
+
+Source: [NSWindow — Apple reference](https://developer.apple.com/documentation/appkit/nswindow)

@@ -77,22 +77,12 @@ class HintOverlayWindow: NSWindow {
     }
 
     func updateMatchCount(_ count: Int) {
-        if count == -1 {
-            matchCountLabel?.stringValue = ""
-            searchBarView?.layer?.borderColor = NSColor.systemBlue.cgColor
-        } else if count == 0 {
-            matchCountLabel?.stringValue = "0"
-            matchCountLabel?.textColor = .systemRed
-            searchBarView?.layer?.borderColor = NSColor.systemRed.cgColor
-        } else if count == 1 {
-            matchCountLabel?.stringValue = "1"
-            matchCountLabel?.textColor = .systemGreen
-            searchBarView?.layer?.borderColor = NSColor.systemGreen.cgColor
-        } else {
-            matchCountLabel?.stringValue = "\(count)"
-            matchCountLabel?.textColor = .systemYellow
-            searchBarView?.layer?.borderColor = NSColor.systemYellow.cgColor
+        let style = MatchCountPresenter.style(forCount: count)
+        matchCountLabel?.stringValue = style.labelText
+        if !style.labelText.isEmpty {
+            matchCountLabel?.textColor = style.labelColor
         }
+        searchBarView?.layer?.borderColor = style.borderColor.cgColor
     }
 
     override func close() {
