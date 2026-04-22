@@ -2,7 +2,15 @@
 //  ScrollableAreaService.swift
 //  clavier
 //
-//  Queries UI elements via Accessibility APIs for scrollable areas
+//  Façade for scrollable-area discovery: resolves the frontmost app, runs the
+//  app-specific detector chain, and falls back to generic AX traversal.
+//
+//  The heavy lifting now lives in dedicated types under `ScrollDetection/`:
+//    - `ScrollableAXProbe`              — shared AX hierarchy / role helpers
+//    - `FocusedScrollableAreaFinder`    — Phase 1 focused-area lookup
+//    - `ScrollableAreaTraverser`        — Phase 2 generic traversal + merge
+//    - `ScrollableAreaMerger`           — merge / dedupe policy
+//    - `DetectorRegistry` + `AppSpecificDetector` — per-app detection strategy
 //
 
 import Foundation
@@ -13,68 +21,33 @@ class ScrollableAreaService {
 
     static let shared = ScrollableAreaService()
 
-    // Configuration constants
-    private enum Config {
-        static let minimumAreaSize: CGFloat = 100
-    }
-
     private let merger = ScrollableAreaMerger()
     private let focusedFinder = FocusedScrollableAreaFinder()
+    private let traverser: ScrollableAreaTraverser
 
-    /// Canonical merge-policy gate: delegates to `ScrollableAreaMerger`.
-    ///
-    /// Returns true if the candidate should be appended; removes any existing
-    /// areas that the candidate supersedes.  The controller's progressive
-    /// discovery path (P2-S2) will converge on the same merger instance.
-    private func shouldAddArea(_ newArea: ScrollableArea, to areas: inout [ScrollableArea]) -> Bool {
-        let existingFrames = areas.map(\.frame)
-        let decision = merger.decision(for: newArea.frame, against: existingFrames)
-
-        switch decision {
-        case .discard, .nestedInExisting:
-            return false
-
-        case .replaceExisting(let indices):
-            for index in indices.sorted().reversed() {
-                areas.remove(at: index)
-            }
-            return true
-
-        case .add:
-            return true
-        }
+    init() {
+        self.traverser = ScrollableAreaTraverser(merger: merger)
     }
 
-    func getScrollableAreas(onAreaFound: ((ScrollableArea) -> Void)? = nil, maxAreas: Int? = nil) -> [ScrollableArea] {
-        let startTime = Date()
-        var elementCount = 0
+    /// Discover scrollable areas in the frontmost application.
+    ///
+    /// Runs the per-app detector chain first; if no detector signals
+    /// `.stopTraversal`, falls back to generic AX traversal so common
+    /// containers (sidebars, viewport, etc.) are still picked up.
+    func getScrollableAreas(
+        onAreaFound: ((ScrollableArea) -> Void)? = nil,
+        maxAreas: Int? = nil
+    ) -> [ScrollableArea] {
+        guard let context = frontmostAppContext() else { return [] }
 
-        guard let focusedApp = NSWorkspace.shared.frontmostApplication,
-              let pid = focusedApp.processIdentifier as pid_t?,
-              let bundleId = focusedApp.bundleIdentifier else {
-            return []
-        }
-
-        let appElement = AXUIElementCreateApplication(pid)
         var areas: [ScrollableArea] = []
-        var shouldStop = false
+        var continuation: DetectionContinuation = .continueTraversal
 
-        // Get all windows
-        var windowsRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef) == .success,
-              let windows = windowsRef as? [AXUIElement] else {
-            return []
-        }
-
-        // Try app-specific detection first
-        let detectors = DetectorRegistry.shared.detectorsForBundleId(bundleId)
-        var traversalContinuation: DetectionContinuation = .continueTraversal
-
-        for detector in detectors {
+        for detector in DetectorRegistry.shared.detectorsForBundleId(context.bundleId) {
             let result = detector.detect(
-                windows: windows,
-                appElement: appElement,
-                bundleIdentifier: bundleId,
+                windows: context.windows,
+                appElement: context.appElement,
+                bundleIdentifier: context.bundleId,
                 onAreaFound: onAreaFound,
                 maxAreas: maxAreas
             )
@@ -86,122 +59,51 @@ class ScrollableAreaService {
             }
 
             if result.continuation == .stopTraversal {
-                traversalContinuation = .stopTraversal
+                continuation = .stopTraversal
                 break
             }
         }
 
-        if traversalContinuation == .continueTraversal {
-            for (_, window) in windows.enumerated() {
-                guard !shouldStop else { break }
-                traverseElement(window, into: &areas, depth: 0, maxDepth: 10, elementCount: &elementCount, onAreaFound: onAreaFound, shouldStop: &shouldStop, maxAreas: maxAreas)
-            }
+        if continuation == .continueTraversal {
+            let remaining = maxAreas.map { max(0, $0 - areas.count) }
+            let traversed = traverser.traverse(
+                windows: context.windows,
+                onAreaFound: onAreaFound,
+                maxAreas: remaining
+            )
+            areas.append(contentsOf: traversed)
         }
 
         return areas
     }
 
-    /// Fast focus detection - finds the focused scrollable area directly without needing full area list
+    /// Fast Phase 1 lookup: walk up from the AX-focused element to the nearest
+    /// scrollable container. Returns `nil` if no usable container is found.
     func findFocusedScrollableArea() -> ScrollableArea? {
         focusedFinder.find()
     }
 
-    private func traverseElement(
-        _ element: AXUIElement,
-        into areas: inout [ScrollableArea],
-        depth: Int,
-        maxDepth: Int,
-        elementCount: inout Int,
-        onAreaFound: ((ScrollableArea) -> Void)?,
-        shouldStop: inout Bool,
-        maxAreas: Int?
-    ) {
-        // Check if we should stop early
-        if shouldStop {
-            return
-        }
+    // MARK: - Helpers
 
-        if let max = maxAreas, areas.count >= max {
-            shouldStop = true
-            return
-        }
-
-        elementCount += 1
-
-        // Stop if we've reached max depth
-        guard depth < maxDepth else {
-            return
-        }
-
-        // Get role
-        var roleRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXRoleAttribute as CFString, &roleRef) == .success,
-              let role = roleRef as? String else {
-            return
-        }
-
-        // Check if element is scrollable (with validation for progressive discovery)
-        let hasScrollableRole = ScrollableAXProbe.scrollableRoles.contains(role)
-        let hasEnabledScrollBars = ScrollableAXProbe.hasScrollBars(element, validateEnabled: true)
-
-        // For progressive discovery, require either a scrollable role with enabled scrollbars, or just enabled scrollbars
-        if hasScrollableRole || hasEnabledScrollBars {
-            // If it has a scrollable role but no enabled scrollbars, check if it's web content
-            if hasScrollableRole && !hasEnabledScrollBars {
-                // Check if this is web content - web scrollables don't expose native scrollbar attributes
-                let isWebContent = ScrollableAXProbe.hasWebAncestor(element)
-
-                if isWebContent {
-                    // Web scrollables are accepted without native scrollbar validation
-                    if let area = ScrollableAXProbe.makeArea(from: element) {
-                        // Size filter only — origin check omitted because secondary displays
-                        // can have negative AppKit coordinates (screens left of or below main).
-                        if area.frame.width > Config.minimumAreaSize &&
-                           area.frame.height > Config.minimumAreaSize {
-
-                            // Use centralized area filtering logic
-                            if shouldAddArea(area, to: &areas) {
-                                areas.append(area)
-                                onAreaFound?(area)
-
-                                if let max = maxAreas, areas.count >= max {
-                                    shouldStop = true
-                                    return
-                                }
-                            }
-                        }
-                    }
-                }
-            } else if let area = ScrollableAXProbe.makeArea(from: element) {
-                // Size filter only — see comment above for why origin check is omitted.
-                if area.frame.width > Config.minimumAreaSize &&
-                   area.frame.height > Config.minimumAreaSize {
-
-                    // Use centralized area filtering logic
-                    if shouldAddArea(area, to: &areas) {
-                        areas.append(area)
-                        onAreaFound?(area)
-
-                        if let max = maxAreas, areas.count >= max {
-                            shouldStop = true
-                            return
-                        }
-                    }
-                }
-            }
-        }
-
-        // Traverse children
-        var childrenRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(element, kAXChildrenAttribute as CFString, &childrenRef) == .success,
-              let children = childrenRef as? [AXUIElement] else {
-            return
-        }
-
-        for child in children {
-            guard !shouldStop else { return }
-            traverseElement(child, into: &areas, depth: depth + 1, maxDepth: maxDepth, elementCount: &elementCount, onAreaFound: onAreaFound, shouldStop: &shouldStop, maxAreas: maxAreas)
-        }
+    private struct AppContext {
+        let bundleId: String
+        let appElement: AXUIElement
+        let windows: [AXUIElement]
     }
 
+    private func frontmostAppContext() -> AppContext? {
+        guard let app = NSWorkspace.shared.frontmostApplication,
+              let pid = app.processIdentifier as pid_t?,
+              let bundleId = app.bundleIdentifier else {
+            return nil
+        }
+
+        let appElement = AXUIElementCreateApplication(pid)
+
+        guard case .success(let windows) = AXReader.elements(kAXWindowsAttribute as CFString, of: appElement) else {
+            return nil
+        }
+
+        return AppContext(bundleId: bundleId, appElement: appElement, windows: windows)
+    }
 }
