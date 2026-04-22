@@ -12,6 +12,9 @@ clavier is a macOS menu bar app providing keyboard-driven UI navigation similar 
 # Build from command line
 xcodebuild -project clavier.xcodeproj -scheme clavier -configuration Debug build
 
+# Run tests
+xcodebuild -project clavier.xcodeproj -scheme clavierTests -configuration Debug -destination 'platform=macOS,arch=arm64' test
+
 # Run via Xcode
 open clavier.xcodeproj
 # Then Cmd+R to build and run
@@ -26,95 +29,130 @@ open clavier.xcodeproj
 
 ### Core Flow - Hint Mode
 1. **Activation**: Global hotkey (default ⌘⇧Space, configurable) triggers `HintModeController.toggleHintMode()`
-2. **Discovery**: `AccessibilityService` traverses the frontmost app's AX tree to find clickable elements
-3. **Hint Assignment**: Elements receive alphabetic hints (A-Z for ≤26 elements, two-char combos otherwise)
-4. **Overlay**: `HintOverlayWindow` renders hints as positioned labels over each element
-5. **Input Processing**: Event tap intercepts keyboard input, filters hints by prefix matching
-6. **Click Execution**: On hint match, `ClickService` posts CGEvents at element's center point
+2. **Discovery**: `AccessibilityService` delegates AX-tree traversal to `ClickableElementWalker`; clickability and ancestor dedup live in `ClickabilityPolicy` / `AncestorDedupePolicy`.
+3. **Hint Assignment**: `HintAssigner` produces two- or three-character tokens drawn from the configured `hintCharacters` alphabet and wraps each `UIElement` in a `HintedElement`.
+4. **Overlay**: `HintOverlayRenderer` owns the `HintOverlayWindow` lifecycle; the window renders hints as positioned labels.
+5. **Input Processing**: `KeyboardEventTap` intercepts key events; `HintInputDecoder` → `HintInputReducer` map them into a `HintSession` state transition and a list of `HintSideEffect`s.
+6. **Click Execution**: `HintActionPerformer` tries `AXUIElementPerformAction` first and falls back to a synthesized `CGEvent` click via `ClickService`.
+7. **Continuous mode**: `HintRefreshCoordinator` schedules an optimistic + fallback refresh cycle after a click, tuned by `HintRefreshTimingPolicy` / `AppTimingRegistry` per frontmost bundle.
 
 ### Core Flow - Scroll Mode
 1. **Activation**: Global hotkey (default ⌥E, configurable) triggers `ScrollModeController.toggleScrollMode()`
-2. **Discovery**: `ScrollableAreaService` finds scrollable containers in frontmost app
-3. **Hint Assignment**: Numbered hints (1, 2, 3...) assigned to each scrollable area
-4. **Area Selection**: Type number or use arrow keys to select a scrollable area
-5. **Scrolling**: Use hjkl keys (configurable) or arrow keys to scroll selected area
-6. **Speed Control**: Hold Shift for dash speed (faster scrolling)
-7. **Auto-deactivation**: Optional timer deactivates scroll mode after inactivity
+2. **Discovery**: `ScrollDiscoveryCoordinator` drives two-phase discovery via `ScrollableAreaService` + `ScrollableAreaMerger`; app-specific detectors (e.g. `ChromiumDetector`) can short-circuit traversal via `DetectorRegistry`.
+3. **Hint Assignment**: Numbered strings ("1", "2", …) are paired with each `ScrollableArea` as a `NumberedArea`.
+4. **Area Selection**: `ScrollInputDecoder` → `ScrollSelectionReducer` drive the `ScrollSession` state machine; arrow keys select or scroll depending on `scrollArrowMode`.
+5. **Scrolling**: `ScrollCommandExecutor` dispatches `ScrollDirection` commands at configured speeds via `ClickService`.
+6. **Speed Control**: Hold Shift for dash speed (faster scrolling).
+7. **Auto-deactivation**: Optional timer deactivates scroll mode after inactivity.
 
 ### Key Components
 
-**Services (singletons, @MainActor):**
-- `HintModeController` - Orchestrates hint mode lifecycle, manages event tap for keyboard interception
-- `ScrollModeController` - Orchestrates scroll mode lifecycle, handles area selection and scroll commands
-- `AccessibilityService` - Queries macOS Accessibility API (AXUIElement) for clickable UI elements
-- `ScrollableAreaService` - Discovers scrollable containers in the frontmost app
-- `ClickService` - Posts CGEvent mouse clicks and scroll events at specified coordinates
+**Controllers (singletons, @MainActor):**
+- `HintModeController` - Orchestrates hint mode lifecycle; owns the `HintSession` state machine and dispatches `HintSideEffect`s.
+- `ScrollModeController` - Orchestrates scroll mode lifecycle; owns the `ScrollSession` state machine and dispatches `ScrollSideEffect`s.
+
+**Services & coordinators (@MainActor):**
+- `AccessibilityService` - Facade for clickable-element discovery; delegates to `ClickableElementWalker`.
+- `ClickableElementWalker` / `ClickabilityPolicy` / `AncestorDedupePolicy` - Pure policies around AX traversal.
+- `AXReader` / `AXTextHydrator` - Batched AX reads and lazy text-attribute hydration (both `@MainActor`; AX is main-thread-only).
+- `ScrollableAreaService` / `ScrollableAreaMerger` / `ScrollableAXProbe` - Scrollable-area discovery, merging, and shared AX probe.
+- `HintOverlayRenderer` / `ScrollOverlayRenderer` - Overlay window lifecycle wrappers.
+- `HintRefreshCoordinator` - Optimistic + fallback refresh after a click (continuous mode).
+- `ScrollDiscoveryCoordinator` / `ScrollCommandExecutor` - Two-phase discovery driver and scroll-event dispatcher.
+- `HintInputDecoder` / `ScrollInputDecoder` - CF run-loop-safe `CGEvent` decoders.
+- `HintInputReducer` / `ScrollSelectionReducer` - Pure state reducers (session + command → next session + effects).
+- `HintActionPerformer` - AX primary/secondary action with `CGEvent` fallback.
+- `HintAssigner` - Pure hint-token mapping.
+- `ClickService` - Posts `CGEvent` mouse and scroll wheel events.
+- `GlobalHotkeyRegistrar` / `KeyboardEventTap` - Carbon hotkey and event-tap wrappers.
 
 **Models:**
-- `UIElement` - Wrapper holding AXUIElement reference, screen frame, role, title, and assigned hint
-- `ScrollableArea` - Wrapper for scrollable UI containers with frame and numbered hint
+- `UIElement` - Immutable discovery record: AX element, frame, visible frame, role, stable ID, and optional hydrated `textAttributes`. Does **not** carry the hint token — see `HintedElement`.
+- `HintedElement` - Presentation pairing of a `UIElement` with its session-scoped hint string.
+- `HintSession` - Explicit state for hint mode: `.inactive`, `.active(hintedElements, filter)`, `.textSearch(hintedElements, matches, filter)`.
+- `ScrollableArea` - Immutable discovery record for scroll containers (AX element, frame, stable ID).
+- `NumberedArea` - Presentation pairing of a `ScrollableArea` with its numeric hint.
+- `ScrollSession` - Explicit state for scroll mode: `.inactive`, `.active(areas, selected, pendingInput)`.
+- `ElementTextAttributes`, `ElementIdentity`, `AreaIdentity` - Supporting value types.
 
 **Views:**
-- `HintOverlayWindow` - Borderless, transparent NSWindow at screenSaver level displaying hint labels
-- `ScrollOverlayWindow` - Overlay for scroll mode with numbered area indicators
-- `PreferencesView` - SwiftUI Settings form for configuration
-- `ShortcutRecorderView` - SwiftUI component for recording custom keyboard shortcuts with live preview
+- `HintOverlayWindow` - Borderless `.screenSaver`-level `NSWindow` rendering hint labels and highlights.
+- `ScrollOverlayWindow` - Overlay window for numbered scroll-area indicators and selection highlight.
+- `PreferencesView` - SwiftUI Settings form with four tabs (Clicking, Scrolling, Appearance, General).
+- `ShortcutRecorderView` - SwiftUI component for recording custom keyboard shortcuts with live preview.
 
-**App Infrastructure:**
-- `clavierApp` - SwiftUI App entry point with hidden window bridge for opening Settings
-- `AppDelegate` - Sets up menu bar status item, initializes hint mode controller
+**App infrastructure:**
+- `clavierApp` - SwiftUI App entry point with hidden window bridge for opening Settings.
+- `AppDelegate` - Sets up menu bar status item; registers defaults and hotkeys.
+- `Logging.swift` - Shared `os.Logger` instances under subsystem `fabiogaliano.clavier` (categories: `app`, `hintMode`, `scrollMode`, `accessibility`, `scrollDetect`).
 
 ### Important Patterns
 
-**Coordinate Systems:**
-- macOS Accessibility API uses bottom-left origin (Quartz coordinates)
-- `AccessibilityService` flips Y to top-left for UI positioning
-- `HintModeController.performClick()` flips back for CGEvent posting
+**Coordinate systems:**
+- macOS Accessibility API uses bottom-left origin (Quartz coordinates).
+- `ScreenGeometry` performs the Y flip to AppKit top-left for UI positioning, and the reverse flip back to Quartz for synthesized clicks.
 
-**Event Tap Threading:**
-- Callback runs on CF run loop, not main actor
-- Static vars with `nonisolated(unsafe)` for thread-safe state sharing
-- UI updates dispatched to main queue via `DispatchQueue.main.async`
+**Event tap threading:**
+- Event-tap callback runs on the CF run loop, not on the main actor.
+- `nonisolated(unsafe)` static scalars are used for thread-safe gate state.
+- UI/state mutations are dispatched back to the main queue via `DispatchQueue.main.async`.
+- All Accessibility API calls are confined to `@MainActor` per Apple DTS guidance (see `claudedocs/api-research.md`).
 
-**Settings Persistence:**
-- Uses `@AppStorage` / `UserDefaults` for all preferences
-- Defaults registered in `AppDelegate.applicationDidFinishLaunching()`
+**Settings persistence:**
+- `UserDefaults` + `@AppStorage` for preferences.
+- `AppSettings` is the typed boundary: parse-on-read accessors return validated domain values (`HintCharacters`, `ScrollKeymap`, `ScrollArrowMode`) rather than raw strings.
+- Defaults are registered in `AppSettings.registerDefaults()` at app launch.
 
-**Hotkey Coordination:**
-- `Notification.Name.disableGlobalHotkeys` - Posted when shortcut recorder opens to prevent conflicts
-- `Notification.Name.enableGlobalHotkeys` - Posted when shortcut recorder closes to re-register hotkeys
-- Controllers listen for these notifications to temporarily unregister/re-register their hotkeys
+**Hotkey coordination:**
+- `Notification.Name.disableGlobalHotkeys` — posted when the shortcut recorder opens.
+- `Notification.Name.enableGlobalHotkeys` — posted when the shortcut recorder closes.
+- `GlobalHotkeyRegistrar` observes these and unregisters/re-registers.
+
+**Structured logging:**
+- Use `Logger.hintMode`, `Logger.scrollMode`, etc. from `App/Logging.swift`.
+- `.warning` for operational failures (event-tap creation, missing permissions).
+- `.debug` for perf traces; stream with `log stream --level debug --predicate 'subsystem == "fabiogaliano.clavier"'`.
+- Do not use `print(...)` in production paths.
 
 ### User Preferences
 
-Stored in UserDefaults:
+Stored in `UserDefaults` — keys live in `AppSettings.Keys`, defaults in `AppSettings.Defaults`.
 
-**Hint Mode:**
-- `hintShortcutKeyCode` (Int): Virtual key code for hint mode activation (default: 49 = Space)
-- `hintShortcutModifiers` (Int): Carbon modifier flags (default: cmdKey | shiftKey)
-- `hintSize` (Double): Font size for hints (10-20pt)
-- `hintColor` (String): "blue", "green", "orange", "purple"
-- `continuousClickMode` (Bool): Stay in hint mode after clicking, refresh hints for continued clicking
+**Hint Mode (activation & behaviour):**
+- `hintShortcutKeyCode` (Int): Virtual key code (default: 49 = Space).
+- `hintShortcutModifiers` (Int): Carbon modifier flags (default: cmdKey | shiftKey).
+- `hintCharacters` (String): Alphabet used for hint tokens (default: `"asdfhjkl"`).
+- `textSearchEnabled` (Bool): Enable text-search sub-mode (default: true).
+- `minSearchCharacters` (Int): Characters typed before text search engages (default: 2).
+- `manualRefreshTrigger` (String): Characters typed to force a refresh in continuous mode (default: `"rr"`).
+- `continuousClickMode` (Bool): Stay in hint mode after clicking; hints are refreshed for the next click.
+- `autoHintDeactivation` (Bool): Auto-exit continuous mode after inactivity (default: true).
+- `hintDeactivationDelay` (Double): Seconds before auto-deactivation (default: 5.0).
+
+**Hint Mode (appearance):**
+- `hintSize` (Double): Font size (10–20pt, default: 12).
+- `hintBackgroundHex`, `hintBorderHex`, `hintTextHex`, `highlightTextHex` (String): Hex colors for the four overlay surfaces.
+- `hintBackgroundOpacity`, `hintBorderOpacity` (Double): 0–1 opacity for tint/border (defaults: 0.3 / 0.6).
+- `hintHorizontalOffset` (Double): Pixel offset for hint placement, −200…+200 (default: −25).
 
 **Scroll Mode:**
-- `scrollShortcutKeyCode` (Int): Virtual key code for scroll mode activation (default: 14 = E)
-- `scrollShortcutModifiers` (Int): Carbon modifier flags (default: optionKey)
-- `scrollKeys` (String): Four characters for scroll directions, default "hjkl" (left, down, up, right)
-- `scrollArrowMode` (String): "select" (arrows select areas) or "scroll" (arrows scroll)
-- `scrollSpeed` (Double): Normal scroll speed multiplier (default: 5.0)
-- `dashSpeed` (Double): Fast scroll speed when holding Shift (default: 9.0)
-- `autoScrollDeactivation` (Bool): Auto-exit scroll mode after inactivity
-- `scrollDeactivationDelay` (Double): Seconds before auto-deactivation (default: 5.0)
-- `showScrollAreaNumbers` (Bool): Display numbered hints on scroll areas
-- `scrollCommandsEnabled` (Bool): Enable/disable scroll mode entirely
+- `scrollShortcutKeyCode` (Int): Virtual key code (default: 14 = E).
+- `scrollShortcutModifiers` (Int): Carbon modifier flags (default: optionKey).
+- `scrollKeys` (String): Four characters for directions; persisted raw, parsed through `ScrollKeymap` (default: `"hjkl"`).
+- `scrollArrowMode` (String → `ScrollArrowMode` enum): `"select"` or `"scroll"` (default: `.select`).
+- `scrollSpeed` (Double): Normal scroll speed multiplier (default: 5.0).
+- `dashSpeed` (Double): Fast scroll speed with Shift (default: 9.0).
+- `autoScrollDeactivation` (Bool): Auto-exit scroll mode after inactivity (default: true).
+- `scrollDeactivationDelay` (Double): Seconds before auto-deactivation (default: 5.0).
+- `showScrollAreaNumbers` (Bool): Display numbered hints on scroll areas (default: true).
 
 ## Key Technical Details
 
-- Uses Carbon Event Manager for global hotkey registration (supports custom shortcuts)
-- Event tap requires Accessibility permissions to intercept keyboard events
-- Overlay windows use `.screenSaver` level to appear above all content
-- Hints use monospaced system font for consistent sizing
-- Backspace deletes last typed character, ESC cancels both hint and scroll modes
-- Scroll mode uses CGEvent scroll wheel events with configurable speed multipliers
-- ShortcutRecorderView uses NSEvent monitors to capture key combinations in real-time
-- Carbon modifier constants (cmdKey, shiftKey, optionKey, controlKey) used for hotkey storage
+- Carbon Event Manager registers the global hotkeys (supports custom shortcuts).
+- The event tap requires Accessibility permissions to intercept keyboard events.
+- Overlay windows use `.screenSaver` level to appear above all content.
+- Hints use a monospaced system font for consistent sizing.
+- Backspace deletes the last typed character; ESC has two-stage behaviour in hint mode (clear search, then exit) and single-stage in scroll mode.
+- Scroll mode uses `CGEvent` scroll-wheel events at configurable speed multipliers.
+- `ShortcutRecorderView` uses `NSEvent` monitors to capture key combinations in real time.
+- Carbon modifier constants (`cmdKey`, `shiftKey`, `optionKey`, `controlKey`) are used for hotkey storage.

@@ -144,7 +144,6 @@ Access preferences via the menu bar icon > Preferences, or use the standard Cmd+
 - Arrow key behavior: "select" areas or "scroll" directly
 - Show/hide scroll area numbers
 - Scroll keys (4 characters for left/down/up/right, default: "hjkl")
-- Enable/disable scroll commands
 - Scroll speed multiplier (1-10, default: 5)
 - Dash speed multiplier for Shift (1-10, default: 9)
 - Auto-deactivation:
@@ -181,19 +180,29 @@ Access preferences via the menu bar icon > Preferences, or use the standard Cmd+
 
 ### Key Components
 
-**Services (@MainActor singletons):**
-- `HintModeController` - Orchestrates hint mode lifecycle, manages event tap
-- `ScrollModeController` - Manages scroll mode, area selection, and scroll commands
-- `AccessibilityService` - Queries AX tree for clickable elements
-- `ScrollableAreaService` - Discovers scrollable containers with progressive callbacks
-- `ClickService` - Posts CGEvent mouse and scroll wheel events
+**Controllers (@MainActor singletons):**
+- `HintModeController` - Owns the `HintSession` state machine and dispatches side effects
+- `ScrollModeController` - Owns the `ScrollSession` state machine and dispatches side effects
+
+**Services & coordinators (@MainActor):**
+- `AccessibilityService` + `ClickableElementWalker` - AX traversal for clickable elements
+- `ScrollableAreaService` + `ScrollableAreaMerger` + `ScrollableAXProbe` - Scroll-area discovery
+- `HintOverlayRenderer` / `ScrollOverlayRenderer` - Overlay window lifecycle
+- `HintRefreshCoordinator` - Optimistic + fallback refresh in continuous mode
+- `ScrollDiscoveryCoordinator` / `ScrollCommandExecutor` - Progressive discovery and scroll dispatch
+- `HintInputReducer` / `ScrollSelectionReducer` - Pure session state reducers
+- `HintActionPerformer` - AX action with CGEvent fallback
+- `HintAssigner` - Hint-token alphabet mapping
+- `ClickService` - CGEvent mouse and scroll wheel events
 
 **Models:**
-- `UIElement` - Wrapper for AXUIElement with screen frame, role, hint, and searchable text
-- `ScrollableArea` - Scrollable region with frame and numbered hint
+- `UIElement` - Immutable AX discovery record (frame, role, stable ID, optional hydrated text)
+- `HintedElement` / `HintSession` - Presentation pairing and explicit hint-mode state
+- `ScrollableArea` - Immutable scroll container record
+- `NumberedArea` / `ScrollSession` - Presentation pairing and explicit scroll-mode state
 
 **Views:**
-- `HintOverlayWindow` - Borderless window at `.screenSaver` level displaying hints
+- `HintOverlayWindow` - Borderless `.screenSaver`-level window displaying hints
 - `ScrollOverlayWindow` - Overlay showing numbered scroll areas
 - `PreferencesView` - SwiftUI settings with four tabs
 - `ShortcutRecorderView` - Live keyboard shortcut capture
