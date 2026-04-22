@@ -71,6 +71,12 @@ final class HintOverlayRenderer {
         window?.updateHints(with: hintedElements)
     }
 
+    /// Advance the overlap rotation: labels hidden behind others in a
+    /// connected overlap group move one step toward the front.
+    func rotateOverlap() {
+        window?.rotateOverlap()
+    }
+
     // MARK: - Private rendering
 
     private func renderSessionDiff(session: HintSession, in window: HintOverlayWindow) {

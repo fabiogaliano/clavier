@@ -40,6 +40,8 @@ enum HintSideEffect: ReducerSideEffect {
     case scheduleRefresh
     /// Perform an immediate manual refresh (re-query elements).
     case manualRefresh
+    /// Rotate overlap z-order in the overlay (Space with empty filter).
+    case rotateOverlap
 }
 
 // MARK: - Input context
@@ -100,6 +102,9 @@ enum HintInputReducer {
             let newFilter = session.filter + char
             return handleInput(session: sessionWithFilter(session, newFilter), context: context)
 
+        case .spaceKey:
+            return handleSpaceKey(session: session, context: context)
+
         case .clearSearch:
             return handleClearSearch(session: session)
 
@@ -115,6 +120,19 @@ enum HintInputReducer {
     }
 
     // MARK: - Command handlers
+
+    /// Space with empty filter → rotate overlap z-order (visual disambiguation).
+    /// Space with a non-empty filter → append " " so multi-word text search keeps working.
+    private static func handleSpaceKey(
+        session: HintSession,
+        context: HintInputContext
+    ) -> (HintSession, [HintSideEffect]) {
+        if session.filter.isEmpty {
+            return (session, [.rotateOverlap])
+        }
+        let newFilter = session.filter + " "
+        return handleInput(session: sessionWithFilter(session, newFilter), context: context)
+    }
 
     private static func handleEscape(
         session: HintSession

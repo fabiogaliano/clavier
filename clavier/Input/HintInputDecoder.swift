@@ -36,6 +36,10 @@ enum HintInputCommand {
     case clearSearch
     case selectNumbered(Int)
     case character(String)
+    /// Space pressed in hint mode — semantics resolved by the reducer
+    /// (rotate overlap when filter is empty, otherwise treat as a space
+    /// character for text search).
+    case spaceKey
     case passThrough
 }
 
@@ -75,7 +79,7 @@ enum HintInputDecoder {
         case 53: return .escape
         case 36: return .enter(withControl: flags.contains(.maskControl))
         case 51: return .backspace
-        case 49: return .character(" ")
+        case 49: return .spaceKey
         default: break
         }
 

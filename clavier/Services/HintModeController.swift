@@ -291,6 +291,9 @@ class HintModeController {
 
             case .manualRefresh:
                 runRefresh(.manual)
+
+            case .rotateOverlap:
+                renderer.rotateOverlap()
             }
         }
     }

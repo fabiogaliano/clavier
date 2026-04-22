@@ -13,6 +13,10 @@ class HintOverlayWindow: NSWindow {
     private var searchTextField: NSTextField?
     private var matchCountBadge: NSView?
     private var matchCountLabel: NSTextField?
+    /// Monotonically increasing Space-press count used to rotate z-order in
+    /// overlap groups. Reset on every fresh layout so pressing Space after
+    /// a refresh starts from the natural z-order.
+    private var overlapRotationStep: Int = 0
 
     init(hintedElements: [HintedElement]) {
         self.hintedElements = hintedElements
@@ -112,6 +116,7 @@ class HintOverlayWindow: NSWindow {
         }
 
         self.hintedElements = newHintedElements
+        overlapRotationStep = 0
         let style = HintStyle()
         let obstacles = hintedElements.map { $0.element.visibleFrame }
         var engine = HintPlacementEngine(windowSize: self.frame.size, elementFrames: obstacles)
@@ -139,6 +144,48 @@ class HintOverlayWindow: NSWindow {
 
         self.contentView?.needsDisplay = true
         self.displayIfNeeded()
+    }
+
+    /// Advance overlap z-order by one step.
+    ///
+    /// Each connected overlap group rotates its front-most member deterministically;
+    /// after `group.count` presses the group returns to its initial order.
+    /// Non-overlapping labels are untouched.
+    func rotateOverlap() {
+        guard let containerView = self.contentView, !hintViews.isEmpty else { return }
+
+        let visibleEntries: [(identity: ElementIdentity, view: NSView, frame: CGRect)] =
+            hintedElements.compactMap { hinted in
+                guard let view = hintViews[hinted.identity], !view.isHidden else { return nil }
+                return (hinted.identity, view, view.frame)
+            }
+        guard visibleEntries.count > 1 else { return }
+
+        let frames = visibleEntries.map { $0.frame }
+        let groups = HintOverlapCycler.groups(for: frames)
+        guard !groups.isEmpty else { return }
+
+        overlapRotationStep += 1
+
+        for group in groups {
+            let members = group.memberIndices.map { visibleEntries[$0] }
+            let size = members.count
+            let top = HintOverlapCycler.topMember(size: size, step: overlapRotationStep)
+            // Desired visual order from top-front to bottom-back:
+            //   [members[top], members[top+1], ..., members[top-1]] (mod size)
+            // `addSubview(positioned: .above, relativeTo: nil)` raises the
+            // given view to the front, so we add bottom-up — the last call
+            // wins the frontmost slot.
+            for i in stride(from: size - 1, through: 0, by: -1) {
+                let entry = members[(top + i) % size]
+                containerView.addSubview(entry.view, positioned: .above, relativeTo: nil)
+            }
+        }
+
+        // Keep search-bar chrome above the hint layer regardless of rotation.
+        if let bar = searchBarView {
+            containerView.addSubview(bar, positioned: .above, relativeTo: nil)
+        }
     }
 
     func filterHints(matching prefix: String, textMatches: [HintedElement], numberedMode: Bool = false) {
