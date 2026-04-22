@@ -17,6 +17,9 @@ class HintOverlayWindow: NSWindow {
     /// overlap groups. Reset on every fresh layout so pressing Space after
     /// a refresh starts from the natural z-order.
     private var overlapRotationStep: Int = 0
+    /// When true, all hint labels are hidden (search continues normally).
+    /// Driven by `HintInputReducer.setLabelsHidden`.
+    private var labelsForcedHidden: Bool = false
 
     init(hintedElements: [HintedElement]) {
         self.hintedElements = hintedElements
@@ -117,6 +120,9 @@ class HintOverlayWindow: NSWindow {
 
         self.hintedElements = newHintedElements
         overlapRotationStep = 0
+        // A refresh implies the user started a new selection gesture; drop
+        // hide-mode so the redrawn labels are visible.
+        labelsForcedHidden = false
         let style = HintStyle()
         let obstacles = hintedElements.map { $0.element.visibleFrame }
         var engine = HintPlacementEngine(windowSize: self.frame.size, elementFrames: obstacles)
@@ -144,6 +150,18 @@ class HintOverlayWindow: NSWindow {
 
         self.contentView?.needsDisplay = true
         self.displayIfNeeded()
+    }
+
+    /// Hide or reveal all hint labels while keeping search behaviour intact.
+    ///
+    /// When hidden, hint views are kept in the subview tree (so `updateHints`
+    /// diffing stays stable) but every label view is marked `isHidden`.
+    /// Highlight views used by text search are unaffected.
+    func setLabelsHidden(_ hidden: Bool) {
+        labelsForcedHidden = hidden
+        for (_, view) in hintViews {
+            view.isHidden = hidden
+        }
     }
 
     /// Advance overlap z-order by one step.
@@ -224,7 +242,9 @@ class HintOverlayWindow: NSWindow {
                     continue
                 }
                 let hint = hintedElement.hint
-                if prefix.isEmpty {
+                if labelsForcedHidden {
+                    view.isHidden = true
+                } else if prefix.isEmpty {
                     view.isHidden = false
                     if let textField = MatchHighlightRenderer.findTextField(in: view) {
                         textField.textColor = textColor

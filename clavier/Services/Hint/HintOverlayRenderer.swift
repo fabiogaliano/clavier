@@ -77,6 +77,13 @@ final class HintOverlayRenderer {
         window?.rotateOverlap()
     }
 
+    /// Toggle hint-label visibility without discarding underlying state.
+    /// Used by the hide-prefix flow so a user can type a query without
+    /// letters on top of their own UI.
+    func setLabelsHidden(_ hidden: Bool) {
+        window?.setLabelsHidden(hidden)
+    }
+
     // MARK: - Private rendering
 
     private func renderSessionDiff(session: HintSession, in window: HintOverlayWindow) {

@@ -50,11 +50,26 @@ enum HintInputDecoder {
 
     /// Caller-supplied context read on the CF run loop thread.
     ///
-    /// Both fields must come from `nonisolated(unsafe)` statics so the
+    /// Fields must come from `nonisolated(unsafe)` statics so the
     /// callback can access them without crossing actor boundaries.
     struct Context {
         let isTextSearchActive: Bool
         let numberedElementsCount: Int
+        /// Single non-alphanumeric marker the user has configured to hide
+        /// labels during search. Empty when the feature is disabled.
+        /// Passed through so the decoder can accept the character (shift +
+        /// punctuation keys fall outside the default letter/digit whitelist).
+        let hidePrefix: String
+
+        init(
+            isTextSearchActive: Bool,
+            numberedElementsCount: Int,
+            hidePrefix: String = ""
+        ) {
+            self.isTextSearchActive = isTextSearchActive
+            self.numberedElementsCount = numberedElementsCount
+            self.hidePrefix = hidePrefix
+        }
     }
 
     /// Decode a key event captured by the CGEvent tap.
@@ -93,23 +108,44 @@ enum HintInputDecoder {
             }
         }
 
-        // Character keys
-        guard var character = KeymapUtilities.asciiCharacter(forKeyCode: keyCode) else {
+        // Character keys. Base table holds plain unmodified keys; the
+        // shifted-punctuation table supplies shift-produced symbols (including
+        // keys absent from the base table like `/` and `\`).
+        let character: String
+        if flags.contains(.maskShift), let shifted = shiftedPunctuation[keyCode] {
+            character = shifted
+        } else if keyCode == 27 && flags.contains(.maskShift) {
+            character = "_"
+        } else if let base = KeymapUtilities.asciiCharacter(forKeyCode: keyCode) {
+            character = base
+        } else {
             return .passThrough
         }
 
-        if keyCode == 27 && flags.contains(.maskShift) {
-            character = "_"
+        let lower = character.lowercased()
+        guard lower.count == 1, let ch = lower.first else {
+            return .passThrough
         }
 
-        let lower = character.lowercased()
-        guard lower.count == 1,
-              let ch = lower.first,
-              ch.isLetter || ch.isNumber || "-._".contains(ch) else {
+        let isBaseAllowed = ch.isLetter || ch.isNumber || "-._".contains(ch)
+        let isConfiguredPrefix = !context.hidePrefix.isEmpty && lower == context.hidePrefix
+        guard isBaseAllowed || isConfiguredPrefix else {
             return .passThrough
         }
 
         return .character(lower)
     }
+
+    /// Shift-modified punctuation characters produced by common US-QWERTY
+    /// keys.  Only entries that could plausibly serve as a hide-prefix
+    /// marker are listed; extend as needed when the default shortlist grows.
+    private static let shiftedPunctuation: [Int64: String] = [
+        24: "+",   // shift + =
+        41: ":",   // shift + ;
+        43: "<",   // shift + ,
+        47: ">",   // shift + .
+        44: "?",   // shift + /
+        42: "|",   // shift + \
+    ]
 
 }

@@ -29,13 +29,17 @@ class HintModeController {
     private var inputContext = HintInputContext(
         textSearchEnabled: true,
         minSearchChars: 2,
-        refreshTrigger: "rr"
+        refreshTrigger: "rr",
+        hidePrefix: ""
     )
 
     // CF run loop-readable scalars (see threading note in CLAUDE.md)
     private nonisolated(unsafe) static var isHintModeActive = false
     private nonisolated(unsafe) static var isTextSearchActive = false
     private nonisolated(unsafe) static var numberedElementsCount = 0
+    /// Mirror of `inputContext.hidePrefix` exposed to the CF run loop so the
+    /// decoder can allow the configured marker character through its whitelist.
+    private nonisolated(unsafe) static var hidePrefix: String = ""
 
     // Shared input infrastructure (P2-S1)
     private let hotkeyRegistrar = GlobalHotkeyRegistrar(signature: "KNAV", hotkeyID: 1)
@@ -294,6 +298,9 @@ class HintModeController {
 
             case .rotateOverlap:
                 renderer.rotateOverlap()
+
+            case .setLabelsHidden(let hidden):
+                renderer.setLabelsHidden(hidden)
             }
         }
     }
@@ -322,7 +329,8 @@ class HintModeController {
             handler: { type, event in
                 let context = HintInputDecoder.Context(
                     isTextSearchActive: HintModeController.isTextSearchActive,
-                    numberedElementsCount: HintModeController.numberedElementsCount
+                    numberedElementsCount: HintModeController.numberedElementsCount,
+                    hidePrefix: HintModeController.hidePrefix
                 )
                 let command = HintInputDecoder.decode(type: type, event: event, context: context)
 
@@ -453,10 +461,13 @@ class HintModeController {
         deactivationDelay = UserDefaults.standard.double(forKey: AppSettings.Keys.hintDeactivationDelay)
         if deactivationDelay == 0 { deactivationDelay = 5.0 }
 
+        let prefix = AppSettings.hideHintsPrefix
         inputContext = HintInputContext(
             textSearchEnabled: UserDefaults.standard.bool(forKey: AppSettings.Keys.textSearchEnabled),
             minSearchChars: AppSettings.minSearchCharacters,
-            refreshTrigger: AppSettings.manualRefreshTrigger
+            refreshTrigger: AppSettings.manualRefreshTrigger,
+            hidePrefix: prefix
         )
+        HintModeController.hidePrefix = prefix
     }
 }

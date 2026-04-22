@@ -42,6 +42,9 @@ enum HintSideEffect: ReducerSideEffect {
     case manualRefresh
     /// Rotate overlap z-order in the overlay (Space with empty filter).
     case rotateOverlap
+    /// Toggle visibility of all hint labels in the overlay. When hidden,
+    /// the search bar and search results still render normally.
+    case setLabelsHidden(Bool)
 }
 
 // MARK: - Input context
@@ -52,15 +55,22 @@ struct HintInputContext {
     let textSearchEnabled: Bool
     let minSearchChars: Int
     let refreshTrigger: String
+    /// Single marker character that, when typed as the first filter
+    /// character, hides all hint labels while still feeding the remainder
+    /// of the query into the normal search pipeline. Empty disables the
+    /// feature.
+    let hidePrefix: String
 
     init(
         textSearchEnabled: Bool,
         minSearchChars: Int,
-        refreshTrigger: String
+        refreshTrigger: String,
+        hidePrefix: String = ""
     ) {
         self.textSearchEnabled = textSearchEnabled
         self.minSearchChars = minSearchChars
         self.refreshTrigger = refreshTrigger
+        self.hidePrefix = hidePrefix
     }
 }
 
@@ -144,6 +154,7 @@ enum HintInputReducer {
             return (cleared, [
                 .showSearchBar(text: ""),
                 .updateMatchCount(-1),
+                .setLabelsHidden(false),
                 .updateOverlay(session: cleared)
             ])
         } else {
@@ -168,6 +179,7 @@ enum HintInputReducer {
         let cleared = clearFilter(session)
         return (cleared, [
             .showSearchBar(text: ""),
+            .setLabelsHidden(false),
             .updateOverlay(session: cleared),
             .updateMatchCount(-1)
         ])
@@ -185,6 +197,7 @@ enum HintInputReducer {
             .performClick(on: hintedElement.element),
             .showSearchBar(text: ""),
             .updateMatchCount(-1),
+            .setLabelsHidden(false),
             .scheduleRefresh
         ])
     }
@@ -194,8 +207,9 @@ enum HintInputReducer {
         withControl: Bool,
         context: HintInputContext
     ) -> (HintSession, [HintSideEffect]) {
-        guard session.filter.count >= context.minSearchChars else { return (session, []) }
-        let matches = searchElementsByText(session.filter, in: session.hintedElements)
+        let effective = effectiveFilter(session.filter, context: context)
+        guard effective.count >= context.minSearchChars else { return (session, []) }
+        let matches = searchElementsByText(effective, in: session.hintedElements)
         guard let first = matches.first else { return (session, []) }
         let clickEffect: HintSideEffect = withControl
             ? .performRightClick(on: first.element)
@@ -214,48 +228,64 @@ enum HintInputReducer {
         session: HintSession,
         context: HintInputContext
     ) -> (HintSession, [HintSideEffect]) {
-        let input = session.filter
-        var effects: [HintSideEffect] = [.showSearchBar(text: input)]
+        let rawInput = session.filter
+        let hideActive = isHidePrefixActive(rawInput, context: context)
+        let effective = effectiveFilter(rawInput, context: context)
 
-        // Manual refresh trigger
-        if input == context.refreshTrigger && !context.refreshTrigger.isEmpty {
+        // Always mirror hidden-mode state in the overlay so backspacing out of
+        // the prefix restores labels immediately.
+        var effects: [HintSideEffect] = [
+            .setLabelsHidden(hideActive),
+            .showSearchBar(text: rawInput)
+        ]
+
+        // Manual refresh trigger — match against the effective filter so a
+        // hidden-mode query can still fire the trigger.  The sanitizer
+        // guarantees the hide prefix is non-alphanumeric, so "rr" never
+        // collides with "`>rr`".
+        if effective == context.refreshTrigger && !context.refreshTrigger.isEmpty {
             let cleared = clearFilter(session)
             effects.append(.showSearchBar(text: ""))
+            effects.append(.setLabelsHidden(false))
             effects.append(.manualRefresh)
             return (cleared, effects)
         }
 
-        // Exact hint match → click
-        if let matched = session.hintedElements.first(where: { $0.hint == input }) {
+        // Exact hint match → click.  Hide-prefix mode disables this so the
+        // user can type a search query that happens to start with hint
+        // characters (e.g. ">ad" should search, not auto-click hint "ad").
+        if !hideActive, let matched = session.hintedElements.first(where: { $0.hint == effective }) {
             let nextSession = clearFilter(session)
-            effects.append(.updateOverlay(session: sessionWithFilter(session, input)))
+            effects.append(.updateOverlay(session: sessionWithFilter(session, rawInput)))
             effects.append(.showSearchBar(text: ""))
             effects.append(.updateMatchCount(-1))
+            effects.append(.setLabelsHidden(false))
             effects.append(.performClick(on: matched.element))
             effects.append(.scheduleRefresh)
             return (nextSession, effects)
         }
 
-        // Prefix match → narrow overlay
-        // Collapse any .textSearch shape back to .active so the overlay renders
-        // alphabetic prefix hints, not stale text-search match boxes.
-        let prefixMatches = session.hintedElements.filter { $0.hint.hasPrefix(input) }
-        if !prefixMatches.isEmpty {
-            let updated = sessionAsActive(session, filter: input)
-            effects.append(.updateOverlay(session: updated))
-            return (updated, effects)
+        // Prefix match (narrow hint set).  Skipped in hide-mode — the whole
+        // point of hide-mode is that hint tokens don't participate.
+        if !hideActive {
+            let prefixMatches = session.hintedElements.filter { $0.hint.hasPrefix(effective) }
+            if !prefixMatches.isEmpty {
+                let updated = sessionAsActive(session, filter: rawInput)
+                effects.append(.updateOverlay(session: updated))
+                return (updated, effects)
+            }
         }
 
-        // Text search
-        if context.textSearchEnabled && input.count >= context.minSearchChars {
-            return handleTextSearch(input: input, session: session, effects: effects)
+        // Text search uses the effective filter so hidden-mode queries work
+        // identically to non-hidden ones.
+        if context.textSearchEnabled && effective.count >= context.minSearchChars {
+            return handleTextSearch(input: effective, rawFilter: rawInput, session: session, effects: effects)
         }
 
         // No match and text search not triggered — clear results.
-        // Collapse .textSearch to .active so no stale match boxes are shown.
-        let updated = sessionAsActive(session, filter: input)
+        let updated = sessionAsActive(session, filter: rawInput)
         effects.append(.updateOverlay(session: updated))
-        effects.append(.updateMatchCount(0))
+        effects.append(.updateMatchCount(effective.isEmpty ? -1 : 0))
         return (updated, effects)
     }
 
@@ -263,6 +293,7 @@ enum HintInputReducer {
 
     private static func handleTextSearch(
         input: String,
+        rawFilter: String,
         session: HintSession,
         effects: [HintSideEffect]
     ) -> (HintSession, [HintSideEffect]) {
@@ -273,13 +304,14 @@ enum HintInputReducer {
             let nextSession = clearFilter(session)
             effects.append(.showSearchBar(text: ""))
             effects.append(.updateMatchCount(-1))
+            effects.append(.setLabelsHidden(false))
             effects.append(.performClick(on: textMatches[0].element))
             effects.append(.scheduleRefresh)
             return (nextSession, effects)
         }
 
         if textMatches.isEmpty {
-            let updated = sessionWithFilter(session, input)
+            let updated = sessionWithFilter(session, rawFilter)
             effects.append(.updateOverlay(session: updated))
             effects.append(.updateMatchCount(0))
             return (updated, effects)
@@ -290,7 +322,7 @@ enum HintInputReducer {
             let nextSession = HintSession.textSearch(
                 hintedElements: session.hintedElements,
                 matches: numberedMatches,
-                filter: input
+                filter: rawFilter
             )
             effects.append(.updateOverlay(session: nextSession))
             effects.append(.updateMatchCount(numberedMatches.count))
@@ -301,7 +333,7 @@ enum HintInputReducer {
         let nextSession = HintSession.textSearch(
             hintedElements: session.hintedElements,
             matches: textMatches,
-            filter: input
+            filter: rawFilter
         )
         effects.append(.updateOverlay(session: nextSession))
         effects.append(.updateMatchCount(textMatches.count))
@@ -309,6 +341,21 @@ enum HintInputReducer {
     }
 
     // MARK: - Helpers (pure)
+
+    /// Return true when the filter begins with the configured hide-prefix.
+    /// Returns false when the prefix is disabled (empty).
+    static func isHidePrefixActive(_ filter: String, context: HintInputContext) -> Bool {
+        guard !context.hidePrefix.isEmpty else { return false }
+        return filter.hasPrefix(context.hidePrefix)
+    }
+
+    /// The portion of the filter that drives matching — with the hide-prefix
+    /// removed when active. The raw filter stays unchanged in session state
+    /// so backspace can peel back characters (including the prefix itself).
+    static func effectiveFilter(_ filter: String, context: HintInputContext) -> String {
+        guard isHidePrefixActive(filter, context: context) else { return filter }
+        return String(filter.dropFirst(context.hidePrefix.count))
+    }
 
     private static func searchElementsByText(_ text: String, in hinted: [HintedElement]) -> [HintedElement] {
         let lowercased = text.lowercased()

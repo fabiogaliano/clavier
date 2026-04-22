@@ -16,6 +16,7 @@ enum AppSettings {
         static let textSearchEnabled = "textSearchEnabled"
         static let minSearchCharacters = "minSearchCharacters"
         static let manualRefreshTrigger = "manualRefreshTrigger"
+        static let hideHintsPrefix = "hideHintsPrefix"
 
         // Appearance
         static let hintBackgroundHex = "hintBackgroundHex"
@@ -63,6 +64,7 @@ enum AppSettings {
         static let textSearchEnabled = true
         static let minSearchCharacters = 2
         static let manualRefreshTrigger = "rr"
+        static let hideHintsPrefix = ">"
         static let hintBackgroundHex = "#3B82F6"
         static let hintBorderHex = "#3B82F6"
         static let hintTextHex = "#FFFFFF"
@@ -110,6 +112,7 @@ enum AppSettings {
             Keys.textSearchEnabled: Defaults.textSearchEnabled,
             Keys.minSearchCharacters: Defaults.minSearchCharacters,
             Keys.manualRefreshTrigger: Defaults.manualRefreshTrigger,
+            Keys.hideHintsPrefix: Defaults.hideHintsPrefix,
             Keys.hintBackgroundHex: Defaults.hintBackgroundHex,
             Keys.hintBorderHex: Defaults.hintBorderHex,
             Keys.hintTextHex: Defaults.hintTextHex,
@@ -224,6 +227,14 @@ extension AppSettings {
         return v.isEmpty ? Defaults.manualRefreshTrigger : v
     }
 
+    /// Single-character marker that, when typed as the first filter character,
+    /// hides all hint labels while still feeding the rest of the query into
+    /// the normal search pipeline.  Empty string disables the feature.
+    static var hideHintsPrefix: String {
+        let raw = UserDefaults.standard.string(forKey: Keys.hideHintsPrefix) ?? Defaults.hideHintsPrefix
+        return sanitizeHideHintsPrefix(raw)
+    }
+
     static var scrollKeys: ScrollKeymap {
         let raw = UserDefaults.standard.string(forKey: Keys.scrollKeys) ?? Defaults.scrollKeys
         return ScrollKeymap.parse(raw) ?? .default
@@ -261,5 +272,17 @@ extension AppSettings {
     /// Guarantee a non-empty refresh trigger; fall back to the default string.
     static func sanitizeManualRefreshTrigger(_ raw: String) -> String {
         raw.isEmpty ? Defaults.manualRefreshTrigger : raw
+    }
+
+    /// Accept one printable ASCII punctuation character. Letters, digits and
+    /// whitespace are rejected so the marker can't collide with hint tokens,
+    /// the refresh trigger, or a search query prefix.  Empty input is allowed
+    /// and means "feature disabled".
+    static func sanitizeHideHintsPrefix(_ raw: String) -> String {
+        guard let first = raw.first else { return "" }
+        let scalarValue = first.unicodeScalars.first?.value ?? 0
+        let isPrintableAscii = scalarValue >= 0x21 && scalarValue <= 0x7E
+        guard isPrintableAscii, !first.isLetter, !first.isNumber else { return "" }
+        return String(first)
     }
 }

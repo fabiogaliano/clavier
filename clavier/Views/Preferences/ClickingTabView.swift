@@ -7,6 +7,7 @@ struct ClickingTabView: View {
     @AppStorage(AppSettings.Keys.textSearchEnabled) private var textSearchEnabled: Bool = AppSettings.Defaults.textSearchEnabled
     @AppStorage(AppSettings.Keys.minSearchCharacters) private var minSearchCharacters: Int = AppSettings.Defaults.minSearchCharacters
     @AppStorage(AppSettings.Keys.manualRefreshTrigger) private var manualRefreshTrigger: String = AppSettings.Defaults.manualRefreshTrigger
+    @AppStorage(AppSettings.Keys.hideHintsPrefix) private var hideHintsPrefix: String = AppSettings.Defaults.hideHintsPrefix
     @AppStorage(AppSettings.Keys.continuousClickMode) private var continuousClickMode: Bool = AppSettings.Defaults.continuousClickMode
     @AppStorage(AppSettings.Keys.autoHintDeactivation) private var autoHintDeactivation: Bool = AppSettings.Defaults.autoHintDeactivation
     @AppStorage(AppSettings.Keys.hintDeactivationDelay) private var hintDeactivationDelay: Double = AppSettings.Defaults.hintDeactivationDelay
@@ -86,6 +87,23 @@ struct ClickingTabView: View {
                         }
                 }
                 .padding(.top, 4)
+
+                HStack {
+                    HStack(spacing: 4) {
+                        Text("Hide-labels prefix")
+                        HelpButton(helpText: "Single punctuation character. Typing it as the first filter character hides hint labels while the rest of the query searches normally. Leave blank to disable.")
+                    }
+                    Spacer()
+                    TextField(">", text: $hideHintsPrefix)
+                        .frame(width: 60)
+                        .textFieldStyle(.roundedBorder)
+                        .multilineTextAlignment(.center)
+                        .font(.system(.body, design: .monospaced))
+                        .onChange(of: hideHintsPrefix) { _, newValue in
+                            let cleaned = AppSettings.sanitizeHideHintsPrefix(newValue)
+                            if cleaned != newValue { hideHintsPrefix = cleaned }
+                        }
+                }
             }
 
             Section("Behavior") {

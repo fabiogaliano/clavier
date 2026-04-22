@@ -100,6 +100,17 @@ final class AppSettingsTypesTests: XCTestCase {
         XCTAssertEqual(AppSettings.sanitizeManualRefreshTrigger("xx"), "xx")
     }
 
+    func test_sanitizeHideHintsPrefix_acceptsSinglePunctuationOnly() {
+        XCTAssertEqual(AppSettings.sanitizeHideHintsPrefix(">"), ">")
+        XCTAssertEqual(AppSettings.sanitizeHideHintsPrefix("/"), "/")
+        XCTAssertEqual(AppSettings.sanitizeHideHintsPrefix(">>>"), ">", "keeps only the first character")
+        XCTAssertEqual(AppSettings.sanitizeHideHintsPrefix(""), "", "empty remains empty to disable feature")
+        XCTAssertEqual(AppSettings.sanitizeHideHintsPrefix("a"), "", "letters are rejected")
+        XCTAssertEqual(AppSettings.sanitizeHideHintsPrefix("1"), "", "digits are rejected")
+        XCTAssertEqual(AppSettings.sanitizeHideHintsPrefix(" "), "", "whitespace is rejected")
+        XCTAssertEqual(AppSettings.sanitizeHideHintsPrefix("é"), "", "non-ASCII punctuation is rejected")
+    }
+
     // MARK: - Validation ranges
 
     func test_minSearchCharactersRange_spansOneToFive() {
