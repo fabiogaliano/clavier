@@ -21,7 +21,12 @@ class AccessibilityService {
 
     /// Entry point for hint discovery.  Produces the collapsed, deduped
     /// list of clickable elements in the frontmost application.
-    func getClickableElements() -> [UIElement] {
+    ///
+    /// `recorder` is nil on the production path.  Debug mode
+    /// (`HintModeController.toggleDebugHintMode`) passes a non-nil
+    /// recorder to capture per-node trace events that are later emitted
+    /// as the debug overlay + JSON snapshot.
+    func getClickableElements(recorder: HintDiscoveryRecorder? = nil) -> [UIElement] {
         guard let focusedApp = NSWorkspace.shared.frontmostApplication,
               let pid = focusedApp.processIdentifier as pid_t? else {
             return []
@@ -46,7 +51,7 @@ class AccessibilityService {
             let windowBounds = windowFrameAX(window) ?? desktopBoundsAX
             let visibleBounds = windowBounds.intersection(desktopBoundsAX)
 
-            walker.walk(window, pid: pid, clipBounds: visibleBounds, into: &pending)
+            walker.walk(window, pid: pid, clipBounds: visibleBounds, into: &pending, recorder: recorder)
         }
         let traverseEndTime = CFAbsoluteTimeGetCurrent()
         Logger.accessibility.debug("traverseElements: \(Int((traverseEndTime - traverseStartTime) * 1000), privacy: .public)ms (\(pending.count, privacy: .public) raw)")

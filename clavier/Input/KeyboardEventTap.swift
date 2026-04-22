@@ -47,8 +47,9 @@ final class KeyboardEventTap {
     // The tap callback reads from this static array using the slot index
     // encoded in the userInfo raw pointer, so no local variable is captured.
     //
-    // Slot 0 = hint mode (P2-S1), slot 1 = scroll mode (P2-S3).
-    // Extended if more than 2 modes need taps concurrently.
+    // Slot 0 = hint mode (P2-S1), slot 1 = scroll mode (P2-S3),
+    // slot 2 = hint-debug overlay (ESC swallow).
+    // Extend if more modes need concurrent taps.
 
     private struct Slot {
         var tap: CFMachPort
@@ -56,7 +57,7 @@ final class KeyboardEventTap {
         var handler: (CGEventType, CGEvent) -> Unmanaged<CGEvent>?
     }
 
-    private nonisolated(unsafe) static var slots: [Slot?] = [nil, nil]
+    private nonisolated(unsafe) static var slots: [Slot?] = [nil, nil, nil]
 
     // MARK: - Instance state
 

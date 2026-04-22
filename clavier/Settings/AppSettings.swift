@@ -6,6 +6,8 @@ enum AppSettings {
         // Hint Mode
         static let hintShortcutKeyCode = "hintShortcutKeyCode"
         static let hintShortcutModifiers = "hintShortcutModifiers"
+        static let hintDebugShortcutKeyCode = "hintDebugShortcutKeyCode"
+        static let hintDebugShortcutModifiers = "hintDebugShortcutModifiers"
         static let hintSize = "hintSize"
         static let continuousClickMode = "continuousClickMode"
         static let autoHintDeactivation = "autoHintDeactivation"
@@ -39,6 +41,8 @@ enum AppSettings {
     enum Defaults {
         static let hintShortcutKeyCode = 49
         static let hintShortcutModifiers = cmdKey | shiftKey
+        static let hintDebugShortcutKeyCode = 49
+        static let hintDebugShortcutModifiers = cmdKey | shiftKey | optionKey
         static let hintSize = 12.0
         static let continuousClickMode = false
         static let autoHintDeactivation = true
@@ -74,6 +78,8 @@ enum AppSettings {
         UserDefaults.standard.register(defaults: [
             Keys.hintShortcutKeyCode: Defaults.hintShortcutKeyCode,
             Keys.hintShortcutModifiers: Defaults.hintShortcutModifiers,
+            Keys.hintDebugShortcutKeyCode: Defaults.hintDebugShortcutKeyCode,
+            Keys.hintDebugShortcutModifiers: Defaults.hintDebugShortcutModifiers,
             Keys.hintSize: Defaults.hintSize,
             Keys.continuousClickMode: Defaults.continuousClickMode,
             Keys.autoHintDeactivation: Defaults.autoHintDeactivation,

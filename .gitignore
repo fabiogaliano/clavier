@@ -72,3 +72,6 @@ fastlane/test_output
 
 # Code Injection
 iOSInjectionProject/
+
+# clavier hint-discovery debug snapshots (local-only dev tooling)
+debug-snapshots/

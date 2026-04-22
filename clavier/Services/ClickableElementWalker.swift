@@ -59,17 +59,24 @@ struct ClickableElementWalker {
     /// `clickableAncestor` is nil at the entry point; the walker sets it
     /// whenever it decides the current node is clickable, so descendants
     /// can be dedup-marked against it.
+    ///
+    /// `recorder` is nil on the production path (zero overhead) and
+    /// non-nil during debug mode to capture per-node observation events.
     func walk(
         _ root: AXUIElement,
         pid: pid_t,
         clipBounds: CGRect,
-        into pending: inout [PendingElement]
+        into pending: inout [PendingElement],
+        recorder: HintDiscoveryRecorder? = nil
     ) {
         walkNode(
             root,
             pid: pid,
             clickableAncestor: nil,
             clipBounds: clipBounds,
+            depth: 0,
+            parentRecorderId: nil,
+            recorder: recorder,
             into: &pending
         )
     }
@@ -87,8 +94,11 @@ struct ClickableElementWalker {
     private func walkNode(
         _ element: AXUIElement,
         pid: pid_t,
-        clickableAncestor: (element: AXUIElement, frame: CGRect)?,
+        clickableAncestor: (element: AXUIElement, frame: CGRect, recorderId: Int?)?,
         clipBounds: CGRect,
+        depth: Int,
+        parentRecorderId: Int?,
+        recorder: HintDiscoveryRecorder?,
         into pending: inout [PendingElement]
     ) {
         // BATCH FETCH: Get role, position, size, children, enabled in ONE IPC call.
@@ -116,22 +126,80 @@ struct ClickableElementWalker {
 
         let elementFrame = CGRect(origin: position, size: size)
 
-        // VISIBILITY CLIPPING: Skip entire subtree if element is off-screen.
-        if !elementFrame.intersects(clipBounds) { return }
+        // enabled may be AXValueError for non-interactive elements — treated as "not disabled".
+        let enabled = valuesArray[4] as? Bool
 
         // Convert AX coordinates (top-left origin, y down) to AppKit (bottom-left origin, y up).
         let frame = ScreenGeometry.axToAppKit(position: position, size: size)
 
-        // enabled may be AXValueError for non-interactive elements — treated as "not disabled".
-        let enabled = valuesArray[4] as? Bool
+        // VISIBILITY CLIPPING: Skip entire subtree if element is off-screen.
+        if !elementFrame.intersects(clipBounds) {
+            recorder?.record(
+                parentId: parentRecorderId,
+                depth: depth,
+                role: role,
+                frameAX: elementFrame,
+                frameAppKit: frame,
+                enabled: enabled,
+                decision: .roleNotInteractive,
+                outcome: .clippedOffscreen,
+                childrenVisited: false
+            )
+            return
+        }
 
-        let isClickable = clickability.isClickable(role: role, element: element, enabled: enabled)
+        let decision = clickability.evaluate(role: role, element: element, enabled: enabled)
+        let isClickable = decision.isClickable
 
-        // Clickable nodes become the dedup ancestor for their descendants.
-        let newClickableAncestor: (element: AXUIElement, frame: CGRect)? =
-            isClickable ? (element, frame) : clickableAncestor
-
+        // Determine the node's final outcome (independent of pruning decision).
+        var outcome: HintDiscoveryEvent.Outcome
+        var ancestorRecorderId: Int? = nil
         if isClickable {
+            if frame.width <= 5 || frame.height <= 5 {
+                outcome = .rejectedTooSmall
+            } else if let ancestor = clickableAncestor,
+                      dedupe.framesMatch(frame, ancestor.frame) {
+                outcome = .acceptedDeduped
+                ancestorRecorderId = ancestor.recorderId
+            } else {
+                outcome = .accepted
+            }
+        } else {
+            outcome = .rejectedNotClickable
+        }
+
+        let willPrune = clickability.canPruneSubtree(role: role)
+
+        // Hydrate AX text attributes ONLY when a recorder is present.
+        // Production hint mode hydrates lazily (after the overlay paints)
+        // via `AXTextHydrator`; paying for it inline during traversal
+        // would regress hint-mode latency.  Debug mode doesn't care about
+        // the extra IPC since it runs on-demand and is never on the
+        // hot path.
+        let textAttrs = recorder.map { _ in ClickableElementWalker.readDebugText(element) }
+
+        let thisRecorderId = recorder?.record(
+            parentId: parentRecorderId,
+            depth: depth,
+            role: role,
+            roleDescription: textAttrs?.roleDescription,
+            title: textAttrs?.title,
+            label: textAttrs?.label,
+            value: textAttrs?.value,
+            description: textAttrs?.description,
+            frameAX: elementFrame,
+            frameAppKit: frame,
+            enabled: enabled,
+            decision: decision,
+            outcome: outcome,
+            ancestorId: ancestorRecorderId,
+            childrenVisited: !willPrune
+        )
+
+        // Production behaviour: record accepted/deduped clickables into
+        // `pending`.  Deduped entries carry a non-nil `clickableAncestorHash`
+        // so `collect(pending:)` drops them.
+        if isClickable && outcome != .rejectedTooSmall {
             recordClickable(
                 element: element,
                 pid: pid,
@@ -139,13 +207,25 @@ struct ClickableElementWalker {
                 frame: frame,
                 elementFrameAX: elementFrame,
                 clipBounds: clipBounds,
+                outcome: outcome,
                 clickableAncestor: clickableAncestor,
                 into: &pending
             )
         }
 
+        // Clickable accepted nodes (not deduped) become the dedup ancestor
+        // for their descendants.  We keep the original clickableAncestor
+        // for deduped children so they continue comparing against the
+        // already-survived outer ancestor.
+        let newClickableAncestor: (element: AXUIElement, frame: CGRect, recorderId: Int?)?
+        if outcome == .accepted {
+            newClickableAncestor = (element, frame, thisRecorderId)
+        } else {
+            newClickableAncestor = clickableAncestor
+        }
+
         // SMART PRUNING: skip subtrees for roles that never contain clickable children.
-        if clickability.canPruneSubtree(role: role) { return }
+        if willPrune { return }
 
         guard let children = valuesArray[3] as? [AXUIElement] else { return }
 
@@ -158,9 +238,55 @@ struct ClickableElementWalker {
                 pid: pid,
                 clickableAncestor: newClickableAncestor,
                 clipBounds: childClipBounds,
+                depth: depth + 1,
+                parentRecorderId: thisRecorderId,
+                recorder: recorder,
                 into: &pending
             )
         }
+    }
+
+    /// Debug-only: fetch the five text-shaped AX attributes in a single
+    /// batched call so the snapshot / overlay can identify elements by
+    /// their human-readable label instead of by opaque id.
+    ///
+    /// Not on the production path — only invoked when a
+    /// `HintDiscoveryRecorder` is attached.
+    private static func readDebugText(_ element: AXUIElement) -> DebugTextAttributes {
+        let attributes = [
+            kAXRoleDescriptionAttribute as CFString,
+            kAXTitleAttribute as CFString,
+            "AXLabel" as CFString,
+            kAXValueAttribute as CFString,
+            kAXDescriptionAttribute as CFString,
+        ] as CFArray
+
+        var values: CFArray?
+        guard AXUIElementCopyMultipleAttributeValues(element, attributes, [], &values) == .success,
+              let arr = values as? [Any], arr.count == 5 else {
+            return DebugTextAttributes()
+        }
+
+        func nonEmptyString(_ raw: Any) -> String? {
+            guard let s = raw as? String, !s.isEmpty else { return nil }
+            return s
+        }
+
+        return DebugTextAttributes(
+            roleDescription: nonEmptyString(arr[0]),
+            title: nonEmptyString(arr[1]),
+            label: nonEmptyString(arr[2]),
+            value: nonEmptyString(arr[3]),
+            description: nonEmptyString(arr[4])
+        )
+    }
+
+    private struct DebugTextAttributes {
+        var roleDescription: String? = nil
+        var title: String? = nil
+        var label: String? = nil
+        var value: String? = nil
+        var description: String? = nil
     }
 
     private func recordClickable(
@@ -170,14 +296,10 @@ struct ClickableElementWalker {
         frame: CGRect,
         elementFrameAX: CGRect,
         clipBounds: CGRect,
-        clickableAncestor: (element: AXUIElement, frame: CGRect)?,
+        outcome: HintDiscoveryEvent.Outcome,
+        clickableAncestor: (element: AXUIElement, frame: CGRect, recorderId: Int?)?,
         into pending: inout [PendingElement]
     ) {
-        // Filter out elements too small to be meaningful click targets.
-        // The origin check is intentionally omitted: secondary displays can
-        // have negative AppKit coordinates (screens left of or below main).
-        guard frame.width > 5, frame.height > 5 else { return }
-
         // Anchor the hint to the visibly-clipped region so partially-
         // occluded elements don't get hints placed off-screen or behind
         // containers.  Matches Vimium's visible-rect anchoring.
@@ -195,10 +317,11 @@ struct ClickableElementWalker {
             role: role
         )
 
-        var ancestorHash: Int? = nil
-        if let ancestor = clickableAncestor,
-           dedupe.framesMatch(frame, ancestor.frame) {
+        let ancestorHash: Int?
+        if outcome == .acceptedDeduped, let ancestor = clickableAncestor {
             ancestorHash = Int(CFHash(ancestor.element))
+        } else {
+            ancestorHash = nil
         }
 
         pending.append(PendingElement(element: uiElement, clickableAncestorHash: ancestorHash))

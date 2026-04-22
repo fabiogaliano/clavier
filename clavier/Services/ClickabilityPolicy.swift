@@ -57,6 +57,36 @@ struct ClickabilityPolicy {
         ]
     )
 
+    /// Classified verdict used by the debug tracer in addition to the
+    /// pass/fail answer consumed by the walker.  Cases carry the reason
+    /// label shown in debug snapshots so Claude can see why a specific
+    /// element was or was not hinted.
+    enum Decision: String, Encodable {
+        case interactiveRole
+        case staticTextPressable
+        case disabled
+        case staticTextNoAction
+        case roleNotInteractive
+
+        var isClickable: Bool {
+            switch self {
+            case .interactiveRole, .staticTextPressable: return true
+            case .disabled, .staticTextNoAction, .roleNotInteractive: return false
+            }
+        }
+    }
+
+    /// Classifying variant of `isClickable` — same decision points, plus
+    /// a machine-readable reason tag used by the debug recorder.
+    func evaluate(role: String, element: AXUIElement, enabled: Bool?) -> Decision {
+        if let enabled, !enabled { return .disabled }
+        if interactiveRoles.contains(role) { return .interactiveRole }
+        if role == kAXStaticTextRole as String {
+            return hasClickAction(element) ? .staticTextPressable : .staticTextNoAction
+        }
+        return .roleNotInteractive
+    }
+
     /// Decide whether the element should receive a hint.
     ///
     /// - `enabled == false` short-circuits to `false` regardless of role.
@@ -66,10 +96,7 @@ struct ClickabilityPolicy {
     /// - `AXStaticText` is a special case: only clickable when it exposes
     ///   `AXPress` or `AXShowMenu`.
     func isClickable(role: String, element: AXUIElement, enabled: Bool?) -> Bool {
-        if let enabled, !enabled { return false }
-        if interactiveRoles.contains(role) { return true }
-        if role == kAXStaticTextRole as String { return hasClickAction(element) }
-        return false
+        evaluate(role: role, element: element, enabled: enabled).isClickable
     }
 
     /// Pure predicate companion to `isClickable` — same decision based only

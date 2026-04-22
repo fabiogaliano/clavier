@@ -9,6 +9,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     private var scrollModeController: ScrollModeController?
     private var hintMenuItem: NSMenuItem?
     private var scrollMenuItem: NSMenuItem?
+    private var hintDebugMenuItem: NSMenuItem?
 
     func applicationDidFinishLaunching(_ notification: Notification) {
         AppSettings.registerDefaults()
@@ -30,9 +31,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         hintMenuItem = NSMenuItem(title: formatHintMenuTitle(), action: #selector(activateHints), keyEquivalent: "")
         scrollMenuItem = NSMenuItem(title: formatScrollMenuTitle(), action: #selector(activateScroll), keyEquivalent: "")
+        hintDebugMenuItem = NSMenuItem(title: formatHintDebugMenuTitle(), action: #selector(activateHintDebug), keyEquivalent: "")
 
         menu.addItem(hintMenuItem!)
         menu.addItem(scrollMenuItem!)
+        menu.addItem(NSMenuItem.separator())
+        menu.addItem(hintDebugMenuItem!)
         menu.addItem(NSMenuItem.separator())
         menu.addItem(NSMenuItem(title: "Preferences...", action: #selector(openPreferences), keyEquivalent: ","))
         menu.addItem(NSMenuItem.separator())
@@ -51,6 +55,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
     @objc private func updateMenuTitles() {
         hintMenuItem?.title = formatHintMenuTitle()
         scrollMenuItem?.title = formatScrollMenuTitle()
+        hintDebugMenuItem?.title = formatHintDebugMenuTitle()
     }
 
     private func formatHintMenuTitle() -> String {
@@ -65,6 +70,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         let modifiers = UserDefaults.standard.integer(forKey: AppSettings.Keys.scrollShortcutModifiers)
         let shortcut = KeymapUtilities.formatShortcut(keyCode: keyCode, modifiers: modifiers)
         return "Activate Scroll (\(shortcut))"
+    }
+
+    private func formatHintDebugMenuTitle() -> String {
+        let keyCode = UserDefaults.standard.integer(forKey: AppSettings.Keys.hintDebugShortcutKeyCode)
+        let modifiers = UserDefaults.standard.integer(forKey: AppSettings.Keys.hintDebugShortcutModifiers)
+        let shortcut = KeymapUtilities.formatShortcut(keyCode: keyCode, modifiers: modifiers)
+        return "Debug Hints (\(shortcut))"
     }
 
     private func setupHintMode() {
@@ -92,6 +104,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
     @objc private func activateScroll() {
         scrollModeController?.toggleScrollMode()
+    }
+
+    @objc private func activateHintDebug() {
+        hintModeController?.toggleDebugHintMode()
     }
 
     @objc private func openPreferences() {
