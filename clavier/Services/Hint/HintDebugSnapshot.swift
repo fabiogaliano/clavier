@@ -49,6 +49,7 @@ enum HintDebugSnapshot {
         let value: String?
         let description: String?
         let enabled: Bool?
+        let actions: [String]?
         let decision: ClickabilityPolicy.Decision
         let outcome: HintDiscoveryEvent.Outcome
         let ancestorId: Int?
@@ -116,6 +117,7 @@ enum HintDebugSnapshot {
                     value: e.value,
                     description: e.description,
                     enabled: e.enabled,
+                    actions: e.actions,
                     decision: e.decision,
                     outcome: e.outcome,
                     ancestorId: e.ancestorId,

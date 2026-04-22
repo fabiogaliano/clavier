@@ -192,6 +192,13 @@ struct ClickableElementWalker {
         // hot path.
         let textAttrs = recorder.map { _ in ClickableElementWalker.readDebugText(element) }
 
+        // Action names are also debug-only.  Diagnoses ambiguous
+        // static-text decisions — in particular whether a surviving
+        // pressable candidate carried `AXPress` or only `AXShowMenu`.
+        // `flatMap` collapses the outer "recorder present?" optional into
+        // the inner "action read succeeded?" optional.
+        let actionNames = recorder.flatMap { _ in ClickableElementWalker.readActionNames(element) }
+
         let thisRecorderId = recorder?.record(
             parentId: parentRecorderId,
             depth: depth,
@@ -204,6 +211,7 @@ struct ClickableElementWalker {
             frameAX: elementFrame,
             frameAppKit: frame,
             enabled: enabled,
+            actions: actionNames,
             decision: decision,
             outcome: outcome,
             ancestorId: ancestorRecorderId,
@@ -306,6 +314,19 @@ struct ClickableElementWalker {
         var label: String? = nil
         var value: String? = nil
         var description: String? = nil
+    }
+
+    /// Debug-only: fetch the AX action names the element advertises.
+    /// Returns an empty array when the element supports no actions, or
+    /// nil when the AX call itself failed (disambiguates "knows it has
+    /// none" from "couldn't ask").
+    private static func readActionNames(_ element: AXUIElement) -> [String]? {
+        var actions: CFArray?
+        guard AXUIElementCopyActionNames(element, &actions) == .success,
+              let names = actions as? [String] else {
+            return nil
+        }
+        return names
     }
 
     private func recordClickable(

@@ -35,6 +35,11 @@ struct HintDiscoveryEvent {
     let frameAX: CGRect
     let frameAppKit: CGRect
     let enabled: Bool?
+    /// AX action names the element advertises (`AXPress`, `AXShowMenu`, …).
+    /// Populated only in debug mode — production walks pass nil to avoid
+    /// the extra IPC.  Diagnostic for cases where `decision` hinges on
+    /// `hasClickAction` and we need to know *which* action was present.
+    let actions: [String]?
     /// Verdict from `ClickabilityPolicy.evaluate` (role/enabled/static-text
     /// rules).  Independent of outcome: an element can be clickable but
     /// still end up rejected by dedup / min-size filters.
@@ -77,6 +82,7 @@ final class HintDiscoveryRecorder {
         frameAX: CGRect,
         frameAppKit: CGRect,
         enabled: Bool?,
+        actions: [String]? = nil,
         decision: ClickabilityPolicy.Decision,
         outcome: HintDiscoveryEvent.Outcome,
         ancestorId: Int? = nil,
@@ -97,6 +103,7 @@ final class HintDiscoveryRecorder {
                 frameAX: frameAX,
                 frameAppKit: frameAppKit,
                 enabled: enabled,
+                actions: actions,
                 decision: decision,
                 outcome: outcome,
                 ancestorId: ancestorId,
