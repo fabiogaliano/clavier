@@ -14,6 +14,7 @@ class AccessibilityService {
     static let shared = AccessibilityService()
 
     private let clickability = ClickabilityPolicy.default
+    private let ancestorDedupe = AncestorDedupePolicy.default
 
     /// Traversal-local wrapper carrying a discovered element plus the
     /// bookkeeping needed for ancestor-based deduplication.  The ancestor
@@ -140,15 +141,9 @@ class AccessibilityService {
                 // Frame-aware dedup: only mark as duplicate if frames nearly match ancestor.
                 // The ancestor hash lives on the traversal-local wrapper, not on UIElement.
                 var ancestorHash: Int? = nil
-                if let ancestor = clickableAncestor {
-                    let tol: CGFloat = 10
-                    let framesMatch = abs(frame.minX - ancestor.frame.minX) < tol &&
-                                      abs(frame.minY - ancestor.frame.minY) < tol &&
-                                      abs(frame.maxX - ancestor.frame.maxX) < tol &&
-                                      abs(frame.maxY - ancestor.frame.maxY) < tol
-                    if framesMatch {
-                        ancestorHash = Int(CFHash(ancestor.element))
-                    }
+                if let ancestor = clickableAncestor,
+                   ancestorDedupe.framesMatch(frame, ancestor.frame) {
+                    ancestorHash = Int(CFHash(ancestor.element))
                 }
                 pending.append(PendingElement(element: uiElement, clickableAncestorHash: ancestorHash))
             }
