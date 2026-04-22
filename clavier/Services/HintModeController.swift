@@ -119,19 +119,31 @@ class HintModeController {
 
     // MARK: - Hint refresh (used by refresh coordinator callback and manual refresh)
 
+    /// Identifies which refresh path is running so logging stays distinguishable
+    /// between continuous-mode post-click refreshes and the explicit "rr" trigger.
+    private enum RefreshKind {
+        case continuous
+        case manual
+    }
+
+    /// Shared refresh body: re-query elements, re-assign hints, re-render.
+    ///
+    /// Returns the new element count (0 when the refresh bailed into deactivation).
     @discardableResult
-    private func performHintRefresh() -> Int {
+    private func runRefresh(_ kind: RefreshKind) -> Int {
         guard isActive else { return 0 }
 
-        let queryStart = CFAbsoluteTimeGetCurrent()
+        let start = CFAbsoluteTimeGetCurrent()
         let newElements = AccessibilityService.shared.getClickableElements()
         guard !newElements.isEmpty else {
             deactivateHintMode()
             return 0
         }
 
-        let queryEnd = CFAbsoluteTimeGetCurrent()
-        print("[CONTINUOUS] Query elements: \(String(format: "%.0f", (queryEnd - queryStart) * 1000))ms")
+        if kind == .continuous {
+            let queryEnd = CFAbsoluteTimeGetCurrent()
+            print("[CONTINUOUS] Query elements: \(String(format: "%.0f", (queryEnd - start) * 1000))ms")
+        }
 
         let newHintedElements = assignHints(to: newElements)
         previousElementCount = newElements.count
@@ -139,35 +151,20 @@ class HintModeController {
 
         let overlayStart = CFAbsoluteTimeGetCurrent()
         renderer.updateHints(with: newHintedElements)
-        let overlayEnd = CFAbsoluteTimeGetCurrent()
-        print("[CONTINUOUS] Update overlay: \(String(format: "%.0f", (overlayEnd - overlayStart) * 1000))ms")
+
+        switch kind {
+        case .continuous:
+            let overlayEnd = CFAbsoluteTimeGetCurrent()
+            print("[CONTINUOUS] Update overlay: \(String(format: "%.0f", (overlayEnd - overlayStart) * 1000))ms")
+        case .manual:
+            let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
+            print("[MANUAL] Refreshed \(newElements.count) elements in \(String(format: "%.0f", elapsed))ms\n")
+        }
 
         startDeactivationTimer()
         scheduleMainActorHydration()
 
         return newElements.count
-    }
-
-    private func performManualRefresh() {
-        guard isActive else { return }
-
-        let start = CFAbsoluteTimeGetCurrent()
-        let newElements = AccessibilityService.shared.getClickableElements()
-        guard !newElements.isEmpty else {
-            deactivateHintMode()
-            return
-        }
-
-        let newHintedElements = assignHints(to: newElements)
-        previousElementCount = newElements.count
-        session = .active(hintedElements: newHintedElements, filter: "")
-        renderer.updateHints(with: newHintedElements)
-
-        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
-        print("[MANUAL] Refreshed \(newElements.count) elements in \(String(format: "%.0f", elapsed))ms\n")
-
-        startDeactivationTimer()
-        scheduleMainActorHydration()
     }
 
     // MARK: - Side effect execution
@@ -204,7 +201,7 @@ class HintModeController {
                 handlePostClick()
 
             case .manualRefresh:
-                performManualRefresh()
+                runRefresh(.manual)
             }
         }
     }
@@ -300,7 +297,7 @@ class HintModeController {
             session = .active(hintedElements: elements, filter: "")
         }
         refreshCoordinator.scheduleRefresh(previousCount: capturedCount) { [weak self] in
-            self?.performHintRefresh() ?? 0
+            self?.runRefresh(.continuous) ?? 0
         }
     }
 
