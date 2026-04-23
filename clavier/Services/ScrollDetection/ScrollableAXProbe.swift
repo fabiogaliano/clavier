@@ -85,20 +85,7 @@ enum ScrollableAXProbe {
     /// `AXVerticalScrollBar` / `AXHorizontalScrollBar` attributes for in-page
     /// scrollers.
     static func hasWebAncestor(_ element: AXUIElement) -> Bool {
-        var current = element
-        for _ in 0..<maxAncestorWalk {
-            guard case .success(let role) = AXReader.string(kAXRoleAttribute as CFString, of: current) else {
-                return false
-            }
-            if role == "AXWebArea" {
-                return true
-            }
-            guard case .success(let parent) = AXReader.element(kAXParentAttribute as CFString, of: current) else {
-                return false
-            }
-            current = parent
-        }
-        return false
+        AXReader.hasAncestorRole("AXWebArea", of: element, maxDepth: maxAncestorWalk)
     }
 
     // MARK: - Construction

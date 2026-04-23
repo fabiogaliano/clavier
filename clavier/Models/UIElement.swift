@@ -33,6 +33,9 @@ struct UIElement: Identifiable {
     /// during AX traversal.  Used as the anchor for hint placement and click
     /// targeting so partially-clipped elements stay reachable.
     let visibleFrame: CGRect
+    /// Structural discovery flag captured during traversal so action routing
+    /// does not need to re-walk the live AX tree later.
+    let isWebContent: Bool
     let role: String
     /// Hydrated lazily after initial display.  `nil` means "not yet loaded";
     /// a non-nil value means hydration has run (fields within may still be
@@ -47,5 +50,23 @@ struct UIElement: Identifiable {
     /// if hydration has not run or the element exposes no text.
     var searchableText: String {
         textAttributes?.searchableText ?? ""
+    }
+
+    init(
+        stableID: ElementIdentity,
+        axElement: AXUIElement,
+        frame: CGRect,
+        visibleFrame: CGRect,
+        isWebContent: Bool = false,
+        role: String,
+        textAttributes: ElementTextAttributes? = nil
+    ) {
+        self.stableID = stableID
+        self.axElement = axElement
+        self.frame = frame
+        self.visibleFrame = visibleFrame
+        self.isWebContent = isWebContent
+        self.role = role
+        self.textAttributes = textAttributes
     }
 }

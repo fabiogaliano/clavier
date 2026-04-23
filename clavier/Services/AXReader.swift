@@ -23,6 +23,8 @@ enum AXReadError: Error {
 /// or mistyped values without resorting to force casts.
 enum AXReader {
 
+    private static let defaultAncestorWalkLimit = 10
+
     // MARK: - Scalar attributes
 
     /// Read a `String`-typed AX attribute.
@@ -208,5 +210,30 @@ enum AXReader {
         axFrame(of: element).map { axRect in
             ScreenGeometry.axToAppKit(position: axRect.origin, size: axRect.size)
         }
+    }
+
+    // MARK: - Hierarchy probes
+
+    /// Return true when `element` or one of its ancestors up to `maxDepth`
+    /// exposes the given AX role.
+    static func hasAncestorRole(
+        _ targetRole: String,
+        of startElement: AXUIElement,
+        maxDepth: Int = defaultAncestorWalkLimit
+    ) -> Bool {
+        var current = startElement
+        for _ in 0..<maxDepth {
+            guard case .success(let role) = string(kAXRoleAttribute as CFString, of: current) else {
+                return false
+            }
+            if role == targetRole {
+                return true
+            }
+            guard case .success(let parent) = element(kAXParentAttribute as CFString, of: current) else {
+                return false
+            }
+            current = parent
+        }
+        return false
     }
 }

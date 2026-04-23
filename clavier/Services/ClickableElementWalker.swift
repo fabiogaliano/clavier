@@ -244,6 +244,7 @@ struct ClickableElementWalker {
                 frame: frame,
                 elementFrameAX: elementFrame,
                 clipBounds: clipBounds,
+                isWebContent: inWebArea,
                 outcome: outcome,
                 clickableAncestor: clickableAncestor,
                 into: &pending
@@ -351,6 +352,7 @@ struct ClickableElementWalker {
         frame: CGRect,
         elementFrameAX: CGRect,
         clipBounds: CGRect,
+        isWebContent: Bool,
         outcome: HintDiscoveryEvent.Outcome,
         clickableAncestor: (element: AXUIElement, frame: CGRect, recorderId: Int?)?,
         into pending: inout [PendingElement]
@@ -369,6 +371,7 @@ struct ClickableElementWalker {
             axElement: element,
             frame: frame,
             visibleFrame: visibleFrame,
+            isWebContent: isWebContent,
             role: role
         )
 
