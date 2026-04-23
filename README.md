@@ -1,3 +1,11 @@
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="assets/icon-dark.png">
+    <source media="(prefers-color-scheme: light)" srcset="assets/icon-light.png">
+    <img alt="clavier app icon" src="assets/icon-light.png" width="160">
+  </picture>
+</p>
+
 # clavier
 
 A macOS menu bar application for keyboard-driven UI navigation. Click anywhere on your screen using keyboard shortcuts instead of the mouse.
