@@ -1,8 +1,8 @@
 <p align="center">
   <picture>
-    <source media="(prefers-color-scheme: dark)" srcset="assets/icon-dark.png">
-    <source media="(prefers-color-scheme: light)" srcset="assets/icon-light.png">
-    <img alt="clavier app icon" src="assets/icon-light.png" width="160">
+    <source media="(prefers-color-scheme: dark)" srcset="assets/icon-dark.png?v=2">
+    <source media="(prefers-color-scheme: light)" srcset="assets/icon-light.png?v=2">
+    <img alt="clavier app icon" src="assets/icon-light.png?v=2" width="160">
   </picture>
 </p>
 
