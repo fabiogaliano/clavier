@@ -25,10 +25,21 @@ import AppKit
 final class HintDebugOverlayWindow: NSWindow {
 
     private let events: [HintDiscoveryEvent]
+    private let labeledHints: [HintLayout.LabeledView]
     private let snapshotPath: String?
 
-    init(events: [HintDiscoveryEvent], snapshotPath: String?) {
+    /// `labeledHints` are the exact views production would render for this
+    /// discovery pass.  Attaching them on top of the debug rectangles lets
+    /// the user visually compare a node id to the token bubble that would
+    /// sit at that position — making placement bugs distinguishable from
+    /// discovery or assignment bugs.
+    init(
+        events: [HintDiscoveryEvent],
+        labeledHints: [HintLayout.LabeledView],
+        snapshotPath: String?
+    ) {
         self.events = events
+        self.labeledHints = labeledHints
         self.snapshotPath = snapshotPath
 
         let desktopBounds = ScreenGeometry.desktopBoundsInAppKit
@@ -77,6 +88,15 @@ final class HintDebugOverlayWindow: NSWindow {
 
             let box = DebugNodeView(frame: frame, event: event)
             container.addSubview(box)
+        }
+
+        // Overlay the production hint bubbles on top of the rectangles.
+        // The views come from `HintLayout.buildLabels` — the same helper
+        // `HintOverlayWindow` calls — so they are literally what hint mode
+        // would render.  They already carry window-local frames, so we
+        // just hand them to the container.
+        for labeled in labeledHints {
+            container.addSubview(labeled.view)
         }
 
         container.addSubview(makeBanner())

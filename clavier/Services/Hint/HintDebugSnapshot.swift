@@ -56,6 +56,26 @@ enum HintDebugSnapshot {
         let childrenVisited: Bool
         let frameAppKit: FrameRecord
         let frameAX: FrameRecord
+        /// Token this node received from `HintAssigner` when debug-mode
+        /// replayed production hint assignment.  Null when the node never
+        /// reached the final hinted set — deduped, rejected, clipped, or
+        /// trimmed past the alphabet's capacity.  Pairs with
+        /// `hintFrameAppKit` so a user can answer "which node → which
+        /// token → rendered where" from the snapshot alone.
+        let productionHint: String?
+        /// Frame where the token bubble would render, in AppKit
+        /// (bottom-left) coordinates.  Same placement logic the live
+        /// overlay uses; null whenever `productionHint` is null.
+        let hintFrameAppKit: FrameRecord?
+    }
+
+    /// Per-element token + rendered frame produced by the debug path
+    /// (same `HintAssigner` + `HintLayout.buildLabels` the production
+    /// overlay runs).  Snapshot writer looks these up by
+    /// `ElementIdentity` to decorate the event list.
+    struct HintInfo {
+        let hint: String
+        let frame: CGRect
     }
 
     struct SummaryRecord: Encodable {
@@ -92,21 +112,33 @@ enum HintDebugSnapshot {
     /// can still show the overlay.
     @MainActor
     @discardableResult
-    static func write(recorder: HintDiscoveryRecorder, app: NSRunningApplication?) -> URL? {
+    static func write(
+        recorder: HintDiscoveryRecorder,
+        app: NSRunningApplication?,
+        hintInfo: [ElementIdentity: HintInfo] = [:]
+    ) -> URL? {
         let timestamp = ISO8601DateFormatter().string(from: Date())
         let filename = "snapshot-" + timestamp.replacingOccurrences(of: ":", with: "-") + ".json"
 
+        // Events record the raw unclipped AppKit frame + role.  That is
+        // exactly the tuple `UIElement.stableID` is built from (plus pid),
+        // so `ElementIdentity` is the natural join key between the debug
+        // event stream and the production hint assignment.
+        let pid = app?.processIdentifier ?? 0
+
         let root = Root(
-            schema: "clavier.hint-debug.v1",
+            schema: "clavier.hint-debug.v2",
             timestamp: timestamp,
             app: AppInfo(
-                pid: app?.processIdentifier ?? 0,
+                pid: pid,
                 bundleId: app?.bundleIdentifier,
                 localizedName: app?.localizedName
             ),
             summary: Self.makeSummary(recorder.summary()),
             nodes: recorder.events.map { e in
-                NodeRecord(
+                let identity = ElementIdentity(pid: pid, role: e.role, frame: e.frameAppKit)
+                let info = hintInfo[identity]
+                return NodeRecord(
                     id: e.id,
                     parentId: e.parentId,
                     depth: e.depth,
@@ -123,7 +155,9 @@ enum HintDebugSnapshot {
                     ancestorId: e.ancestorId,
                     childrenVisited: e.childrenVisited,
                     frameAppKit: FrameRecord(e.frameAppKit),
-                    frameAX: FrameRecord(e.frameAX)
+                    frameAX: FrameRecord(e.frameAX),
+                    productionHint: info?.hint,
+                    hintFrameAppKit: info.map { FrameRecord($0.frame) }
                 )
             }
         )

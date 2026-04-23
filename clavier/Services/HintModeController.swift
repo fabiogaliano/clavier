@@ -106,19 +106,46 @@ class HintModeController {
         if isActive { deactivateHintMode() }
 
         let recorder = HintDiscoveryRecorder()
-        _ = AccessibilityService.shared.getClickableElements(recorder: recorder)
+        // Capture the same `[UIElement]` hint mode would consume so the
+        // debug path can replay production hint assignment + placement
+        // and join the results back onto the event stream.  Any drift
+        // between the two paths is automatically impossible because the
+        // walker, assigner, and layout helper used here are identical.
+        let elements = AccessibilityService.shared.getClickableElements(recorder: recorder)
+        let hinted = assignHints(to: elements)
+        let desktopSize = ScreenGeometry.desktopBoundsInAppKit.size
+        let labeled = HintLayout.buildLabels(for: hinted, windowSize: desktopSize)
+
+        // `view.frame` is window-local; event frames are screen-global.
+        // Convert once so the snapshot stores a frame in the same
+        // coordinate system as every other frame field.
+        let windowOrigin = ScreenGeometry.desktopBoundsInAppKit.origin
+        let hintInfo: [ElementIdentity: HintDebugSnapshot.HintInfo] = Dictionary(
+            uniqueKeysWithValues: labeled.map { entry in
+                let screenFrame = entry.view.frame.offsetBy(dx: windowOrigin.x, dy: windowOrigin.y)
+                return (
+                    entry.hinted.identity,
+                    HintDebugSnapshot.HintInfo(hint: entry.hinted.hint, frame: screenFrame)
+                )
+            }
+        )
 
         let frontApp = NSWorkspace.shared.frontmostApplication
-        let snapshotURL = HintDebugSnapshot.write(recorder: recorder, app: frontApp)
+        let snapshotURL = HintDebugSnapshot.write(
+            recorder: recorder,
+            app: frontApp,
+            hintInfo: hintInfo
+        )
 
         let summary = recorder.summary()
-        Logger.hintMode.debug("debug: visited=\(summary.visited, privacy: .public) accepted=\(summary.accepted, privacy: .public) deduped=\(summary.deduped, privacy: .public) tooSmall=\(summary.rejectedTooSmall, privacy: .public) rejected=\(summary.rejectedNotClickable, privacy: .public) clipped=\(summary.clipped, privacy: .public) pruned=\(summary.prunedSubtrees, privacy: .public)")
+        Logger.hintMode.debug("debug: visited=\(summary.visited, privacy: .public) accepted=\(summary.accepted, privacy: .public) deduped=\(summary.deduped, privacy: .public) tooSmall=\(summary.rejectedTooSmall, privacy: .public) rejected=\(summary.rejectedNotClickable, privacy: .public) clipped=\(summary.clipped, privacy: .public) pruned=\(summary.prunedSubtrees, privacy: .public) hinted=\(hinted.count, privacy: .public)")
         if let snapshotURL {
             Logger.hintMode.debug("debug: snapshot \(snapshotURL.path, privacy: .public)")
         }
 
         let overlay = HintDebugOverlayWindow(
             events: recorder.events,
+            labeledHints: labeled,
             snapshotPath: snapshotURL?.path
         )
         overlay.show()

@@ -57,13 +57,13 @@ class HintOverlayWindow: NSWindow {
         let containerView = NSView(frame: CGRect(origin: .zero, size: self.frame.size))
         containerView.wantsLayer = true
 
-        let style = HintStyle()
-        let obstacles = hintedElements.map { $0.element.visibleFrame }
-        var engine = HintPlacementEngine(windowSize: self.frame.size, elementFrames: obstacles)
-        for hintedElement in hintedElements {
-            let hintView = HintLabelRenderer.createHintLabel(for: hintedElement, style: style, engine: &engine)
-            containerView.addSubview(hintView)
-            hintViews[hintedElement.identity] = hintView
+        let labels = HintLayout.buildLabels(
+            for: hintedElements,
+            windowSize: self.frame.size
+        )
+        for labeled in labels {
+            containerView.addSubview(labeled.view)
+            hintViews[labeled.hinted.identity] = labeled.view
         }
 
         self.contentView = containerView

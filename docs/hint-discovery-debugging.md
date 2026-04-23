@@ -98,6 +98,15 @@ jq -r '.nodes[] | select(.outcome == "accepted") | .role' debug-snapshots/latest
 # All AXGroup nodes that were rejected (prime browser false-negative class):
 jq '.nodes[] | select(.role == "AXGroup" and .outcome == "rejectedNotClickable")' debug-snapshots/latest.json
 
+# Node → token → rendered bubble frame (the v2 join):
+jq '.nodes[] | select(.productionHint != null) | {id, role, title, token: .productionHint, element: .frameAppKit, bubble: .hintFrameAppKit}' debug-snapshots/latest.json
+
+# Look up a node by its on-screen token:
+jq --arg t "sls" '.nodes[] | select(.productionHint == $t)' debug-snapshots/latest.json
+
+# Accepted nodes that did NOT get a token (alphabet-capacity overflow):
+jq '.nodes[] | select(.outcome == "accepted" and .productionHint == null)' debug-snapshots/latest.json
+
 # Look up a single node by id (the usual "user said node 47 is red"):
 jq '.nodes[] | select(.id == 47)' debug-snapshots/latest.json
 
@@ -148,6 +157,21 @@ and a small numbered label in its top-left corner. The number is the node's
 `id` in the JSON snapshot, so you can point at "the red 47 near the URL bar"
 and the agent looks up the full record by id.
 
+On top of the rectangles, debug mode also renders the **real production
+hint bubbles** — same token assignment, same placement engine, same label
+view the live overlay would paint.  That lets you see all three things
+together: the debug rectangle (discovery), the token string (assignment),
+and the bubble position (placement).  The three pieces can disagree:
+
+- rectangle green but no bubble → assignment dropped it (rare; past
+  alphabet capacity)
+- bubble sits well off the rectangle → placement pushed it (collision,
+  cluster strip, edge clamp)
+- rectangle yellow/red → no bubble is expected
+
+The JSON carries the same join: `productionHint` + `hintFrameAppKit` on
+each `accepted` node, null on everything else.
+
 | Color       | Outcome                 | Meaning                                                                 |
 | ----------- | ----------------------- | ----------------------------------------------------------------------- |
 | 🟢 green    | `accepted`              | Got a hint. Clickable, big enough, not deduped.                         |
@@ -191,7 +215,7 @@ want to reference a specific historical run. The directory is `.gitignore`d.
 
 ```jsonc
 {
-  "schema": "clavier.hint-debug.v1",
+  "schema": "clavier.hint-debug.v2",
   "timestamp": "2026-04-22T11:30:05Z",
   "app": {
     "pid": 8124,
@@ -224,7 +248,29 @@ want to reference a specific historical run. The directory is `.gitignore`d.
       "ancestorId": null,
       "childrenVisited": true,
       "frameAppKit": { "x": 312, "y": 980, "w": 48, "h": 24 },
-      "frameAX":     { "x": 312, "y": 120, "w": 48, "h": 24 }
+      "frameAX":     { "x": 312, "y": 120, "w": 48, "h": 24 },
+      "productionHint": null,
+      "hintFrameAppKit": null
+    },
+    {
+      "id": 511,
+      "parentId": 509,
+      "depth": 14,
+      "role": "AXButton",
+      "roleDescription": "button",
+      "title": "Bookmarks",
+      "label": null,
+      "value": null,
+      "description": null,
+      "enabled": true,
+      "decision": "interactiveRole",
+      "outcome": "accepted",
+      "ancestorId": null,
+      "childrenVisited": true,
+      "frameAppKit":    { "x": 640, "y": 970, "w": 36, "h": 24 },
+      "frameAX":        { "x": 640, "y": 130, "w": 36, "h": 24 },
+      "productionHint": "sls",
+      "hintFrameAppKit":{ "x": 636, "y": 994, "w": 24, "h": 16 }
     }
     // … one record per visited node
   ]
@@ -257,6 +303,20 @@ want to reference a specific historical run. The directory is `.gitignore`d.
   AX is top-left origin (y down), AppKit is bottom-left (y up). The overlay
   uses `frameAppKit`; the AX coordinates are there for cross-referencing
   with Accessibility Inspector.
+
+- **`productionHint`** — the exact token `HintAssigner` gave this element
+  when debug mode replayed production hint assignment.  Null when the
+  node never reached the hinted set (deduped, rejected, clipped, or past
+  the alphabet's `n^3` capacity).  The debug overlay renders this token
+  at `hintFrameAppKit` using the production label renderer — screenshot
+  it to see which rectangle owns which bubble.
+
+- **`hintFrameAppKit`** — AppKit rect (bottom-left origin) where the
+  token bubble would render, produced by the same
+  `HintPlacementEngine` call hint mode uses.  Differs from `frameAppKit`
+  whenever placement logic shifted the label (cluster strip, collision
+  resolution, edge clamping) — that delta is the signature of a
+  placement issue.  Null iff `productionHint` is null.
 
 - **`roleDescription`, `title`, `label`, `value`, `description`** — hydrated
   AX text attributes. Key for identifying elements by meaning instead of id:
@@ -345,7 +405,8 @@ Design constraints to preserve when modifying:
 | ------------------------------------------------------ | ---------------------------------------------- |
 | `clavier/Services/Hint/HintDiscoveryTracer.swift`      | `HintDiscoveryEvent` + `HintDiscoveryRecorder` |
 | `clavier/Services/Hint/HintDebugSnapshot.swift`        | JSON serialization + clipboard + `latest.json` |
-| `clavier/Views/HintDebugOverlayWindow.swift`           | Colored numbered overlay + banner              |
+| `clavier/Services/Hint/HintLayout.swift`               | Shared hint-label builder used by prod + debug |
+| `clavier/Views/HintDebugOverlayWindow.swift`           | Colored numbered overlay + banner + bubbles    |
 | `clavier/Services/ClickableElementWalker.swift`        | Recursive walker (calls tracer per node)       |
 | `clavier/Services/ClickabilityPolicy.swift`            | `Decision` enum + `evaluate(...)`              |
 | `clavier/Services/AncestorDedupePolicy.swift`          | Frame-match tolerance for dedup                |
