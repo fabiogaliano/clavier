@@ -24,9 +24,19 @@ enum HintActionPerformer {
     ///
     /// Tries `kAXPressAction` first; on any non-success AX status falls back
     /// to a CGEvent click at the element's visible centre.
+    ///
+    /// `AXLink` is special-cased to go *straight* to the CGEvent path.
+    /// Chromium web content frequently returns `.success` for `AXPress` on
+    /// `AXLink` without actually following the link — the AX call is
+    /// acknowledged but no navigation happens.  `AXLink` is essentially
+    /// web-only on macOS (native apps render links as `AXButton` with a
+    /// link-styled appearance), so skipping the AX path here doesn't affect
+    /// any native-app behavior.
     static func performPrimary(on element: UIElement) {
-        let axStatus = AXUIElementPerformAction(element.axElement, kAXPressAction as CFString)
-        guard axStatus != .success else { return }
+        if element.role != "AXLink" {
+            let axStatus = AXUIElementPerformAction(element.axElement, kAXPressAction as CFString)
+            if axStatus == .success { return }
+        }
 
         let point = ScreenGeometry.appKitCenterToQuartz(element.centerPoint)
         ClickService.shared.click(at: point)
