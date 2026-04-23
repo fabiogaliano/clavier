@@ -267,6 +267,7 @@ class HintOverlayWindow: NSWindow {
                 } else if prefix.isEmpty {
                     view.isHidden = false
                     if let textField = MatchHighlightRenderer.findTextField(in: view) {
+                        textField.stringValue = hint
                         textField.textColor = textColor
                     }
                 } else if hint.hasPrefix(prefix) {
