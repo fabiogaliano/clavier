@@ -86,8 +86,23 @@ struct ClickableElementWalker {
     /// `[UIElement]` view consumed by hint mode.  Any element whose
     /// `clickableAncestorHash` is non-nil is dropped — its ancestor is
     /// already in the list.
+    ///
+    /// The same real AX node can be reached more than once through
+    /// different structural parents (for example a web table exposing both
+    /// row and column children).  The overlay already keys reuse by
+    /// `stableID`, so duplicates must be collapsed here before hint
+    /// assignment or a single on-screen element can pick up multiple tokens.
     static func collect(pending: [PendingElement]) -> [UIElement] {
-        pending.compactMap { $0.clickableAncestorHash == nil ? $0.element : nil }
+        var seen = Set<ElementIdentity>()
+
+        return pending.compactMap { candidate in
+            guard candidate.clickableAncestorHash == nil else { return nil }
+
+            let identity = candidate.element.stableID
+            guard seen.insert(identity).inserted else { return nil }
+
+            return candidate.element
+        }
     }
 
     // MARK: - Recursion
