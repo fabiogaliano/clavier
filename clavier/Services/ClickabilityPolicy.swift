@@ -52,8 +52,7 @@ struct ClickabilityPolicy {
             kAXIncrementorRole as String,
             kAXComboBoxRole as String,
             kAXSliderRole as String,
-            kAXColorWellRole as String,
-            "AXCell"
+            kAXColorWellRole as String
         ],
         skipSubtreeRoles: [
             kAXStaticTextRole as String,
@@ -148,6 +147,14 @@ struct ClickabilityPolicy {
     ) -> Decision {
         if let enabled, !enabled { return .disabled }
         if interactiveRoles.contains(role) { return .interactiveRole }
+        // Bare AXCell by role alone matches every table/grid row, including
+        // ornamental GitHub row shells whose only actions are AXShowMenu /
+        // AXScrollToVisible.  Require AXPress so the real clickable child
+        // (e.g. the row's AXLink) wins and the wide row frame doesn't emit
+        // a duplicate hint in whitespace.
+        if role == "AXCell" {
+            return hasClickAction(element) ? .interactiveRole : .roleNotInteractive
+        }
         if role == kAXStaticTextRole as String {
             guard hasClickAction(element) else { return .staticTextNoAction }
             if let ctx = webContext, ctx.inWebArea {
@@ -191,6 +198,9 @@ struct ClickabilityPolicy {
     ) -> Decision {
         if let enabled, !enabled { return .disabled }
         if interactiveRoles.contains(role) { return .interactiveRole }
+        if role == "AXCell" {
+            return hasClickAction ? .interactiveRole : .roleNotInteractive
+        }
         if role == kAXStaticTextRole as String {
             guard hasClickAction else { return .staticTextNoAction }
             if let ctx = webContext, ctx.inWebArea {

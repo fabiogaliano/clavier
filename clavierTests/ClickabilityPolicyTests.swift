@@ -54,6 +54,41 @@ final class ClickabilityPolicyTests: XCTestCase {
         XCTAssertTrue(policy.interactiveByRole(role: kAXPopUpButtonRole as String, enabled: true))
     }
 
+    func test_cell_isNotInteractiveByRoleAlone() {
+        // AXCell by role alone used to accept ornamental row shells (e.g.
+        // GitHub file-listing rows) whose only actions are AXShowMenu /
+        // AXScrollToVisible.  The role-table half must say "no" — real
+        // clickable cells go through the AXPress gate in `classify`.
+        XCTAssertFalse(policy.interactiveByRole(role: "AXCell", enabled: true))
+    }
+
+    // MARK: - classify: AXCell AXPress gate
+
+    func test_classify_cell_withoutClickAction_isNotInteractive() {
+        // Ornamental row shell: only AXShowMenu / AXScrollToVisible, no
+        // AXPress → rejected so the real clickable descendant (e.g. an
+        // inner AXLink) is the only hint target.
+        XCTAssertEqual(
+            policy.classify(role: "AXCell", enabled: true, hasClickAction: false),
+            .roleNotInteractive
+        )
+    }
+
+    func test_classify_cell_withClickAction_isInteractive() {
+        // Native NSTableView cells that expose AXPress remain clickable.
+        XCTAssertEqual(
+            policy.classify(role: "AXCell", enabled: true, hasClickAction: true),
+            .interactiveRole
+        )
+    }
+
+    func test_classify_cell_disabled_shortCircuits() {
+        XCTAssertEqual(
+            policy.classify(role: "AXCell", enabled: false, hasClickAction: true),
+            .disabled
+        )
+    }
+
     // MARK: - canPruneSubtree
 
     func test_staticTextAndImage_subtreesArePruned() {
