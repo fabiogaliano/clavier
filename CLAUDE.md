@@ -66,7 +66,7 @@ open clavier.xcodeproj
 - `ClickService` - Posts `CGEvent` mouse and scroll wheel events.
 - `GlobalHotkeyRegistrar` / `KeyboardEventTap` - Carbon hotkey and event-tap wrappers.
 - `ChromiumAccessibilityWaker` - Sets `AXManualAccessibility` on known Electron apps so their dormant AX tree populates. See `docs/chromium-apps.md`.
-- `SpotifyAccessibilityHelper` - Detects Spotify's empty-tree signature (CEF can't be woken at runtime — runtime techniques were prototyped and ruled out) and surfaces `SpotifyHelpSheetWindow`. Provides `relaunchSpotifyWithFlag()` (terminate + wait + `NSWorkspace.openApplication` with `--force-renderer-accessibility`) as the universal one-click fix; Spicetify recipe is offered as the optional persistent upgrade when detected.
+- `SpotifyAccessibilityHelper` - Detects Spotify's empty-tree signature (CEF can't be woken at runtime — runtime techniques were prototyped and ruled out) and surfaces `SpotifyHelpSheetWindow`. Provides `relaunchSpotifyWithFlag()` (terminate + wait + `NSWorkspace.openApplication` with `--force-renderer-accessibility`) as the universal one-click fix, plus an opt-in auto-relaunch mode that observes `NSWorkspace.didLaunchApplicationNotification` to silently re-run the dance on every Spotify launch.
 
 **Models:**
 - `UIElement` - Immutable discovery record: AX element, frame, visible frame, role, stable ID, and optional hydrated `textAttributes`. Does **not** carry the hint token — see `HintedElement`.
@@ -82,7 +82,7 @@ open clavier.xcodeproj
 - `ScrollOverlayWindow` - Overlay window for numbered scroll-area indicators and selection highlight.
 - `PreferencesView` - SwiftUI Settings form with four tabs (Clicking, Scrolling, Appearance, General).
 - `ShortcutRecorderView` - SwiftUI component for recording custom keyboard shortcuts with live preview.
-- `SpotifyHelpSheetWindow` - Floating SwiftUI window with a one-click relaunch button + copy-to-clipboard `--force-renderer-accessibility` instructions for Spotify (Spicetify-aware path when detected).
+- `SpotifyHelpSheetWindow` - Floating SwiftUI window with a one-click relaunch button for Spotify and an "enable auto-relaunch in Preferences" pointer.
 
 **App infrastructure:**
 - `clavierApp` - SwiftUI App entry point with hidden window bridge for opening Settings.
@@ -108,7 +108,7 @@ open clavier.xcodeproj
 
 **Chromium-based app support:**
 - Electron apps (Slack, Discord, Notion, etc.) ship with their AX tree dormant. `ChromiumAccessibilityWaker` writes `AXManualAccessibility = true` on the app element to wake it; `AppDelegate` triggers the wake on `NSWorkspace.didActivateApplicationNotification`, and `AccessibilityService` re-applies it before each walk as a fallback. Toggleable via `chromiumAccessibilityWakeEnabled` (default true).
-- CEF apps (Spotify) cannot be woken at runtime (verified empirically — role-read activation and `AXEnhancedUserInterface` writes both fail). `SpotifyAccessibilityHelper` instead detects the empty-tree signature and shows `SpotifyHelpSheetWindow`, whose primary action is one-click `terminate + NSWorkspace.openApplication(arguments: ["--force-renderer-accessibility"])`. Works for every Spotify install (no Spicetify required); Spicetify recipe is offered as a persistent upgrade when its config file is detected.
+- CEF apps (Spotify) cannot be woken at runtime (verified empirically — role-read activation and `AXEnhancedUserInterface` writes both fail). `SpotifyAccessibilityHelper` instead detects the empty-tree signature and shows `SpotifyHelpSheetWindow`, whose primary action is one-click `terminate + NSWorkspace.openApplication(arguments: ["--force-renderer-accessibility"])`. Works for every Spotify install. Persistence (zero-click on every launch) is provided by the opt-in `spotifyAutoRelaunchEnabled` toggle.
 - Full background, allow-list maintenance, and known dead ends: `docs/chromium-apps.md`.
 
 **Hotkey coordination:**

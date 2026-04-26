@@ -40,7 +40,7 @@ struct GeneralTabView: View {
                 Toggle("Show help when Spotify needs a launch flag", isOn: $spotifyHelpEnabled)
 
                 Text("""
-                    Spotify is built on CEF (Chromium Embedded Framework), not Electron. Its accessibility tree can't be woken at runtime — the only working fix is relaunching Spotify with `--force-renderer-accessibility`. When this is on, clavier shows a help sheet with a one-click relaunch button (and a Spicetify recipe for users who want it persistent).
+                    Spotify is built on CEF (Chromium Embedded Framework), not Electron. Its accessibility tree can't be woken at runtime — the only working fix is relaunching Spotify with `--force-renderer-accessibility`. When this is on, clavier shows a help sheet with a one-click relaunch button.
                     """)
                     .font(.caption)
                     .foregroundStyle(.secondary)

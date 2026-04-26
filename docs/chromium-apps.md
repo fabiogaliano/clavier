@@ -92,7 +92,7 @@ returns fewer than 5 clickables (the empty-tree signature),
 `SpotifyAccessibilityHelper.presentIfApplicable(...)` instead of
 opening hint mode for the 3 traffic-light buttons.
 
-### The help sheet — three options, ordered by friction
+### The help sheet — two options
 
 1. **Quick fix — Relaunch button (universal, primary).**
    `relaunchSpotifyWithFlag()` does:
@@ -114,26 +114,14 @@ opening hint mode for the 3 traffic-light buttons.
    Active for the lifetime of that Spotify process — quitting Spotify
    yourself reverts the flag.
 
-2. **Permanent fix — Spicetify (only when detected).**
-   If `~/.config/spicetify/config-xpui.ini` exists, the sheet shows:
-
-   ```bash
-   spicetify config spotify_launch_flags --force-renderer-accessibility && spicetify apply
-   ```
-
-   This adds the flag to `spotify_launch_flags` in `config-xpui.ini`,
-   making it stick across every Spicetify-managed Spotify launch.
-   Detection is a simple `FileManager.default.fileExists(atPath:)`
-   check.
-
-3. **Manual Terminal launch (always shown when Spicetify isn't detected).**
-
-   ```bash
-   /Applications/Spotify.app/Contents/MacOS/Spotify --force-renderer-accessibility
-   ```
-
-   Equivalent to option 1 done by hand. Useful for users with custom
-   shell setups, aliases, or who just prefer terminal launches.
+2. **Make it automatic — auto-relaunch toggle (zero-click persistence).**
+   The sheet directs users to *Preferences → General → Spotify →
+   "Automatically relaunch Spotify with the flag on every launch"*.
+   When enabled, `SpotifyAccessibilityHelper` observes
+   `NSWorkspace.didLaunchApplicationNotification`, probes the AX tree
+   ~1.5 s after a Spotify launch, and silently re-runs the same
+   terminate-and-wait dance whenever it sees an unflagged launch.
+   Cooldown of 10 s prevents the kill+relaunch loop on the new pid.
 
 ### Sheet dismissal
 
@@ -149,17 +137,6 @@ There's also an in-memory `dismissedThisSession` flag that suppresses
 re-display within a single clavier process lifetime, so the sheet
 doesn't re-pop on every hint-trigger after a user has acknowledged
 it once.
-
-### Why we don't run Spicetify commands for the user
-
-- `spicetify apply` regenerates files; if the user has unsaved
-  customisations or a custom `xpui` build, it could disrupt them.
-- The `spicetify` binary location varies (Homebrew, manual install,
-  custom shells) — shelling out invites PATH/version mismatches.
-
-The relaunch path is safe to automate (it uses public NSWorkspace
-APIs and only restarts a single, known process). The Spicetify path
-is shown + clipboard, never executed.
 
 ### Known dead ends (do not re-investigate without new evidence)
 
@@ -242,7 +219,7 @@ These are documented for future agents who consider re-investigating:
 | --- | --- |
 | `clavier/Services/ChromiumAccessibilityWaker.swift` | Track A: allow-list + AX write + per-pid cache |
 | `clavier/Services/Hint/SpotifyAccessibilityHelper.swift` | Track B: empty-tree detection, relaunch logic, sheet trigger |
-| `clavier/Views/SpotifyHelpSheetWindow.swift` | Track B: SwiftUI help sheet UI (relaunch + Spicetify + manual paths) |
+| `clavier/Views/SpotifyHelpSheetWindow.swift` | Track B: SwiftUI help sheet UI (one-click relaunch + auto-relaunch pointer) |
 | `clavier/App/AppDelegate.swift` | NSWorkspace activation/termination wiring |
 | `clavier/Services/AccessibilityService.swift` | Pre-walk wake + empty-tree retry |
 | `clavier/Services/HintModeController.swift` | Spotify short-circuit in `activateHintMode` |
@@ -254,6 +231,5 @@ These are documented for future agents who consider re-investigating:
 - [Electron PR #10305](https://github.com/electron/electron/pull/10305) — introduces `AXManualAccessibility`
 - [Electron accessibility docs](https://github.com/electron/electron/blob/main/docs/tutorial/accessibility.md)
 - [Vimac issue #78](https://github.com/dexterleng/vimac/issues/78) — `AXEnhancedUserInterface` window side effects
-- [Spicetify CLI flags](https://spicetify.app/docs/development/spotify-cli-flags) — `spotify_launch_flags` config
 - [CefBrowserHost reference (Spotify's CEF v114)](https://cef-builds.spotifycdn.com/docs/114.2/classCefBrowserHost.html) — `--force-renderer-accessibility` semantics
 - [VS Code accessibility flow](https://github.com/microsoft/vscode/blob/main/src/vs/workbench/services/accessibility/electron-browser/accessibilityService.ts) — passive listener, no manual wake (illustrates Chromium's on-demand mechanism)

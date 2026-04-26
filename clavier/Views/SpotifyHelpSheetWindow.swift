@@ -19,13 +19,11 @@ import SwiftUI
 final class SpotifyHelpSheetWindow: NSWindow {
 
     init(
-        spicetifyDetected: Bool,
         onDismissThisSession: @escaping () -> Void,
         onDismissPermanently: @escaping () -> Void,
         onClose: @escaping () -> Void
     ) {
         let view = SpotifyHelpSheetView(
-            spicetifyDetected: spicetifyDetected,
             onDismissThisSession: onDismissThisSession,
             onDismissPermanently: onDismissPermanently,
             onClose: onClose
@@ -52,7 +50,6 @@ final class SpotifyHelpSheetWindow: NSWindow {
 // MARK: - SwiftUI content
 
 private struct SpotifyHelpSheetView: View {
-    let spicetifyDetected: Bool
     let onDismissThisSession: () -> Void
     let onDismissPermanently: () -> Void
     let onClose: () -> Void
@@ -61,16 +58,6 @@ private struct SpotifyHelpSheetView: View {
     @State private var relaunchError: String?
     @State private var relaunchSucceeded = false
 
-    private static let chromiumFlag = SpotifyAccessibilityHelper.forceAccessibilityArgument
-
-    private var manualLaunchCommand: String {
-        "/Applications/Spotify.app/Contents/MacOS/Spotify \(Self.chromiumFlag)"
-    }
-
-    private var spicetifyConfigCommand: String {
-        "spicetify config spotify_launch_flags \(Self.chromiumFlag) && spicetify apply"
-    }
-
     var body: some View {
         VStack(alignment: .leading, spacing: 18) {
             header
@@ -78,12 +65,12 @@ private struct SpotifyHelpSheetView: View {
             explanation
             quickFixSection
             Divider()
-            permanentFixSection
+            autoRelaunchSection
             Spacer(minLength: 0)
             footer
         }
         .padding(24)
-        .frame(width: 560, height: 640)
+        .frame(width: 560, height: 520)
     }
 
     private var header: some View {
@@ -166,27 +153,15 @@ private struct SpotifyHelpSheetView: View {
         }
     }
 
-    private var permanentFixSection: some View {
+    private var autoRelaunchSection: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Label("Permanent fix (optional)", systemImage: "checkmark.seal")
+            Label("Make it automatic (optional)", systemImage: "arrow.triangle.2.circlepath")
                 .font(.headline)
 
-            if spicetifyDetected {
-                Text("Spicetify is installed — make the flag stick across every launch:")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                CopyableCommandView(command: spicetifyConfigCommand)
-                Text("Run this once, then quit and reopen Spotify normally. The flag persists in `~/.config/spicetify/config-xpui.ini`.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                Text("If you'd rather not click the button each session, the cleanest persistent path is [Spicetify](https://spicetify.app) — it stores Spotify launch flags so every launch picks them up. Or launch Spotify manually from Terminal:")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-                CopyableCommandView(command: manualLaunchCommand)
-            }
+            Text("Tired of clicking the button every time? Enable **Automatically relaunch Spotify with the flag on every launch** in clavier's Preferences → General → Spotify. clavier will silently re-launch Spotify with the flag whenever it detects an unflagged launch — at the cost of ~2 seconds added to Spotify's startup.")
+                .font(.callout)
+                .foregroundStyle(.secondary)
+                .fixedSize(horizontal: false, vertical: true)
         }
     }
 
@@ -222,38 +197,3 @@ private struct SpotifyHelpSheetView: View {
     }
 }
 
-private struct CopyableCommandView: View {
-    let command: String
-    @State private var copied = false
-
-    var body: some View {
-        HStack(spacing: 8) {
-            Text(command)
-                .font(.system(.callout, design: .monospaced))
-                .padding(.horizontal, 10)
-                .padding(.vertical, 8)
-                .frame(maxWidth: .infinity, alignment: .leading)
-                .background(Color(NSColor.textBackgroundColor))
-                .overlay(
-                    RoundedRectangle(cornerRadius: 6)
-                        .stroke(Color(NSColor.separatorColor), lineWidth: 1)
-                )
-                .clipShape(RoundedRectangle(cornerRadius: 6))
-                .textSelection(.enabled)
-
-            Button {
-                NSPasteboard.general.clearContents()
-                NSPasteboard.general.setString(command, forType: .string)
-                copied = true
-                Task { @MainActor in
-                    try? await Task.sleep(nanoseconds: 1_500_000_000)
-                    copied = false
-                }
-            } label: {
-                Image(systemName: copied ? "checkmark" : "doc.on.doc")
-                    .frame(width: 18, height: 18)
-            }
-            .help("Copy to clipboard")
-        }
-    }
-}

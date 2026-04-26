@@ -11,8 +11,7 @@
 //
 //  - **Manual** (default): on empty-tree detection, present a help
 //    sheet whose primary action is a one-click terminate + relaunch
-//    with the flag. Spicetify recipe is offered for persistence when
-//    detected.
+//    with the flag.
 //  - **Auto** (opt-in via `spotifyAutoRelaunchEnabled`): observe
 //    `NSWorkspace.didLaunchApplicationNotification` and silently
 //    perform the same relaunch whenever Spotify launches without the
@@ -121,16 +120,6 @@ final class SpotifyAccessibilityHelper {
     /// the instructions before reproducing the empty state.
     func presentManually() {
         showSheet()
-    }
-
-    /// Detect whether Spicetify is installed by checking for its config
-    /// file. Cheap, non-blocking; reading the home directory metadata
-    /// is sub-millisecond. We don't shell out to `which spicetify`
-    /// because that adds a process spawn for marginal accuracy gain.
-    static var isSpicetifyInstalled: Bool {
-        guard let home = ProcessInfo.processInfo.environment["HOME"] else { return false }
-        let configPath = home + "/.config/spicetify/config-xpui.ini"
-        return FileManager.default.fileExists(atPath: configPath)
     }
 
     // MARK: - One-click relaunch
@@ -327,7 +316,6 @@ final class SpotifyAccessibilityHelper {
         }
 
         let sheet = SpotifyHelpSheetWindow(
-            spicetifyDetected: Self.isSpicetifyInstalled,
             onDismissThisSession: { [weak self] in
                 self?.dismissedThisSession = true
                 self?.closeSheet()
