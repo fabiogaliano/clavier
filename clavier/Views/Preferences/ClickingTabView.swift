@@ -14,24 +14,24 @@ struct ClickingTabView: View {
 
     var body: some View {
         Form {
-            Section("Hotkey") {
+            Section("Shortcut") {
                 HStack {
-                    Text("Activate Hint Mode")
+                    Text("Activation shortcut")
                     Spacer()
                     ShortcutRecorderView(
                         keyCode: $hintShortcutKeyCode,
                         modifiers: $hintShortcutModifiers
                     )
                 }
-                Text("ESC - Cancel | Option - Clear search | Ctrl+Enter - Right-click")
+                Text("ESC: clear search then exit · Option: clear search")
                     .foregroundStyle(.secondary)
             }
 
             Section("Hint Characters") {
                 HStack {
                     HStack(spacing: 4) {
-                        Text("Characters")
-                        HelpButton(helpText: "Characters used to generate hints. Default is home row keys (asdfhjkl). With 8 characters, you get 64 two-letter combinations.")
+                        Text("Alphabet")
+                        HelpButton(helpText: "Keys used to generate hints. Default is home row (asdfhjkl) — 8 keys gives 64 unique codes.")
                     }
                     Spacer()
                     TextField("", text: $hintCharacters)
@@ -52,7 +52,7 @@ struct ClickingTabView: View {
                 HStack {
                     HStack(spacing: 4) {
                         Text("Enable text search")
-                        HelpButton(helpText: "Search UI elements by their text content. Type element names to find and click them.")
+                        HelpButton(helpText: "Type element text to find and click without using hint codes.")
                     }
                     Spacer()
                     Toggle("", isOn: $textSearchEnabled)
@@ -90,7 +90,7 @@ struct ClickingTabView: View {
 
                 HStack {
                     HStack(spacing: 4) {
-                        Text("Hide-labels prefix")
+                        Text("Hide labels prefix")
                         HelpButton(helpText: "Single punctuation character. Typing it as the first filter character hides hint labels while the rest of the query searches normally. Leave blank to disable.")
                     }
                     Spacer()
@@ -107,15 +107,15 @@ struct ClickingTabView: View {
             }
 
             Section("Behavior") {
-                Toggle("Continuous Click Mode", isOn: $continuousClickMode)
-                Text("When enabled, hint mode stays active after clicking. Continue clicking elements until you press ESC.")
+                Toggle("Continuous mode", isOn: $continuousClickMode)
+                Text("Hint mode stays active after each click; press ESC to exit.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
                 if continuousClickMode {
                     HStack {
                         HStack(spacing: 4) {
-                            Text("Auto-deactivation")
+                            Text("Automatic deactivation")
                             HelpButton(helpText: "Automatically exit continuous mode after a period of inactivity.")
                         }
                         Spacer()

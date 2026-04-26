@@ -11,24 +11,32 @@ struct GeneralTabView: View {
     @AppStorage(AppSettings.Keys.spotifyAutoRelaunchEnabled)
     private var spotifyAutoRelaunch: Bool = AppSettings.Defaults.spotifyAutoRelaunchEnabled
 
+    @State private var accessibilityGranted: Bool = AXIsProcessTrusted()
+
+    private let permissionTimer = Timer.publish(every: 2, on: .main, in: .common).autoconnect()
+
     var body: some View {
         Form {
             Section("Permissions") {
-                Button("Check Accessibility Permissions") {
-                    let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
-                    _ = AXIsProcessTrustedWithOptions(options as CFDictionary)
+                Label(
+                    accessibilityGranted ? "Accessibility access granted" : "Accessibility access not granted",
+                    systemImage: accessibilityGranted ? "checkmark.circle.fill" : "exclamationmark.triangle.fill"
+                )
+                .foregroundStyle(accessibilityGranted ? .green : .orange)
+                if !accessibilityGranted {
+                    Button("Open Accessibility Settings…") {
+                        let options = [kAXTrustedCheckOptionPrompt.takeUnretainedValue() as String: true]
+                        _ = AXIsProcessTrustedWithOptions(options as CFDictionary)
+                    }
                 }
+            }
+            .onReceive(permissionTimer) { _ in
+                accessibilityGranted = AXIsProcessTrusted()
             }
 
             Section {
                 Toggle("Wake accessibility in Chromium-based apps", isOn: $chromiumWakeEnabled)
-                Text("""
-                    Apps like Slack, Discord, Notion, Linear, Obsidian, 1Password, and Cursor are built on Electron, which keeps its accessibility tree dormant by default. clavier wakes it on activation so hints can target their UI.
-
-                    While this is enabled, those apps maintain a live accessibility tree, which slightly increases their CPU and memory usage. Disable if you don't use clavier in Chromium-based apps and want to minimise impact.
-
-                    Has no effect on Chrome, Arc, Edge, Brave, or VS Code — those manage their own accessibility tree.
-                    """)
+                Text("Allows hints to work in Slack, Discord, Notion, and other Electron apps. Slightly increases their memory usage while enabled.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)
@@ -37,37 +45,31 @@ struct GeneralTabView: View {
             }
 
             Section {
-                Toggle("Show help when Spotify needs a launch flag", isOn: $spotifyHelpEnabled)
+                Toggle("Show help when hints don't work in Spotify", isOn: $spotifyHelpEnabled)
 
-                Text("""
-                    Spotify is built on CEF (Chromium Embedded Framework), not Electron. Its accessibility tree can't be woken at runtime — the only working fix is relaunching Spotify with `--force-renderer-accessibility`. When this is on, clavier shows a help sheet with a one-click relaunch button.
-                    """)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Toggle("Automatically relaunch Spotify with the flag on every launch", isOn: $spotifyAutoRelaunch)
-
-                Text("""
-                    When enabled, clavier watches for Spotify launches and silently relaunches it with `--force-renderer-accessibility` whenever it detects a launch without the flag. Result: hints work in Spotify with no button click.
-
-                    Trade-off: every Spotify launch takes about 2 extra seconds while clavier verifies and relaunches. If you're playing music in another session and click a Spotify link, the kill+relaunch will briefly interrupt that flow. Best for users who use clavier in Spotify daily.
-                    """)
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                Button("Show Spotify help now…") {
-                    SpotifyAccessibilityHelper.shared.presentManually()
+                if spotifyHelpEnabled {
+                    Button("Show Spotify help now…") {
+                        SpotifyAccessibilityHelper.shared.presentManually()
+                    }
                 }
+
+                Toggle("Auto-relaunch Spotify on every launch", isOn: $spotifyAutoRelaunch)
+
+                Text("Silently relaunches Spotify with accessibility enabled. Adds ~2 seconds to startup; Spotify uses slightly more memory with accessibility on.")
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
             } header: {
                 Text("Spotify")
             }
 
             Section("About") {
-                Text("clavier - Keyboard Navigation for macOS")
+                Text("clavier")
                     .font(.headline)
+                Text("Navigate any macOS app without touching the mouse.")
+                    .foregroundStyle(.secondary)
                 Text("Version 1.0")
+                    .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }

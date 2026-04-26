@@ -5,7 +5,7 @@ struct PreferencesView: View {
         TabView {
             ClickingTabView()
                 .tabItem {
-                    Label("Clicking", systemImage: "cursorarrow.click")
+                    Label("Hints", systemImage: "cursorarrow.click")
                 }
 
             ScrollingTabView()

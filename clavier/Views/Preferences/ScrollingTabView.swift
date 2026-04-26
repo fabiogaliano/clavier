@@ -13,7 +13,7 @@ struct ScrollingTabView: View {
 
     var body: some View {
         Form {
-            Section("Scrolling") {
+            Section("Controls") {
                 HStack {
                     Text("Shortcut")
                     Spacer()
@@ -93,7 +93,7 @@ struct ScrollingTabView: View {
             Section("Deactivation") {
                 HStack {
                     HStack(spacing: 4) {
-                        Text("Automatic scroll deactivation")
+                        Text("Automatic deactivation")
                         HelpButton(helpText: "Automatically exit scroll mode after a period of inactivity.")
                     }
                     Spacer()

@@ -28,7 +28,7 @@ struct AppearanceTabView: View {
                     Label {
                         VStack(alignment: .leading, spacing: 2) {
                             Text("Use system accent color")
-                            Text("Overrides custom colours for hints and scroll areas.")
+                            Text("Overrides custom colors for hints and scroll areas.")
                                 .font(.caption)
                                 .foregroundStyle(.secondary)
                         }
@@ -91,7 +91,7 @@ struct AppearanceTabView: View {
                     set: { hintTextHex = $0.toHex() }
                 ))
 
-                ColorPicker("Matched prefix", selection: Binding(
+                ColorPicker("Match highlight", selection: Binding(
                     get: { Color(hex: highlightTextHex) },
                     set: { highlightTextHex = $0.toHex() }
                 ))

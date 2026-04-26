@@ -316,10 +316,6 @@ final class SpotifyAccessibilityHelper {
         }
 
         let sheet = SpotifyHelpSheetWindow(
-            onDismissThisSession: { [weak self] in
-                self?.dismissedThisSession = true
-                self?.closeSheet()
-            },
             onDismissPermanently: { [weak self] in
                 UserDefaults.standard.set(false, forKey: AppSettings.Keys.spotifyAccessibilityHelpEnabled)
                 self?.dismissedThisSession = true

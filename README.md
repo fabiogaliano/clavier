@@ -8,56 +8,47 @@
 
 # clavier
 
-A macOS menu bar application for keyboard-driven UI navigation. Click anywhere on your screen using keyboard shortcuts instead of the mouse.
+Navigate any macOS app without touching the mouse.
 
-## Overview
-
-clavier displays alphabetic hints over clickable UI elements, allowing you to interact with any application without reaching for the mouse. Similar to Vimium for browsers, but for the entire macOS desktop.
+Press a shortcut, type a hint or search by word — clavier clicks for you.  
+Free, open source, and opinionated about how it works.
 
 ## Features
 
 ### Hint Mode
-- **Alphabetic hints** - Overlay hints on all clickable elements in the frontmost app
-- **Smart typing** - Type hint characters (e.g., "AJ") to click elements instantly
-- **Text search** - Type element names to find and click them
-  - Numbered hints (1-9) appear for 2-9 matches - type the number to select
-  - Green highlight boxes for 10+ matches
-  - Auto-click when exactly one match remains
-- **Two-stage ESC** - First ESC clears search text, second ESC exits hint mode
-- **Continuous click mode** - Stay active for multiple clicks without reactivating
-  - Manual refresh trigger (default: type "rr") to update hints on demand
-  - Auto-deactivation timer after inactivity (configurable)
-- **Customizable appearance** - Glass effect UI with full color control and transparency
-- **Horizontal offset** - Position hints left/right of elements to avoid covering text
+- **Hint codes**: Letter codes over every element; type one to click instantly
+- **Search by name**: Type any word; one match auto-clicks, several are numbered, press one to select
+- **Two-stage ESC**: first press clears search, second exits
+- **Continuous mode**: stay in hint mode across multiple clicks; hints refresh automatically
 
-### Scroll Mode
-- **Keyboard scrolling** - Use vim-style keys (hjkl) or arrow keys
-- **Smart area detection** - Progressive discovery of scrollable regions
-  - Auto-selects focused element's scrollable parent
-  - App-specific optimizations (e.g., Chromium DevTools)
-  - Numbered hints for area selection
-- **Configurable speeds** - Normal and dash speed (Shift for faster)
-- **Flexible controls** - Arrow keys can select areas or scroll directly
-- **Auto-deactivation** - Optional timer exits scroll mode after inactivity
+### Scroll Mode *(in alpha)*
+
+- **Keyboard scrolling**: hjkl or arrow keys; Shift for faster
+- **Smart area detection**: auto-selects the scrollable region under focus; numbered hints to pick another
+- **Auto-deactivation**: optional timer exits after inactivity
+
+### App compatibility
+
+- **Electron apps**: works with Slack, Discord, Notion, and others out of the box
+- **Spotify**: one-click relaunch to enable accessibility; auto-relaunch option for every launch
+
+> Apps using fully custom rendering without Accessibility API support (e.g. Zed) won't expose elements to hint.
 
 ### Customization
-- **Global hotkeys** - Configurable activation shortcuts for both modes
-- **Hint characters** - Customize available characters (default: "asdfhjkl")
-- **Full color control** - Background, border, text, and highlight colors with live preview
-- **Adjustable sizing** - Hint size (10-20pt) and positioning
-- **Behavior tuning** - Arrow key mode, auto-deactivation timers, scroll speeds
+
+- **Customizable**: hotkeys, hint alphabet, colors, and sizes
 
 ## Requirements
 
 - macOS 14.0+
-- Xcode 15+ (for building)
-- Accessibility permissions
+- Xcode 15+ (for building from source)
+- Accessibility permissions (prompted on first launch)
 
 ## Building
 
 ```bash
 # Clone the repository
-git clone <repository-url>
+git clone https://github.com/fabiogaliano/clavier
 cd clavier
 
 # Build from command line
@@ -70,9 +61,8 @@ open clavier.xcodeproj
 
 ## Setup
 
-1. Launch clavier
+1. Launch clavier (it lives in the menu bar)
 2. Grant Accessibility permissions when prompted (System Settings > Privacy & Security > Accessibility)
-3. The app appears in the menu bar
 
 ## Usage
 
@@ -90,152 +80,34 @@ open clavier.xcodeproj
 | Manual refresh | Type "rr" (configurable) |
 | **Scroll Mode** | |
 | Activate Scroll Mode | Option + E |
-| Select scroll area | 1-9 or arrow keys (if arrow mode = "select") |
-| Scroll | hjkl or arrow keys (if arrow mode = "scroll") |
+| Select scroll area | 1-9 or arrow keys |
+| Scroll | hjkl |
 | Dash speed (faster) | Shift + hjkl or Shift + arrows |
 | Exit scroll mode | ESC |
 
-### Hint Mode Workflow
-
-**Alphabetic Hints:**
-1. Press activation shortcut (Cmd + Shift + Space)
-2. Hints appear over clickable elements
-3. Type the hint characters (e.g., "A", "AJ")
-4. Element is clicked automatically
-5. Mode deactivates (unless continuous mode is enabled)
-
-**Text Search:**
-1. Press activation shortcut
-2. Start typing element text (e.g., "Submit", "Login")
-3. Search bar appears showing match count
-4. When behavior differs based on matches:
-   - **1 match**: Auto-clicks immediately (green border)
-   - **2-9 matches**: Shows numbered hints (1-9) - type number to select
-   - **10+ matches**: Shows green highlight boxes around all matches
-   - **No matches**: Shows red border, type more or press ESC to clear
-5. Press ESC once to clear search, ESC again to exit
-
-**Continuous Mode:**
-- Hints refresh after each click
-- Type manual refresh trigger ("rr" by default) to force refresh
-- Auto-deactivates after inactivity (if enabled)
-
-### Scroll Mode Workflow
-
-1. Press activation shortcut
-2. Numbered hints appear over scrollable areas
-3. Select area by typing number or using arrow keys
-4. Scroll with hjkl keys (or configured keys)
-5. Hold Shift for faster scrolling
-6. Press ESC to exit
 
 ## Configuration
 
-Access preferences via the menu bar icon > Preferences, or use the standard Cmd+, shortcut.
+Open via menu bar > Preferences or Cmd+,.
 
-### Tabs
-
-**Clicking** - Hint Mode Configuration
-- Activation hotkey (default: Cmd + Shift + Space)
-- Hint characters (default: "asdfhjkl")
-- Text search:
-  - Enable/disable text search
-  - Minimum characters before searching (default: 2)
-- Manual refresh trigger (default: "rr")
-- Continuous click mode:
-  - Enable/disable continuous mode
-  - Auto-deactivation after inactivity
-  - Deactivation delay (default: 5 seconds)
-
-**Scrolling** - Scroll Mode Configuration
-- Activation hotkey (default: Option + E)
-- Arrow key behavior: "select" areas or "scroll" directly
-- Show/hide scroll area numbers
-- Scroll keys (4 characters for left/down/up/right, default: "hjkl")
-- Scroll speed multiplier (1-10, default: 5)
-- Dash speed multiplier for Shift (1-10, default: 9)
-- Auto-deactivation:
-  - Enable/disable auto-deactivation
-  - Deactivation delay (default: 5 seconds)
-
-**Appearance** - Visual Customization
-- Live preview of current settings
-- Color pickers:
-  - Background tint (default: blue #3B82F6)
-  - Border color (default: blue #3B82F6)
-  - Text color (default: white #FFFFFF)
-  - Highlight color for matched text (default: yellow #FFFF00)
-- Opacity sliders:
-  - Background opacity (0-100%, default: 30%)
-  - Border opacity (0-100%, default: 60%)
-- Hint size (10-20pt, default: 12)
-- Horizontal offset (-200 to +200px, default: -25px)
-- Reset to defaults button
-
-**General** - System Settings
-- Accessibility permissions check
-- About section
+- **Clicking**: activation hotkey, hint alphabet, text search, continuous mode
+- **Scrolling**: activation hotkey, scroll keys, speeds, arrow key behavior
+- **Appearance**: colors, opacity, hint size and offset
+- **General**: accessibility permissions, Electron and Spotify settings
 
 ## Architecture
 
-### Core Technologies
-- **SwiftUI** - Settings interface with live preview
-- **AppKit** - Overlay windows, menu bar status item
-- **Accessibility API** - UI element discovery and observation
-- **Carbon Event Manager** - Global hotkey registration
-- **CGEvent** - Event tap for keyboard interception and click/scroll simulation
-- **NSVisualEffectView** - Glass blur effects for hint overlays
+Two explicit state machines — `HintSession` and `ScrollSession` — each driven by a pure reducer: (session + input) → (next session + side effects). Controllers own the lifecycle; services handle side effects.
 
-### Key Components
+**Notable constraints:**
 
-**Controllers (@MainActor singletons):**
-- `HintModeController` - Owns the `HintSession` state machine and dispatches side effects
-- `ScrollModeController` - Owns the `ScrollSession` state machine and dispatches side effects
+- **Threading**: The keyboard event tap runs on a CFRunLoop thread. All AX calls and UI mutations are confined to `@MainActor`. Shared state uses `nonisolated(unsafe)` static scalars dispatched back to main.
+- **Coordinate systems**: AX API uses bottom-left origin (Quartz). Overlay positioning flips to top-left (AppKit). Synthesized clicks flip back. `ScreenGeometry` owns both transforms.
+- **App compatibility**: Electron apps get their dormant AX tree woken via `AXManualAccessibility`. CEF apps (Spotify) can't be woken at runtime — detected and surfaced as a one-click relaunch instead.
 
-**Services & coordinators (@MainActor):**
-- `AccessibilityService` + `ClickableElementWalker` - AX traversal for clickable elements
-- `ScrollableAreaService` + `ScrollableAreaMerger` + `ScrollableAXProbe` - Scroll-area discovery
-- `HintOverlayRenderer` / `ScrollOverlayRenderer` - Overlay window lifecycle
-- `HintRefreshCoordinator` - Optimistic + fallback refresh in continuous mode
-- `ScrollDiscoveryCoordinator` / `ScrollCommandExecutor` - Progressive discovery and scroll dispatch
-- `HintInputReducer` / `ScrollSelectionReducer` - Pure session state reducers
-- `HintActionPerformer` - AX action with CGEvent fallback
-- `HintAssigner` - Hint-token alphabet mapping
-- `ClickService` - CGEvent mouse and scroll wheel events
+## Roadmap
 
-**Models:**
-- `UIElement` - Immutable AX discovery record (frame, role, stable ID, optional hydrated text)
-- `HintedElement` / `HintSession` - Presentation pairing and explicit hint-mode state
-- `ScrollableArea` - Immutable scroll container record
-- `NumberedArea` / `ScrollSession` - Presentation pairing and explicit scroll-mode state
-
-**Views:**
-- `HintOverlayWindow` - Borderless `.screenSaver`-level window displaying hints
-- `ScrollOverlayWindow` - Overlay showing numbered scroll areas
-- `PreferencesView` - SwiftUI settings with four tabs
-- `ShortcutRecorderView` - Live keyboard shortcut capture
-
-### Performance Optimizations
-- **Batch IPC calls** - Fetches role, position, size, children in single Accessibility API call
-- **Visibility clipping** - Skips elements outside screen bounds
-- **Smart pruning** - Avoids traversing non-clickable subtrees (StaticText, Image, etc.)
-- **Async text loading** - Loads searchable text attributes in background
-- **Debounced UI updates** - 50ms debounce on layout change notifications
-- **Progressive discovery** - Scroll areas found incrementally with dynamic UI updates
-- **Focus-based fast path** - Quickly finds scrollable parent of focused element
-- **App-specific detectors** - Optimized scroll detection (e.g., Chromium DevTools)
-
-### Threading Model
-- **Main thread (@MainActor)** - All controllers, services, UI updates
-- **CFRunLoop thread** - Event tap for keyboard interception
-  - Uses `nonisolated(unsafe)` static variables for thread-safe state sharing
-  - Dispatches UI updates to main queue
-- **Background threads** - Async scroll area discovery
-
-### Coordinate Systems
-- **Accessibility API**: Bottom-left origin (Quartz coordinates)
-- **UI positioning**: Top-left origin (Y-axis flipped for display)
-- **CGEvent clicks**: Bottom-left origin (Y-axis flipped back for posting events)
+- Configurable right-click shortcut (currently hardcoded to Ctrl+Enter)
 
 ## License
 

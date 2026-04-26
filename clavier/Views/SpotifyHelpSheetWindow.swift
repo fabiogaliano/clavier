@@ -19,25 +19,23 @@ import SwiftUI
 final class SpotifyHelpSheetWindow: NSWindow {
 
     init(
-        onDismissThisSession: @escaping () -> Void,
         onDismissPermanently: @escaping () -> Void,
         onClose: @escaping () -> Void
     ) {
         let view = SpotifyHelpSheetView(
-            onDismissThisSession: onDismissThisSession,
             onDismissPermanently: onDismissPermanently,
             onClose: onClose
         )
         let host = NSHostingView(rootView: view)
 
         super.init(
-            contentRect: NSRect(x: 0, y: 0, width: 560, height: 640),
+            contentRect: NSRect(x: 0, y: 0, width: 560, height: 400),
             styleMask: [.titled, .closable],
             backing: .buffered,
             defer: false
         )
 
-        title = "Enable hints in Spotify"
+        title = "clavier"
         contentView = host
         isReleasedWhenClosed = false
         // Keep above other windows but not at screen-saver level — the
@@ -50,19 +48,20 @@ final class SpotifyHelpSheetWindow: NSWindow {
 // MARK: - SwiftUI content
 
 private struct SpotifyHelpSheetView: View {
-    let onDismissThisSession: () -> Void
     let onDismissPermanently: () -> Void
     let onClose: () -> Void
+
+    @AppStorage(AppSettings.Keys.spotifyAutoRelaunchEnabled)
+    private var spotifyAutoRelaunch: Bool = AppSettings.Defaults.spotifyAutoRelaunchEnabled
 
     @State private var isRelaunching = false
     @State private var relaunchError: String?
     @State private var relaunchSucceeded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 18) {
+        VStack(alignment: .leading, spacing: 16) {
             header
             Divider()
-            explanation
             quickFixSection
             Divider()
             autoRelaunchSection
@@ -70,57 +69,31 @@ private struct SpotifyHelpSheetView: View {
             footer
         }
         .padding(24)
-        .frame(width: 560, height: 520)
+        .frame(width: 560)
     }
 
     private var header: some View {
-        HStack(alignment: .top, spacing: 12) {
-            Image(systemName: "music.note.list")
-                .font(.system(size: 28))
-                .foregroundStyle(.tint)
-            VStack(alignment: .leading, spacing: 4) {
-                Text("Spotify needs a launch flag")
-                    .font(.title2.weight(.semibold))
-                Text("clavier can't see Spotify's UI yet — here's how to fix it.")
-                    .font(.callout)
-                    .foregroundStyle(.secondary)
-            }
-        }
-    }
-
-    private var explanation: some View {
-        Text("""
-            Spotify is built on CEF (Chromium Embedded Framework), not Electron. \
-            Other Chromium apps like Slack and Discord let clavier wake their accessibility tree at runtime, but CEF doesn't expose that hook. The fix is to relaunch Spotify with a Chromium flag that enables accessibility from startup.
-            """)
-            .font(.callout)
-            .foregroundStyle(.secondary)
-            .fixedSize(horizontal: false, vertical: true)
+        Text("Spotify needs a relaunch to work with clavier.")
+            .font(.title2.weight(.semibold))
     }
 
     private var quickFixSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Quick fix — works for any Spotify install", systemImage: "bolt.fill")
-                .font(.headline)
-                .foregroundStyle(.primary)
-
-            Text("Quits Spotify and reopens it with the accessibility flag enabled. Active until you quit Spotify yourself.")
-                .font(.callout)
-                .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
-
+        VStack(alignment: .leading, spacing: 8) {
             quickFixActionRow
         }
+        .padding(12)
+        .background(.fill.tertiary)
+        .clipShape(RoundedRectangle(cornerRadius: 8))
     }
 
     @ViewBuilder
     private var quickFixActionRow: some View {
         if relaunchSucceeded {
-            Label("Spotify relaunched. Trigger hints again to see them.", systemImage: "checkmark.circle.fill")
+            Label("Spotify relaunched. Hints should now work.", systemImage: "checkmark.circle.fill")
                 .foregroundStyle(.green)
                 .font(.callout)
         } else if isRelaunching {
-            HStack(spacing: 10) {
+            HStack(spacing: 8) {
                 ProgressView()
                     .controlSize(.small)
                 Text("Quitting and relaunching Spotify…")
@@ -128,7 +101,7 @@ private struct SpotifyHelpSheetView: View {
                     .foregroundStyle(.secondary)
             }
         } else {
-            VStack(alignment: .leading, spacing: 6) {
+            VStack(alignment: .leading, spacing: 8) {
                 Button {
                     relaunchSpotify()
                 } label: {
@@ -138,7 +111,7 @@ private struct SpotifyHelpSheetView: View {
                 .buttonStyle(.borderedProminent)
                 .controlSize(.large)
 
-                Text("Current playback will stop.")
+                Text("Stops playback. Hints work until Spotify is closed.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 
@@ -154,14 +127,18 @@ private struct SpotifyHelpSheetView: View {
     }
 
     private var autoRelaunchSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Label("Make it automatic (optional)", systemImage: "arrow.triangle.2.circlepath")
+        VStack(alignment: .leading, spacing: 8) {
+            Toggle("Relaunch automatically on every Spotify launch", isOn: $spotifyAutoRelaunch)
+                .toggleStyle(.switch)
                 .font(.headline)
-
-            Text("Tired of clicking the button every time? Enable **Automatically relaunch Spotify with the flag on every launch** in clavier's Preferences → General → Spotify. clavier will silently re-launch Spotify with the flag whenever it detects an unflagged launch — at the cost of ~2 seconds added to Spotify's startup.")
+            Text("Adds ~2 seconds to Spotify's startup.")
                 .font(.callout)
                 .foregroundStyle(.secondary)
-                .fixedSize(horizontal: false, vertical: true)
+            if spotifyAutoRelaunch {
+                Text("Takes effect next time Spotify opens.")
+                    .font(.callout)
+                    .foregroundStyle(.tint)
+            }
         }
     }
 
@@ -171,8 +148,6 @@ private struct SpotifyHelpSheetView: View {
                 .buttonStyle(.borderless)
                 .foregroundStyle(.secondary)
             Spacer()
-            Button("Not now", action: onDismissThisSession)
-                .keyboardShortcut(.cancelAction)
             Button("Close", action: onClose)
                 .keyboardShortcut(.defaultAction)
         }
