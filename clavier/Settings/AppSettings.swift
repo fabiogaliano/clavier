@@ -52,6 +52,9 @@ enum AppSettings {
 
         // Chromium / Electron app support
         static let chromiumAccessibilityWakeEnabled = "chromiumAccessibilityWakeEnabled"
+        // Spotify (CEF — runtime wake doesn't work, surfaced via a help sheet)
+        static let spotifyAccessibilityHelpEnabled = "spotifyAccessibilityHelpEnabled"
+        static let spotifyAutoRelaunchEnabled = "spotifyAutoRelaunchEnabled"
     }
 
     enum Defaults {
@@ -96,6 +99,8 @@ enum AppSettings {
         static let scrollHintSize = 14.0
 
         static let chromiumAccessibilityWakeEnabled = true
+        static let spotifyAccessibilityHelpEnabled = true
+        static let spotifyAutoRelaunchEnabled = false
 
         // Validation ranges — owned here so reducers & views agree on limits.
         static let minSearchCharactersRange: ClosedRange<Int> = 1...5
@@ -145,6 +150,8 @@ enum AppSettings {
             Keys.scrollBorderOpacity: Defaults.scrollBorderOpacity,
             Keys.scrollHintSize: Defaults.scrollHintSize,
             Keys.chromiumAccessibilityWakeEnabled: Defaults.chromiumAccessibilityWakeEnabled,
+            Keys.spotifyAccessibilityHelpEnabled: Defaults.spotifyAccessibilityHelpEnabled,
+            Keys.spotifyAutoRelaunchEnabled: Defaults.spotifyAutoRelaunchEnabled,
         ])
     }
 }

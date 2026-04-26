@@ -18,6 +18,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupHintMode()
         setupScrollMode()
         setupChromiumAccessibilityWake()
+        // Auto-relaunch observer is gated by the user setting, so
+        // attaching unconditionally is safe; the handler is a no-op
+        // when the toggle is off.
+        SpotifyAccessibilityHelper.shared.startMonitoring()
         checkAccessibilityPermissions()
     }
 

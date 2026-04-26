@@ -196,6 +196,15 @@ class HintModeController {
         loadSessionSettings()
 
         let discoveredElements = AccessibilityService.shared.getClickableElements()
+
+        // CEF-app branch: Spotify can't be woken at runtime; if we
+        // detect the empty-tree signature there, hand off to the help
+        // sheet (which offers a one-click relaunch with the
+        // accessibility flag) and don't proceed with normal hint mode.
+        if SpotifyAccessibilityHelper.shared.presentIfApplicable(elements: discoveredElements) {
+            return
+        }
+
         guard !discoveredElements.isEmpty else { return }
 
         let hintedElements = assignHints(to: discoveredElements)

@@ -5,6 +5,12 @@ struct GeneralTabView: View {
     @AppStorage(AppSettings.Keys.chromiumAccessibilityWakeEnabled)
     private var chromiumWakeEnabled: Bool = AppSettings.Defaults.chromiumAccessibilityWakeEnabled
 
+    @AppStorage(AppSettings.Keys.spotifyAccessibilityHelpEnabled)
+    private var spotifyHelpEnabled: Bool = AppSettings.Defaults.spotifyAccessibilityHelpEnabled
+
+    @AppStorage(AppSettings.Keys.spotifyAutoRelaunchEnabled)
+    private var spotifyAutoRelaunch: Bool = AppSettings.Defaults.spotifyAutoRelaunchEnabled
+
     var body: some View {
         Form {
             Section("Permissions") {
@@ -28,6 +34,34 @@ struct GeneralTabView: View {
                     .fixedSize(horizontal: false, vertical: true)
             } header: {
                 Text("Chromium app support")
+            }
+
+            Section {
+                Toggle("Show help when Spotify needs a launch flag", isOn: $spotifyHelpEnabled)
+
+                Text("""
+                    Spotify is built on CEF (Chromium Embedded Framework), not Electron. Its accessibility tree can't be woken at runtime — the only working fix is relaunching Spotify with `--force-renderer-accessibility`. When this is on, clavier shows a help sheet with a one-click relaunch button (and a Spicetify recipe for users who want it persistent).
+                    """)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Toggle("Automatically relaunch Spotify with the flag on every launch", isOn: $spotifyAutoRelaunch)
+
+                Text("""
+                    When enabled, clavier watches for Spotify launches and silently relaunches it with `--force-renderer-accessibility` whenever it detects a launch without the flag. Result: hints work in Spotify with no button click.
+
+                    Trade-off: every Spotify launch takes about 2 extra seconds while clavier verifies and relaunches. If you're playing music in another session and click a Spotify link, the kill+relaunch will briefly interrupt that flow. Best for users who use clavier in Spotify daily.
+                    """)
+                    .font(.caption)
+                    .foregroundStyle(.secondary)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button("Show Spotify help now…") {
+                    SpotifyAccessibilityHelper.shared.presentManually()
+                }
+            } header: {
+                Text("Spotify")
             }
 
             Section("About") {

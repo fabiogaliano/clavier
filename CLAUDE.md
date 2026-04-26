@@ -66,6 +66,7 @@ open clavier.xcodeproj
 - `ClickService` - Posts `CGEvent` mouse and scroll wheel events.
 - `GlobalHotkeyRegistrar` / `KeyboardEventTap` - Carbon hotkey and event-tap wrappers.
 - `ChromiumAccessibilityWaker` - Sets `AXManualAccessibility` on known Electron apps so their dormant AX tree populates. See `docs/chromium-apps.md`.
+- `SpotifyAccessibilityHelper` - Detects Spotify's empty-tree signature (CEF can't be woken at runtime — runtime techniques were prototyped and ruled out) and surfaces `SpotifyHelpSheetWindow`. Provides `relaunchSpotifyWithFlag()` (terminate + wait + `NSWorkspace.openApplication` with `--force-renderer-accessibility`) as the universal one-click fix; Spicetify recipe is offered as the optional persistent upgrade when detected.
 
 **Models:**
 - `UIElement` - Immutable discovery record: AX element, frame, visible frame, role, stable ID, and optional hydrated `textAttributes`. Does **not** carry the hint token — see `HintedElement`.
@@ -81,6 +82,7 @@ open clavier.xcodeproj
 - `ScrollOverlayWindow` - Overlay window for numbered scroll-area indicators and selection highlight.
 - `PreferencesView` - SwiftUI Settings form with four tabs (Clicking, Scrolling, Appearance, General).
 - `ShortcutRecorderView` - SwiftUI component for recording custom keyboard shortcuts with live preview.
+- `SpotifyHelpSheetWindow` - Floating SwiftUI window with a one-click relaunch button + copy-to-clipboard `--force-renderer-accessibility` instructions for Spotify (Spicetify-aware path when detected).
 
 **App infrastructure:**
 - `clavierApp` - SwiftUI App entry point with hidden window bridge for opening Settings.
@@ -105,9 +107,8 @@ open clavier.xcodeproj
 - Defaults are registered in `AppSettings.registerDefaults()` at app launch.
 
 **Chromium-based app support:**
-- Electron apps (Slack, Discord, Notion, etc.) ship with their AX tree dormant. `ChromiumAccessibilityWaker` writes `AXManualAccessibility = true` on the app element to wake it; `AppDelegate` triggers the wake on `NSWorkspace.didActivateApplicationNotification`, and `AccessibilityService` re-applies it before each walk as a fallback.
-- Toggleable via `chromiumAccessibilityWakeEnabled` (default true).
-- CEF apps (Spotify) need a different approach — currently unimplemented; see `docs/chromium-apps.md`.
+- Electron apps (Slack, Discord, Notion, etc.) ship with their AX tree dormant. `ChromiumAccessibilityWaker` writes `AXManualAccessibility = true` on the app element to wake it; `AppDelegate` triggers the wake on `NSWorkspace.didActivateApplicationNotification`, and `AccessibilityService` re-applies it before each walk as a fallback. Toggleable via `chromiumAccessibilityWakeEnabled` (default true).
+- CEF apps (Spotify) cannot be woken at runtime (verified empirically — role-read activation and `AXEnhancedUserInterface` writes both fail). `SpotifyAccessibilityHelper` instead detects the empty-tree signature and shows `SpotifyHelpSheetWindow`, whose primary action is one-click `terminate + NSWorkspace.openApplication(arguments: ["--force-renderer-accessibility"])`. Works for every Spotify install (no Spicetify required); Spicetify recipe is offered as a persistent upgrade when its config file is detected.
 - Full background, allow-list maintenance, and known dead ends: `docs/chromium-apps.md`.
 
 **Hotkey coordination:**
@@ -155,6 +156,8 @@ Stored in `UserDefaults` — keys live in `AppSettings.Keys`, defaults in `AppSe
 
 **Chromium app support (General tab):**
 - `chromiumAccessibilityWakeEnabled` (Bool, default: true): Wake the AX tree of known Electron apps via `AXManualAccessibility`. Disable to minimise CPU/memory impact in those apps when not using clavier with them. No effect on Chrome / Arc / Edge / Brave / VS Code (they manage their own).
+- `spotifyAccessibilityHelpEnabled` (Bool, default: true): Auto-present the Spotify help sheet when an empty CEF tree is detected. Disable to silence the auto-prompt; the sheet remains available manually via *Show Spotify help now…* in the General tab.
+- `spotifyAutoRelaunchEnabled` (Bool, default: false): When on, clavier observes `NSWorkspace.didLaunchApplicationNotification`, probes Spotify's AX tree ~1.5 s after launch, and silently relaunches with `--force-renderer-accessibility` if the tree is dormant. Cooldown of 10 s prevents the kill+relaunch loop. Off by default because the dance adds ~2 s to every Spotify launch even when the user doesn't need hints.
 
 ## Key Technical Details
 

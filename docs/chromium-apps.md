@@ -68,35 +68,122 @@ mdls -name kMDItemCFBundleIdentifier /Applications/AppName.app
 Adding a non-Electron app is harmless — the AX write fails with
 `.attributeUnsupported` and the wake is silently skipped on that pid.
 
-## Track B — Spotify (CEF) — TODO
+## Track B — Spotify (CEF) — relaunch with launch flag
 
 Spotify uses CEF (Chromium Embedded Framework), not Electron. CEF
 does not implement `AXManualAccessibility`, so Track A's wake is a
-no-op there: the AX write returns `.attributeUnsupported`. Empirically
-the only confirmed mechanism that populates Spotify's tree is
+no-op there: the AX write returns `.attributeUnsupported`. We
+prototyped two runtime techniques (role-read on the application
+element per [Chromium CL 2680102](https://chromium-review.googlesource.com/c/chromium/src/+/2680102),
+and `AXEnhancedUserInterface` writes) and neither populated Spotify's
+tree — the empty-tree skeleton (window + nested empty `AXGroup`s + 3
+chrome buttons) was unchanged after both attempts.
+
+The only confirmed mechanism that populates Spotify's tree is
 launching it with the Chromium switch `--force-renderer-accessibility`
-at process start.
+at process start. clavier surfaces this via a help sheet whose
+primary action is a one-click relaunch.
 
-Untested runtime techniques that could plausibly wake CEF without a
-relaunch:
+### Detection trigger
 
-- **Read `kAXRoleAttribute` on the application element first.**
-  [Chromium CL 2680102](https://chromium-review.googlesource.com/c/chromium/src/+/2680102)
-  (Feb 2021) makes any role read on a Chromium AX element escalate
-  `kAXModeBasic` → `kAXModeComplete`. Whether Spotify's CEF fork
-  carries this patch is unverified.
-- **Set `AXEnhancedUserInterface = true` on the application element.**
-  [Vimac issue #78](https://github.com/dexterleng/vimac/issues/78)
-  removed this attribute when set on *windows* due to window-manager
-  regressions; the app-level path is unexplored in any public source.
-- **Walk a step deeper proactively** so multiple role reads hit
-  Chromium's `OnPropertiesUsedInWebContent` callback in sequence.
+When the frontmost app is `com.spotify.client` and the discovery walk
+returns fewer than 5 clickables (the empty-tree signature),
+`HintModeController.activateHintMode` short-circuits to
+`SpotifyAccessibilityHelper.presentIfApplicable(...)` instead of
+opening hint mode for the 3 traffic-light buttons.
 
-Until we prototype and validate these, Spotify is a known limitation.
-The full chain of dead ends already eliminated — `AXManualAccessibility`
-externally, `AXEnhancedUserInterface` on windows, CDP `Accessibility.enable`
-over a debug port, JS injection in the renderer, `CefBrowserHost::SetAccessibilityState` —
-is captured in the [Homerow research thread on issue #31](https://github.com/nchudleigh/homerow/issues/31).
+### The help sheet — three options, ordered by friction
+
+1. **Quick fix — Relaunch button (universal, primary).**
+   `relaunchSpotifyWithFlag()` does:
+   1. Resolves `/Applications/Spotify.app` via
+      `NSWorkspace.shared.urlForApplication(withBundleIdentifier:)`.
+   2. Sends `terminate()` to every running `com.spotify.client` instance.
+   3. Polls `NSRunningApplication.isTerminated` every 100 ms for up to
+      3 seconds, falling back to `forceTerminate()` for holdouts.
+   4. Calls `NSWorkspace.shared.openApplication(at:configuration:)`
+      with `OpenConfiguration.arguments = ["--force-renderer-accessibility"]`.
+
+   **Why the terminate-and-wait dance is mandatory:**
+   `OpenConfiguration.arguments` only takes effect on a *fresh*
+   process launch. If Spotify is already running, `openApplication`
+   activates the existing instance and silently drops the flag.
+   Skipping the wait races LaunchServices into handing back the
+   dying instance instead of spawning a new one.
+
+   Active for the lifetime of that Spotify process — quitting Spotify
+   yourself reverts the flag.
+
+2. **Permanent fix — Spicetify (only when detected).**
+   If `~/.config/spicetify/config-xpui.ini` exists, the sheet shows:
+
+   ```bash
+   spicetify config spotify_launch_flags --force-renderer-accessibility && spicetify apply
+   ```
+
+   This adds the flag to `spotify_launch_flags` in `config-xpui.ini`,
+   making it stick across every Spicetify-managed Spotify launch.
+   Detection is a simple `FileManager.default.fileExists(atPath:)`
+   check.
+
+3. **Manual Terminal launch (always shown when Spicetify isn't detected).**
+
+   ```bash
+   /Applications/Spotify.app/Contents/MacOS/Spotify --force-renderer-accessibility
+   ```
+
+   Equivalent to option 1 done by hand. Useful for users with custom
+   shell setups, aliases, or who just prefer terminal launches.
+
+### Sheet dismissal
+
+Three exits:
+- *Close* — dismiss the current sheet but allow it to reappear next
+  time clavier detects the empty-tree state.
+- *Not now* — same as close.
+- *Don't show again* — sets `spotifyAccessibilityHelpEnabled = false`,
+  silencing the auto-prompt permanently. The sheet remains reachable
+  via `Preferences → General → Spotify → "Show Spotify help now…"`.
+
+There's also an in-memory `dismissedThisSession` flag that suppresses
+re-display within a single clavier process lifetime, so the sheet
+doesn't re-pop on every hint-trigger after a user has acknowledged
+it once.
+
+### Why we don't run Spicetify commands for the user
+
+- `spicetify apply` regenerates files; if the user has unsaved
+  customisations or a custom `xpui` build, it could disrupt them.
+- The `spicetify` binary location varies (Homebrew, manual install,
+  custom shells) — shelling out invites PATH/version mismatches.
+
+The relaunch path is safe to automate (it uses public NSWorkspace
+APIs and only restarts a single, known process). The Spicetify path
+is shown + clipboard, never executed.
+
+### Known dead ends (do not re-investigate without new evidence)
+
+These are documented for future agents who consider re-prototyping:
+
+- **`AXManualAccessibility` externally on Spotify** — CEF does not
+  implement the attribute; returns `.attributeUnsupported`.
+- **Role-read on the application element** — empirically tested,
+  did not escalate `kAXModeBasic` → `kAXModeComplete`. Likely cause:
+  the wrapper `AXGroup`s are NSAccessibility wrappers from Spotify's
+  native shell, not `BrowserAccessibilityCocoa` instances; reads
+  never reach Chromium's hook.
+- **`AXEnhancedUserInterface` externally on Spotify** — community-
+  tested via Vimac and the Spotify dev forum thread; failed.
+  Setting it on windows additionally caused window-manager regressions
+  ([Vimac issue #78](https://github.com/dexterleng/vimac/issues/78),
+  [Mozilla bug 1664992](https://bugzilla.mozilla.org/show_bug.cgi?id=1664992)).
+- **CDP `Accessibility.enable`** over a debug port — populates the
+  in-DevTools tree only, does not create platform NSAccessibility
+  objects.
+- **JS injection in the renderer** — DOM-side code cannot escalate
+  Chromium's process-level AX mode.
+- **`CefBrowserHost::SetAccessibilityState`** — in-process C++ API,
+  not callable from outside Spotify's process.
 
 ## Settings
 
@@ -107,6 +194,19 @@ User-controllable in `Preferences → General`:
   Slack/Discord/etc. revert to "no hints visible" behaviour. Useful
   for users who don't use clavier in Chromium apps and want to
   minimise their CPU/memory footprint.
+- **`spotifyAccessibilityHelpEnabled`** (default `true`) — toggles
+  Track B's auto-presentation. When off, the help sheet still appears
+  via the manual *Show Spotify help now…* button but won't auto-fire
+  on empty-tree detection.
+- **`spotifyAutoRelaunchEnabled`** (default `false`) — when on,
+  clavier observes `NSWorkspace.didLaunchApplicationNotification`,
+  probes Spotify's AX tree ~1.5 s after a launch, and silently
+  relaunches with the flag if the tree is dormant. Provides
+  zero-click "Spotify just works" UX at the cost of ~2 s extra
+  startup latency on every Spotify launch. Off by default because
+  the trade-off is only worth it for users who use hints in Spotify
+  daily; occasional users are better served by the manual button
+  on the help sheet.
 
 ## Performance impact (in target apps)
 
@@ -140,11 +240,14 @@ These are documented for future agents who consider re-investigating:
 
 | File | Role |
 | --- | --- |
-| `clavier/Services/ChromiumAccessibilityWaker.swift` | Allow-list + AX write + per-pid cache |
+| `clavier/Services/ChromiumAccessibilityWaker.swift` | Track A: allow-list + AX write + per-pid cache |
+| `clavier/Services/Hint/SpotifyAccessibilityHelper.swift` | Track B: empty-tree detection, relaunch logic, sheet trigger |
+| `clavier/Views/SpotifyHelpSheetWindow.swift` | Track B: SwiftUI help sheet UI (relaunch + Spicetify + manual paths) |
 | `clavier/App/AppDelegate.swift` | NSWorkspace activation/termination wiring |
 | `clavier/Services/AccessibilityService.swift` | Pre-walk wake + empty-tree retry |
-| `clavier/Settings/AppSettings.swift` | Setting key + default |
-| `clavier/Views/Preferences/GeneralTabView.swift` | UI surface for the toggle |
+| `clavier/Services/HintModeController.swift` | Spotify short-circuit in `activateHintMode` |
+| `clavier/Settings/AppSettings.swift` | Setting keys + defaults |
+| `clavier/Views/Preferences/GeneralTabView.swift` | UI surface for both toggles + manual help-sheet button |
 
 ## Primary references
 
