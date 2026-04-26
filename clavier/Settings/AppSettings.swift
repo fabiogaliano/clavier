@@ -49,6 +49,9 @@ enum AppSettings {
         static let scrollBackgroundOpacity = "scrollBackgroundOpacity"
         static let scrollBorderOpacity = "scrollBorderOpacity"
         static let scrollHintSize = "scrollHintSize"
+
+        // Chromium / Electron app support
+        static let chromiumAccessibilityWakeEnabled = "chromiumAccessibilityWakeEnabled"
     }
 
     enum Defaults {
@@ -91,6 +94,8 @@ enum AppSettings {
         static let scrollBackgroundOpacity = 0.35
         static let scrollBorderOpacity = 0.6
         static let scrollHintSize = 14.0
+
+        static let chromiumAccessibilityWakeEnabled = true
 
         // Validation ranges — owned here so reducers & views agree on limits.
         static let minSearchCharactersRange: ClosedRange<Int> = 1...5
@@ -139,6 +144,7 @@ enum AppSettings {
             Keys.scrollBackgroundOpacity: Defaults.scrollBackgroundOpacity,
             Keys.scrollBorderOpacity: Defaults.scrollBorderOpacity,
             Keys.scrollHintSize: Defaults.scrollHintSize,
+            Keys.chromiumAccessibilityWakeEnabled: Defaults.chromiumAccessibilityWakeEnabled,
         ])
     }
 }

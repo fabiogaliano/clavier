@@ -17,7 +17,53 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         setupMenuBar()
         setupHintMode()
         setupScrollMode()
+        setupChromiumAccessibilityWake()
         checkAccessibilityPermissions()
+    }
+
+    /// Eagerly wake the AX tree of Electron apps the moment they activate,
+    /// so the user's first hint trigger doesn't race against Chromium's
+    /// tree-population. The tree typically takes 100–500 ms to populate
+    /// after `AXManualAccessibility` is set; activating the wake on
+    /// `didActivate` rather than on hint-trigger eliminates that window
+    /// for the common case where the user types the hint hotkey *after*
+    /// switching apps.
+    private func setupChromiumAccessibilityWake() {
+        let center = NSWorkspace.shared.notificationCenter
+
+        center.addObserver(
+            self,
+            selector: #selector(workspaceDidActivateApp(_:)),
+            name: NSWorkspace.didActivateApplicationNotification,
+            object: nil
+        )
+        center.addObserver(
+            self,
+            selector: #selector(workspaceDidTerminateApp(_:)),
+            name: NSWorkspace.didTerminateApplicationNotification,
+            object: nil
+        )
+
+        // The currently-frontmost app at launch never fires
+        // `didActivateApplicationNotification` for clavier's process —
+        // wake it immediately so the very first hint trigger works.
+        if let frontmost = NSWorkspace.shared.frontmostApplication {
+            ChromiumAccessibilityWaker.shared.wakeIfNeeded(frontmost)
+        }
+    }
+
+    @objc private func workspaceDidActivateApp(_ note: Notification) {
+        guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else {
+            return
+        }
+        ChromiumAccessibilityWaker.shared.wakeIfNeeded(app)
+    }
+
+    @objc private func workspaceDidTerminateApp(_ note: Notification) {
+        guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else {
+            return
+        }
+        ChromiumAccessibilityWaker.shared.forgetPid(app.processIdentifier)
     }
 
     private func setupMenuBar() {

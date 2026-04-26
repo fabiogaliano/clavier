@@ -32,8 +32,52 @@ class AccessibilityService {
             return []
         }
 
-        let appElement = AXUIElementCreateApplication(pid)
+        // Belt-and-suspenders wake: the eager activation hook in
+        // `AppDelegate` covers the common case, but if the user
+        // launched clavier *after* the Chromium app was already
+        // frontmost — or the activation race somehow lost — this
+        // catches it before the walk.
+        let wakeOutcome = ChromiumAccessibilityWaker.shared.wakeIfNeeded(focusedApp)
+        if wakeOutcome == .freshlyWoken {
+            // Chromium needs ~100–500 ms to populate the tree after
+            // `AXManualAccessibility` is set. 150 ms is a pragmatic
+            // floor that catches most cases without making the hint
+            // overlay feel laggy. The walker's empty-tree retry below
+            // covers anything still in flight.
+            usleep(150_000)
+        }
 
+        let appElement = AXUIElementCreateApplication(pid)
+        let bundleId = focusedApp.bundleIdentifier
+
+        let deduplicated = traverseAndCollect(appElement: appElement, pid: pid, recorder: recorder)
+
+        // Empty-tree retry for known Chromium apps. If the eager wake
+        // hasn't finished or the bundle id is on the list but the
+        // attribute didn't take (CEF apps, etc.), one retry after a
+        // short settle gives the tree a chance to appear before we
+        // give up. Non-Chromium apps with empty trees usually just
+        // have nothing clickable — no point retrying them.
+        if shouldRetryForEmptyTree(deduplicated: deduplicated,
+                                   appElement: appElement,
+                                   bundleId: bundleId,
+                                   wakeOutcome: wakeOutcome) {
+            usleep(150_000)
+            return traverseAndCollect(appElement: appElement, pid: pid, recorder: recorder)
+        }
+
+        return deduplicated
+    }
+
+    /// Walk every window of `appElement`, dedupe, and return the
+    /// resulting `UIElement`s. Pulled out of `getClickableElements` so
+    /// the empty-tree retry path can call it twice without duplicating
+    /// the traversal logic.
+    private func traverseAndCollect(
+        appElement: AXUIElement,
+        pid: pid_t,
+        recorder: HintDiscoveryRecorder?
+    ) -> [UIElement] {
         var windowsRef: CFTypeRef?
         guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef) == .success,
               let windows = windowsRef as? [AXUIElement] else {
@@ -62,6 +106,45 @@ class AccessibilityService {
         Logger.accessibility.debug("deduplicateElements: \(Int((dedupeEndTime - dedupeStartTime) * 1000), privacy: .public)ms (\(deduplicated.count, privacy: .public) unique)")
 
         return deduplicated
+    }
+
+    /// Heuristic for "the AX tree looks suspiciously empty for a
+    /// Chromium app whose tree we just woke." Triggers exactly one
+    /// retry and only when:
+    ///   - the app is on the Chromium allow-list,
+    ///   - this discovery pass produced very few clickables,
+    ///   - the frontmost window is large enough that the emptiness
+    ///     can't be explained by a tiny popover/notification.
+    /// Skipped when the wake was already satisfied earlier in the
+    /// session — a populated Chromium tree that legitimately has few
+    /// clickables (e.g. a splash screen) shouldn't get retried.
+    private func shouldRetryForEmptyTree(
+        deduplicated: [UIElement],
+        appElement: AXUIElement,
+        bundleId: String?,
+        wakeOutcome: ChromiumAccessibilityWaker.WakeOutcome
+    ) -> Bool {
+        guard wakeOutcome == .freshlyWoken else { return false }
+        guard let bundleId, ChromiumAccessibilityWaker.isKnownChromiumApp(bundleId: bundleId) else {
+            return false
+        }
+        guard deduplicated.count < 5 else { return false }
+
+        // Look for at least one window large enough to plausibly host
+        // hidden content. The 400×400 threshold matches the same
+        // cutoff used in `ChromiumDetector` for DevTools panels.
+        var windowsRef: CFTypeRef?
+        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+              let windows = windowsRef as? [AXUIElement] else {
+            return false
+        }
+        for window in windows {
+            if let frame = windowFrameAX(window), frame.width > 400, frame.height > 400 {
+                Logger.accessibility.debug("Empty-tree retry triggered for \(bundleId, privacy: .public)")
+                return true
+            }
+        }
+        return false
     }
 
     private func windowFrameAX(_ window: AXUIElement) -> CGRect? {

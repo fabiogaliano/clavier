@@ -65,6 +65,7 @@ open clavier.xcodeproj
 - `HintAssigner` - Pure hint-token mapping.
 - `ClickService` - Posts `CGEvent` mouse and scroll wheel events.
 - `GlobalHotkeyRegistrar` / `KeyboardEventTap` - Carbon hotkey and event-tap wrappers.
+- `ChromiumAccessibilityWaker` - Sets `AXManualAccessibility` on known Electron apps so their dormant AX tree populates. See `docs/chromium-apps.md`.
 
 **Models:**
 - `UIElement` - Immutable discovery record: AX element, frame, visible frame, role, stable ID, and optional hydrated `textAttributes`. Does **not** carry the hint token — see `HintedElement`.
@@ -102,6 +103,12 @@ open clavier.xcodeproj
 - `UserDefaults` + `@AppStorage` for preferences.
 - `AppSettings` is the typed boundary: parse-on-read accessors return validated domain values (`HintCharacters`, `ScrollKeymap`, `ScrollArrowMode`) rather than raw strings.
 - Defaults are registered in `AppSettings.registerDefaults()` at app launch.
+
+**Chromium-based app support:**
+- Electron apps (Slack, Discord, Notion, etc.) ship with their AX tree dormant. `ChromiumAccessibilityWaker` writes `AXManualAccessibility = true` on the app element to wake it; `AppDelegate` triggers the wake on `NSWorkspace.didActivateApplicationNotification`, and `AccessibilityService` re-applies it before each walk as a fallback.
+- Toggleable via `chromiumAccessibilityWakeEnabled` (default true).
+- CEF apps (Spotify) need a different approach — currently unimplemented; see `docs/chromium-apps.md`.
+- Full background, allow-list maintenance, and known dead ends: `docs/chromium-apps.md`.
 
 **Hotkey coordination:**
 - `Notification.Name.disableGlobalHotkeys` — posted when the shortcut recorder opens.
@@ -145,6 +152,9 @@ Stored in `UserDefaults` — keys live in `AppSettings.Keys`, defaults in `AppSe
 - `autoScrollDeactivation` (Bool): Auto-exit scroll mode after inactivity (default: true).
 - `scrollDeactivationDelay` (Double): Seconds before auto-deactivation (default: 5.0).
 - `showScrollAreaNumbers` (Bool): Display numbered hints on scroll areas (default: true).
+
+**Chromium app support (General tab):**
+- `chromiumAccessibilityWakeEnabled` (Bool, default: true): Wake the AX tree of known Electron apps via `AXManualAccessibility`. Disable to minimise CPU/memory impact in those apps when not using clavier with them. No effect on Chrome / Arc / Edge / Brave / VS Code (they manage their own).
 
 ## Key Technical Details
 
