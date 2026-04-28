@@ -179,7 +179,11 @@ class ScrollModeController {
     }
 
     private func deactivateScrollMode() {
-        guard isActive else { return }
+        // Gated on the static flag rather than `session.isActive` because the
+        // reducer sets `session = .inactive` before `applyEffects` fires
+        // `.deactivate`; a session-based guard would early-return here and
+        // leak the event tap + overlay.
+        guard ScrollModeController.isScrollModeActive else { return }
 
         deactivationTimer?.invalidate()
         deactivationTimer = nil

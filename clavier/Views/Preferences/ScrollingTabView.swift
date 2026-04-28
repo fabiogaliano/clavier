@@ -22,6 +22,8 @@ struct ScrollingTabView: View {
                         modifiers: $scrollShortcutModifiers
                     )
                 }
+                Text("ESC: exit")
+                    .foregroundStyle(.secondary)
 
                 HStack {
                     HStack(spacing: 4) {
@@ -66,12 +68,12 @@ struct ScrollingTabView: View {
             Section("Speed") {
                 VStack(alignment: .leading) {
                     Text("Scroll speed")
-                    HStack {
-                        Image(systemName: "tortoise")
-                            .foregroundStyle(.secondary)
-                        Slider(value: $scrollSpeed, in: 1...10, step: 1)
-                        Image(systemName: "hare")
-                            .foregroundStyle(.secondary)
+                    Slider(value: $scrollSpeed, in: 1...10, step: 1) {
+                        EmptyView()
+                    } minimumValueLabel: {
+                        Image(systemName: "tortoise").foregroundStyle(.secondary)
+                    } maximumValueLabel: {
+                        Image(systemName: "hare").foregroundStyle(.secondary)
                     }
                 }
 
@@ -80,12 +82,12 @@ struct ScrollingTabView: View {
                         Text("Dash speed")
                         HelpButton(helpText: "Speed when holding Shift while scrolling for faster movement.")
                     }
-                    HStack {
-                        Image(systemName: "tortoise")
-                            .foregroundStyle(.secondary)
-                        Slider(value: $dashSpeed, in: 1...10, step: 1)
-                        Image(systemName: "hare")
-                            .foregroundStyle(.secondary)
+                    Slider(value: $dashSpeed, in: 1...10, step: 1) {
+                        EmptyView()
+                    } minimumValueLabel: {
+                        Image(systemName: "tortoise").foregroundStyle(.secondary)
+                    } maximumValueLabel: {
+                        Image(systemName: "hare").foregroundStyle(.secondary)
                     }
                 }
             }
