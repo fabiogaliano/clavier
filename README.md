@@ -11,7 +11,7 @@
 Navigate any macOS app without touching the mouse.
 
 Press a shortcut, type a hint or search by word — clavier clicks for you.  
-Free, open source, and opinionated about how it works.
+Free, open source, and opinionated about how it works. Alternative to Homerow, Shortcat, Wooshy, and Mouseless.
 
 ## Features
 
