@@ -65,7 +65,7 @@ final class HintInputReducerHidePrefixTests: XCTestCase {
             makeHinted(hint: "aa", text: "Google"),
             makeHinted(hint: "ab", text: "Search"),
         ]
-        let session = HintSession.active(hintedElements: elements, filter: "")
+        let session = HintSession.active(hintedElements: elements, filter: "", mode: .oneShot)
 
         let (next, effects) = HintInputReducer.reduce(
             session: session,
@@ -83,13 +83,13 @@ final class HintInputReducerHidePrefixTests: XCTestCase {
             makeHinted(hint: "ab", text: "Bing Search"),
         ]
 
-        let plain = HintSession.active(hintedElements: elements, filter: "googl")
+        let plain = HintSession.active(hintedElements: elements, filter: "googl", mode: .oneShot)
         let (plainNext, _) = HintInputReducer.reduce(
             session: plain, command: .character("e"),
             context: makeContext()
         )
 
-        let hidden = HintSession.active(hintedElements: elements, filter: ">googl")
+        let hidden = HintSession.active(hintedElements: elements, filter: ">googl", mode: .oneShot)
         let (hiddenNext, hiddenEffects) = HintInputReducer.reduce(
             session: hidden, command: .character("e"),
             context: makeContext()
@@ -103,7 +103,7 @@ final class HintInputReducerHidePrefixTests: XCTestCase {
 
     func test_backspacePastPrefix_emitsLabelsVisibleAgain() {
         let elements = [makeHinted(hint: "aa", text: "Item")]
-        let session = HintSession.active(hintedElements: elements, filter: ">")
+        let session = HintSession.active(hintedElements: elements, filter: ">", mode: .oneShot)
 
         let (next, effects) = HintInputReducer.reduce(
             session: session, command: .backspace,
@@ -116,7 +116,7 @@ final class HintInputReducerHidePrefixTests: XCTestCase {
 
     func test_escapeFromHiddenMode_restoresLabels() {
         let elements = [makeHinted(hint: "aa", text: "Alpha")]
-        let session = HintSession.active(hintedElements: elements, filter: ">alp")
+        let session = HintSession.active(hintedElements: elements, filter: ">alp", mode: .oneShot)
 
         let (next, effects) = HintInputReducer.reduce(
             session: session, command: .escape,
@@ -128,9 +128,22 @@ final class HintInputReducerHidePrefixTests: XCTestCase {
         XCTAssertTrue(effects.contains { if case .setLabelsHidden(false) = $0 { return true } else { return false } })
     }
 
+    func test_clearingAContinuousSessionFilter_preservesContinuousMode() {
+        let elements = [makeHinted(hint: "aa", text: "Item")]
+        let session = HintSession.active(hintedElements: elements, filter: "a", mode: .continuous)
+
+        let (next, _) = HintInputReducer.reduce(
+            session: session,
+            command: .escape,
+            context: makeContext()
+        )
+
+        XCTAssertTrue(next.isContinuous)
+    }
+
     func test_disabledPrefix_behavesAsStandardCharacter() {
         let elements = [makeHinted(hint: "aa", text: "Item")]
-        let session = HintSession.active(hintedElements: elements, filter: "")
+        let session = HintSession.active(hintedElements: elements, filter: "", mode: .oneShot)
 
         // With prefix empty, the configured character is not a prefix marker,
         // so the character goes through standard filter insertion.  `-` is
@@ -150,7 +163,7 @@ final class HintInputReducerHidePrefixTests: XCTestCase {
         // sanitizer forbids letters/digits.  Still, verify hide-mode
         // disables exact-hint matching so `>ad` doesn't misfire on hint "ad".
         let elements = [makeHinted(hint: "ad", text: "Address Bar")]
-        let session = HintSession.active(hintedElements: elements, filter: ">a")
+        let session = HintSession.active(hintedElements: elements, filter: ">a", mode: .oneShot)
         let (_, effects) = HintInputReducer.reduce(
             session: session, command: .character("d"),
             context: makeContext()

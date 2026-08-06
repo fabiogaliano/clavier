@@ -24,6 +24,7 @@ class HintModeController {
     private var deactivationTimer: Timer?
     private var autoDeactivation = false
     private var deactivationDelay: Double = 5.0
+    private var initialMode: HintSessionMode = .oneShot
 
     // Settings loaded at activation, valid for the lifetime of that session
     private var inputContext = HintInputContext(
@@ -82,7 +83,7 @@ class HintModeController {
 
     func toggleHintMode() {
         if isActive {
-            deactivateHintMode()
+            upgradeToContinuous()
         } else {
             activateHintMode()
         }
@@ -209,7 +210,7 @@ class HintModeController {
 
         let hintedElements = assignHints(to: discoveredElements)
 
-        renderer.open(session: .active(hintedElements: hintedElements, filter: ""))
+        renderer.open(session: .active(hintedElements: hintedElements, filter: "", mode: initialMode))
 
         guard startEventTap() else {
             Logger.hintMode.warning("Failed to create event tap. Check Accessibility permissions in System Settings > Privacy & Security > Accessibility.")
@@ -217,7 +218,7 @@ class HintModeController {
             return
         }
 
-        session = .active(hintedElements: hintedElements, filter: "")
+        session = .active(hintedElements: hintedElements, filter: "", mode: initialMode)
         previousElementCount = hintedElements.count
         HintModeController.isHintModeActive = true
 
@@ -276,7 +277,7 @@ class HintModeController {
 
         let newHintedElements = assignHints(to: newElements)
         previousElementCount = newElements.count
-        session = .active(hintedElements: newHintedElements, filter: "")
+        session = .active(hintedElements: newHintedElements, filter: "", mode: session.mode)
 
         let overlayStart = CFAbsoluteTimeGetCurrent()
         renderer.updateHints(with: newHintedElements)
@@ -418,8 +419,7 @@ class HintModeController {
     // MARK: - Post-click
 
     private func handlePostClick() {
-        let continuousMode = UserDefaults.standard.bool(forKey: AppSettings.Keys.continuousClickMode)
-        if continuousMode {
+        if session.isContinuous {
             scheduleRefresh()
         } else {
             deactivateHintMode()
@@ -429,8 +429,8 @@ class HintModeController {
     private func scheduleRefresh() {
         Logger.hintMode.debug("continuous: click performed, starting refresh")
         let capturedCount = previousElementCount
-        if case .active(let elements, _) = session {
-            session = .active(hintedElements: elements, filter: "")
+        if case .active(let elements, _, let mode) = session {
+            session = .active(hintedElements: elements, filter: "", mode: mode)
         }
         refreshCoordinator.scheduleRefresh(previousCount: capturedCount) { [weak self] in
             self?.runRefresh(.continuous) ?? 0
@@ -466,12 +466,12 @@ class HintModeController {
                 HintedElement(element: updated, hint: hinted.hint)
             }
             switch self.session {
-            case .active(_, let filter):
-                self.session = .active(hintedElements: updatedHinted, filter: filter)
-            case .textSearch(_, let matches, let filter):
+            case .active(_, let filter, let mode):
+                self.session = .active(hintedElements: updatedHinted, filter: filter, mode: mode)
+            case .textSearch(_, let matches, let filter, let mode):
                 let matchIDs = Set(matches.map { $0.identity })
                 let updatedMatches = updatedHinted.filter { matchIDs.contains($0.identity) }
-                self.session = .textSearch(hintedElements: updatedHinted, matches: updatedMatches, filter: filter)
+                self.session = .textSearch(hintedElements: updatedHinted, matches: updatedMatches, filter: filter, mode: mode)
             case .inactive:
                 break
             }
@@ -481,8 +481,7 @@ class HintModeController {
     // MARK: - Auto-deactivation
 
     private func startDeactivationTimer() {
-        let continuousMode = UserDefaults.standard.bool(forKey: AppSettings.Keys.continuousClickMode)
-        guard continuousMode && autoDeactivation else { return }
+        guard session.isContinuous && autoDeactivation else { return }
 
         deactivationTimer?.invalidate()
         deactivationTimer = Timer.scheduledTimer(withTimeInterval: deactivationDelay, repeats: false) { [weak self] _ in
@@ -492,10 +491,28 @@ class HintModeController {
         }
     }
 
+    private func upgradeToContinuous() {
+        guard !session.isContinuous else { return }
+
+        switch session {
+        case .inactive:
+            return
+        case .active(let elements, let filter, _):
+            session = .active(hintedElements: elements, filter: filter, mode: .continuous)
+        case .textSearch(let elements, let matches, let filter, _):
+            session = .textSearch(hintedElements: elements, matches: matches, filter: filter, mode: .continuous)
+        }
+
+        renderer.setContinuousMode(true)
+        startDeactivationTimer()
+    }
+
     private func loadSessionSettings() {
         autoDeactivation = UserDefaults.standard.bool(forKey: AppSettings.Keys.autoHintDeactivation)
         deactivationDelay = UserDefaults.standard.double(forKey: AppSettings.Keys.hintDeactivationDelay)
         if deactivationDelay == 0 { deactivationDelay = 5.0 }
+        initialMode = UserDefaults.standard.bool(forKey: AppSettings.Keys.continuousClickMode)
+            ? .continuous : .oneShot
 
         let prefix = AppSettings.hideHintsPrefix
         inputContext = HintInputContext(

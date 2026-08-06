@@ -28,7 +28,7 @@ open clavier.xcodeproj
 ## Architecture
 
 ### Core Flow - Hint Mode
-1. **Activation**: Global hotkey (default ⌘⇧Space, configurable) triggers `HintModeController.toggleHintMode()`
+1. **Activation**: Global hotkey (default F17, configurable) opens a one-shot `HintSession`; pressing it again upgrades that live session to continuous.
 2. **Discovery**: `AccessibilityService` delegates AX-tree traversal to `ClickableElementWalker`; clickability and ancestor dedup live in `ClickabilityPolicy` / `AncestorDedupePolicy`.
 3. **Hint Assignment**: `HintAssigner` produces two- or three-character tokens drawn from the configured `hintCharacters` alphabet and wraps each `UIElement` in a `HintedElement`.
 4. **Overlay**: `HintOverlayRenderer` owns the `HintOverlayWindow` lifecycle; the window renders hints as positioned labels.
@@ -37,7 +37,7 @@ open clavier.xcodeproj
 7. **Continuous mode**: `HintRefreshCoordinator` schedules an optimistic + fallback refresh cycle after a click, tuned by `HintRefreshTimingPolicy` / `AppTimingRegistry` per frontmost bundle.
 
 ### Core Flow - Scroll Mode
-1. **Activation**: Global hotkey (default ⌥E, configurable) triggers `ScrollModeController.toggleScrollMode()`
+1. **Activation**: Global hotkey (default F18, configurable) triggers `ScrollModeController.toggleScrollMode()`
 2. **Discovery**: `ScrollDiscoveryCoordinator` drives two-phase discovery via `ScrollableAreaService` + `ScrollableAreaMerger`; app-specific detectors (e.g. `ChromiumDetector`) can short-circuit traversal via `DetectorRegistry`.
 3. **Hint Assignment**: Numbered strings ("1", "2", …) are paired with each `ScrollableArea` as a `NumberedArea`.
 4. **Area Selection**: `ScrollInputDecoder` → `ScrollSelectionReducer` drive the `ScrollSession` state machine; arrow keys select or scroll depending on `scrollArrowMode`.
@@ -127,13 +127,13 @@ open clavier.xcodeproj
 Stored in `UserDefaults` — keys live in `AppSettings.Keys`, defaults in `AppSettings.Defaults`.
 
 **Hint Mode (activation & behaviour):**
-- `hintShortcutKeyCode` (Int): Virtual key code (default: 49 = Space).
-- `hintShortcutModifiers` (Int): Carbon modifier flags (default: cmdKey | shiftKey).
+- `hintShortcutKeyCode` (Int): Virtual key code (default: 64 = F17).
+- `hintShortcutModifiers` (Int): Carbon modifier flags (default: none).
 - `hintCharacters` (String): Alphabet used for hint tokens (default: `"asdfhjkl"`).
 - `textSearchEnabled` (Bool): Enable text-search sub-mode (default: true).
 - `minSearchCharacters` (Int): Characters typed before text search engages (default: 2).
 - `manualRefreshTrigger` (String): Characters typed to force a refresh in continuous mode (default: `"rr"`).
-- `continuousClickMode` (Bool): Stay in hint mode after clicking; hints are refreshed for the next click.
+- `continuousClickMode` (Bool): Start every hint session continuous; otherwise the live session can be upgraded with a second hint-hotkey press.
 - `autoHintDeactivation` (Bool): Auto-exit continuous mode after inactivity (default: true).
 - `hintDeactivationDelay` (Double): Seconds before auto-deactivation (default: 5.0).
 
@@ -144,8 +144,8 @@ Stored in `UserDefaults` — keys live in `AppSettings.Keys`, defaults in `AppSe
 - `hintHorizontalOffset` (Double): Pixel offset for hint placement, −200…+200 (default: −25).
 
 **Scroll Mode:**
-- `scrollShortcutKeyCode` (Int): Virtual key code (default: 14 = E).
-- `scrollShortcutModifiers` (Int): Carbon modifier flags (default: optionKey).
+- `scrollShortcutKeyCode` (Int): Virtual key code (default: 79 = F18).
+- `scrollShortcutModifiers` (Int): Carbon modifier flags (default: none).
 - `scrollKeys` (String): Four characters for directions; persisted raw, parsed through `ScrollKeymap` (default: `"hjkl"`).
 - `scrollArrowMode` (String → `ScrollArrowMode` enum): `"select"` or `"scroll"` (default: `.select`).
 - `scrollSpeed` (Double): Normal scroll speed multiplier (default: 5.0).

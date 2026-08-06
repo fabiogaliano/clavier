@@ -107,8 +107,8 @@ struct ClickingTabView: View {
             }
 
             Section("Behavior") {
-                Toggle("Continuous mode", isOn: $continuousClickMode)
-                Text("Hint mode stays active after each click; press ESC to exit.")
+                Toggle("Start every session continuous", isOn: $continuousClickMode)
+                Text("Otherwise, press the hint shortcut again while hints are open to switch the current session to continuous. Press ESC to exit.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
 

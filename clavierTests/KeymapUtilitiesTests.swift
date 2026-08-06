@@ -31,6 +31,15 @@ final class KeymapUtilitiesTests: XCTestCase {
         XCTAssertEqual(KeymapUtilities.asciiCharacter(forKeyCode: 41), ";")
     }
 
+    func test_keyCodeToString_namesFunctionKeysUsedByDefaults() {
+        XCTAssertEqual(KeymapUtilities.keyCodeToString(AppSettings.Defaults.hintShortcutKeyCode), "F17")
+        XCTAssertEqual(KeymapUtilities.keyCodeToString(AppSettings.Defaults.scrollShortcutKeyCode), "F18")
+        XCTAssertEqual(KeymapUtilities.formatShortcut(
+            keyCode: AppSettings.Defaults.hintShortcutKeyCode,
+            modifiers: AppSettings.Defaults.hintShortcutModifiers
+        ), "F17")
+    }
+
     func test_asciiCharacter_unknownKeyCodes_returnNil() {
         XCTAssertNil(KeymapUtilities.asciiCharacter(forKeyCode: 49)) // Space is display-only
         XCTAssertNil(KeymapUtilities.asciiCharacter(forKeyCode: 36)) // Return

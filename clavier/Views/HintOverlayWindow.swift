@@ -13,6 +13,7 @@ class HintOverlayWindow: NSWindow {
     private var searchTextField: NSTextField?
     private var matchCountBadge: NSView?
     private var matchCountLabel: NSTextField?
+    private var continuousModeIndicator: NSView?
     /// Monotonically increasing Space-press count used to rotate z-order in
     /// overlap groups. Reset on every fresh layout so pressing Space after
     /// a refresh starts from the natural z-order.
@@ -97,6 +98,37 @@ class HintOverlayWindow: NSWindow {
         matchCountBadge?.layer?.borderColor = style.labelColor.withAlphaComponent(0.4).cgColor
     }
 
+    func setContinuousMode(_ isContinuous: Bool) {
+        guard isContinuous else {
+            continuousModeIndicator?.removeFromSuperview()
+            continuousModeIndicator = nil
+            return
+        }
+
+        let indicator = continuousModeIndicator ?? NSView()
+        let size: CGFloat = 6
+        indicator.wantsLayer = true
+        indicator.layer?.backgroundColor = NSColor.systemGreen.cgColor
+        indicator.layer?.cornerRadius = size / 2
+
+        // Anchor to the left edge of the search bar so the indicator
+        // stays visible regardless of focused-window geometry.
+        if let bar = searchBarView {
+            indicator.frame = CGRect(
+                x: bar.frame.minX - size - 6,
+                y: bar.frame.midY - size / 2,
+                width: size,
+                height: size
+            )
+        }
+
+        if indicator.superview == nil {
+            contentView?.addSubview(indicator)
+        }
+        continuousModeIndicator = indicator
+        bringChromeToFront()
+    }
+
     override func close() {
         hintViews.removeAll()
         self.contentView?.subviews.forEach { $0.removeFromSuperview() }
@@ -158,8 +190,22 @@ class HintOverlayWindow: NSWindow {
         updateSearchBar(text: "")
         updateMatchCount(-1)
 
+        bringChromeToFront()
         self.contentView?.needsDisplay = true
         self.displayIfNeeded()
+    }
+
+    /// Raise all persistent chrome (search bar, match badge, continuous-mode
+    /// indicator) above the hint layer so overlap rotation and hint refreshes
+    /// never bury them.
+    private func bringChromeToFront() {
+        guard let contentView else { return }
+        if let bar = searchBarView {
+            contentView.addSubview(bar, positioned: .above, relativeTo: nil)
+        }
+        if let indicator = continuousModeIndicator {
+            contentView.addSubview(indicator, positioned: .above, relativeTo: nil)
+        }
     }
 
     /// Record the current placement frames keyed by element identity so the
@@ -220,10 +266,7 @@ class HintOverlayWindow: NSWindow {
             }
         }
 
-        // Keep search-bar chrome above the hint layer regardless of rotation.
-        if let bar = searchBarView {
-            containerView.addSubview(bar, positioned: .above, relativeTo: nil)
-        }
+        bringChromeToFront()
     }
 
     func filterHints(matching prefix: String, textMatches: [HintedElement], numberedMode: Bool = false) {

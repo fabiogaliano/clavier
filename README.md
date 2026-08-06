@@ -19,7 +19,7 @@ Free, open source, and opinionated about how it works. Alternative to Homerow, S
 - **Hint codes**: Letter codes over every element; type one to click instantly
 - **Search by name**: Type any word; one match auto-clicks, several are numbered, press one to select
 - **Two-stage ESC**: first press clears search, second exits
-- **Continuous mode**: stay in hint mode across multiple clicks; hints refresh automatically
+- **Continuous mode**: press the hint shortcut again during an open session to stay across multiple clicks; hints refresh automatically
 
 ### Scroll Mode *(in alpha)*
 
@@ -71,15 +71,16 @@ open clavier.xcodeproj
 | Action | Shortcut |
 |--------|----------|
 | **Hint Mode** | |
-| Activate Hint Mode | Cmd + Shift + Space |
-| Clear search text | ESC (first press) or Option |
-| Exit hint mode | ESC (second press) |
+| Activate Hint Mode | F17 |
+| Continue current hint session | F17 again |
+| Clear search text / exit hint mode | ESC |
+| Start every session continuous | Enable the Clicking preference |
 | Select numbered match | 1-9 (when text search shows 2-9 matches) |
 | Click first match | Enter |
 | Right-click first match | Ctrl + Enter |
 | Manual refresh | Type "rr" (configurable) |
 | **Scroll Mode** | |
-| Activate Scroll Mode | Option + E |
+| Activate Scroll Mode | F18 |
 | Select scroll area | 1-9 or arrow keys |
 | Scroll | hjkl |
 | Dash speed (faster) | Shift + hjkl or Shift + arrows |

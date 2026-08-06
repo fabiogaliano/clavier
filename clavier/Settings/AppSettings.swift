@@ -58,8 +58,8 @@ enum AppSettings {
     }
 
     enum Defaults {
-        static let hintShortcutKeyCode = 49
-        static let hintShortcutModifiers = cmdKey | shiftKey
+        static let hintShortcutKeyCode = 64 // F17
+        static let hintShortcutModifiers = 0
         static let hintDebugShortcutKeyCode = 49
         static let hintDebugShortcutModifiers = cmdKey | shiftKey | optionKey
         static let hintSize = 12.0
@@ -82,8 +82,8 @@ enum AppSettings {
         static let useSystemAccentColor = false
         static let hintPaddingX = 3.0
         static let hintPaddingY = 1.0
-        static let scrollShortcutKeyCode = 14
-        static let scrollShortcutModifiers = optionKey
+        static let scrollShortcutKeyCode = 79 // F18
+        static let scrollShortcutModifiers = 0
         static let scrollArrowMode = ScrollArrowMode.select
         static let showScrollAreaNumbers = true
         static let scrollKeys = "hjkl"

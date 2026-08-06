@@ -39,7 +39,7 @@ final class HintInputReducerSpaceKeyTests: XCTestCase {
 
     func test_spaceKey_withEmptyFilter_producesRotateOverlapAndKeepsSession() {
         let elements = [makeHinted(hint: "aa"), makeHinted(hint: "ab")]
-        let session = HintSession.active(hintedElements: elements, filter: "")
+        let session = HintSession.active(hintedElements: elements, filter: "", mode: .oneShot)
 
         let (next, effects) = HintInputReducer.reduce(
             session: session,
@@ -62,7 +62,7 @@ final class HintInputReducerSpaceKeyTests: XCTestCase {
             makeHinted(hint: "aa", text: "Search Box"),
             makeHinted(hint: "ab", text: "Search Button"),
         ]
-        let session = HintSession.active(hintedElements: elements, filter: "search")
+        let session = HintSession.active(hintedElements: elements, filter: "search", mode: .oneShot)
 
         let (next, _) = HintInputReducer.reduce(
             session: session,

@@ -189,10 +189,10 @@ enum HintInputReducer {
         number: Int,
         session: HintSession
     ) -> (HintSession, [HintSideEffect]) {
-        guard case .textSearch(let elements, let matches, _) = session,
+        guard case .textSearch(let elements, let matches, _, let mode) = session,
               number > 0, number <= matches.count else { return (session, []) }
         let hintedElement = matches[number - 1]
-        let nextSession = HintSession.active(hintedElements: elements, filter: "")
+        let nextSession = HintSession.active(hintedElements: elements, filter: "", mode: mode)
         return (nextSession, [
             .performClick(on: hintedElement.element),
             .showSearchBar(text: ""),
@@ -322,7 +322,8 @@ enum HintInputReducer {
             let nextSession = HintSession.textSearch(
                 hintedElements: session.hintedElements,
                 matches: numberedMatches,
-                filter: rawFilter
+                filter: rawFilter,
+                mode: session.mode
             )
             effects.append(.updateOverlay(session: nextSession))
             effects.append(.updateMatchCount(numberedMatches.count))
@@ -333,7 +334,8 @@ enum HintInputReducer {
         let nextSession = HintSession.textSearch(
             hintedElements: session.hintedElements,
             matches: textMatches,
-            filter: rawFilter
+            filter: rawFilter,
+            mode: session.mode
         )
         effects.append(.updateOverlay(session: nextSession))
         effects.append(.updateMatchCount(textMatches.count))
@@ -373,10 +375,10 @@ enum HintInputReducer {
         switch session {
         case .inactive:
             return .inactive
-        case .active(let elements, _):
-            return .active(hintedElements: elements, filter: filter)
-        case .textSearch(let elements, let matches, _):
-            return .textSearch(hintedElements: elements, matches: matches, filter: filter)
+        case .active(let elements, _, let mode):
+            return .active(hintedElements: elements, filter: filter, mode: mode)
+        case .textSearch(let elements, let matches, _, let mode):
+            return .textSearch(hintedElements: elements, matches: matches, filter: filter, mode: mode)
         }
     }
 
@@ -386,7 +388,7 @@ enum HintInputReducer {
     /// into a prefix-match or no-match state so that the overlay receives `.active`
     /// and renders alphabetic hint labels rather than stale text-search match boxes.
     private static func sessionAsActive(_ session: HintSession, filter: String) -> HintSession {
-        return .active(hintedElements: session.hintedElements, filter: filter)
+        return .active(hintedElements: session.hintedElements, filter: filter, mode: session.mode)
     }
 
     /// Return a session with the filter cleared and any text-search state collapsed.
@@ -394,10 +396,10 @@ enum HintInputReducer {
         switch session {
         case .inactive:
             return .inactive
-        case .active(let elements, _):
-            return .active(hintedElements: elements, filter: "")
-        case .textSearch(let elements, _, _):
-            return .active(hintedElements: elements, filter: "")
+        case .active(let elements, _, let mode):
+            return .active(hintedElements: elements, filter: "", mode: mode)
+        case .textSearch(let elements, _, _, let mode):
+            return .active(hintedElements: elements, filter: "", mode: mode)
         }
     }
 

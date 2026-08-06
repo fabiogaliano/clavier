@@ -1,5 +1,6 @@
 PROJECT := clavier.xcodeproj
 SCHEME  := clavier
+TEST_SCHEME := clavierTests
 DERIVED := build
 APP     := $(DERIVED)/Build/Products/Release/clavier.app
 DEST    := /Applications/clavier.app
@@ -28,7 +29,7 @@ run:
 	open $(DEST)
 
 test:
-	xcodebuild -project $(PROJECT) -scheme $(SCHEME) \
+	xcodebuild -project $(PROJECT) -scheme $(TEST_SCHEME) \
 	  -configuration Debug \
 	  -destination 'platform=macOS,arch=arm64' \
 	  test

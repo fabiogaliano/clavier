@@ -35,14 +35,19 @@ struct HintedElement {
 /// Replaces the previous ad-hoc combination of `isActive: Bool`,
 /// `hintedElements: [HintedElement]`, `currentInput: String`,
 /// `isTextSearchMode: Bool`, and `numberedElements: [HintedElement]`.
+enum HintSessionMode {
+    case oneShot
+    case continuous
+}
+
 enum HintSession {
     case inactive
 
     /// Normal hint-prefix-matching state.
-    case active(hintedElements: [HintedElement], filter: String)
+    case active(hintedElements: [HintedElement], filter: String, mode: HintSessionMode)
 
     /// Text-search sub-mode: a numbered subset of elements matched by text.
-    case textSearch(hintedElements: [HintedElement], matches: [HintedElement], filter: String)
+    case textSearch(hintedElements: [HintedElement], matches: [HintedElement], filter: String, mode: HintSessionMode)
 
     // MARK: Convenience accessors
 
@@ -56,24 +61,35 @@ enum HintSession {
     var hintedElements: [HintedElement] {
         switch self {
         case .inactive: return []
-        case .active(let elements, _): return elements
-        case .textSearch(let elements, _, _): return elements
+        case .active(let elements, _, _): return elements
+        case .textSearch(let elements, _, _, _): return elements
         }
     }
 
     var filter: String {
         switch self {
         case .inactive: return ""
-        case .active(_, let f): return f
-        case .textSearch(_, _, let f): return f
+        case .active(_, let filter, _): return filter
+        case .textSearch(_, _, let filter, _): return filter
         }
     }
 
     var numberedElements: [HintedElement] {
         switch self {
         case .inactive, .active: return []
-        case .textSearch(_, let matches, _): return matches
+        case .textSearch(_, let matches, _, _): return matches
         }
+    }
+
+    var mode: HintSessionMode {
+        switch self {
+        case .inactive: return .oneShot
+        case .active(_, _, let mode), .textSearch(_, _, _, let mode): return mode
+        }
+    }
+
+    var isContinuous: Bool {
+        mode == .continuous
     }
 
 }

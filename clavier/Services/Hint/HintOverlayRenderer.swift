@@ -35,6 +35,7 @@ final class HintOverlayRenderer {
     func open(session: HintSession) {
         let hintedElements = session.hintedElements
         let newWindow = HintOverlayWindow(hintedElements: hintedElements)
+        newWindow.setContinuousMode(session.isContinuous)
         newWindow.show()
         self.window = newWindow
     }
@@ -84,6 +85,10 @@ final class HintOverlayRenderer {
         window?.setLabelsHidden(hidden)
     }
 
+    func setContinuousMode(_ isContinuous: Bool) {
+        window?.setContinuousMode(isContinuous)
+    }
+
     // MARK: - Private rendering
 
     private func renderSessionDiff(session: HintSession, in window: HintOverlayWindow) {
@@ -91,10 +96,10 @@ final class HintOverlayRenderer {
         case .inactive:
             break
 
-        case .active(_, let filter):
+        case .active(_, let filter, _):
             window.filterHints(matching: filter, textMatches: [], numberedMode: false)
 
-        case .textSearch(_, let matches, _):
+        case .textSearch(_, let matches, _, _):
             if matches.isEmpty {
                 window.filterHints(matching: "", textMatches: [], numberedMode: false)
             } else if matches.count <= 9 {
