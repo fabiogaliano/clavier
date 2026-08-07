@@ -12,67 +12,123 @@ import Foundation
 import AppKit
 import os
 
+struct BrowserWebAreaReadinessPolicy {
+    let minimumContentWindowSize = CGSize(width: 400, height: 400)
+
+    func shouldWait(windowFrame: CGRect?, containsWebArea: Bool) -> Bool {
+        guard let windowFrame else { return false }
+        return windowFrame.width > minimumContentWindowSize.width
+            && windowFrame.height > minimumContentWindowSize.height
+            && !containsWebArea
+    }
+}
+
 @MainActor
 class AccessibilityService {
 
     static let shared = AccessibilityService()
 
     private let walker = ClickableElementWalker()
+    private let browserReadinessPolicy = BrowserWebAreaReadinessPolicy()
 
-    /// Entry point for hint discovery.  Produces the collapsed, deduped
-    /// list of clickable elements in the frontmost application.
-    ///
-    /// `recorder` is nil on the production path.  Debug mode
-    /// (`HintModeController.toggleDebugHintMode`) passes a non-nil
-    /// recorder to capture per-node trace events that are later emitted
-    /// as the debug overlay + JSON snapshot.
-    func getClickableElements(recorder: HintDiscoveryRecorder? = nil) -> [UIElement] {
-        guard let focusedApp = NSWorkspace.shared.frontmostApplication,
-              let pid = focusedApp.processIdentifier as pid_t? else {
-            return []
-        }
+    private struct BrowserPrewarm {
+        let id: UUID
+        let task: Task<Void, Never>
+    }
+    private var browserPrewarms: [pid_t: BrowserPrewarm] = [:]
 
-        // Belt-and-suspenders wake: the eager activation hook in
-        // `AppDelegate` covers the common case, but if the user
-        // launched clavier *after* the Chromium app was already
-        // frontmost — or the activation race somehow lost — this
-        // catches it before the walk.
-        let wakeOutcome = ChromiumAccessibilityWaker.shared.wakeIfNeeded(focusedApp)
-        if wakeOutcome == .freshlyWoken {
-            // Chromium needs ~100–500 ms to populate the tree after
-            // `AXManualAccessibility` is set. 150 ms is a pragmatic
-            // floor that catches most cases without making the hint
-            // overlay feel laggy. The walker's empty-tree retry below
-            // covers anything still in flight.
-            usleep(150_000)
-        }
+    private static let browserReadinessTimeout: TimeInterval = 3.0
+    private static let browserReadinessPollInterval: TimeInterval = 0.1
+    private static let webAreaProbeNodeLimit = 1_024
+    private static let webAreaProbeDepthLimit = 30
 
+    /// Begin renderer readiness as soon as a known browser becomes frontmost.
+    /// A hint activation can await this same task instead of restarting the
+    /// browser's cold-renderer delay from the hotkey press.
+    func prewarmBrowserWebArea(
+        for app: NSRunningApplication,
+        wakeOutcome: ChromiumAccessibilityWaker.WakeOutcome
+    ) {
+        let pid = app.processIdentifier
+        guard wakeOutcome != .skipped,
+              ChromiumAccessibilityWaker.isKnownBrowser(bundleId: app.bundleIdentifier),
+              browserPrewarms[pid] == nil else { return }
+
+        let id = UUID()
+        let bundleId = app.bundleIdentifier
         let appElement = AXUIElementCreateApplication(pid)
-        let bundleId = focusedApp.bundleIdentifier
-
-        let deduplicated = traverseAndCollect(appElement: appElement, pid: pid, recorder: recorder)
-
-        // Empty-tree retry for known Chromium apps. If the eager wake
-        // hasn't finished or the bundle id is on the list but the
-        // attribute didn't take (CEF apps, etc.), one retry after a
-        // short settle gives the tree a chance to appear before we
-        // give up. Non-Chromium apps with empty trees usually just
-        // have nothing clickable — no point retrying them.
-        if shouldRetryForEmptyTree(deduplicated: deduplicated,
-                                   appElement: appElement,
-                                   bundleId: bundleId,
-                                   wakeOutcome: wakeOutcome) {
-            usleep(150_000)
-            return traverseAndCollect(appElement: appElement, pid: pid, recorder: recorder)
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.waitForBrowserWebArea(
+                appElement: appElement,
+                pid: pid,
+                bundleId: bundleId
+            )
+            self.finishBrowserPrewarm(pid: pid, id: id)
         }
-
-        return deduplicated
+        browserPrewarms[pid] = BrowserPrewarm(id: id, task: task)
     }
 
-    /// Walk every window of `appElement`, dedupe, and return the
-    /// resulting `UIElement`s. Pulled out of `getClickableElements` so
-    /// the empty-tree retry path can call it twice without duplicating
-    /// the traversal logic.
+    func forgetBrowserPid(_ pid: pid_t) {
+        browserPrewarms.removeValue(forKey: pid)?.task.cancel()
+    }
+
+    /// Synchronous discovery for refreshes after the initial session has
+    /// already established renderer accessibility.
+    func getClickableElements(recorder: HintDiscoveryRecorder? = nil) -> [UIElement] {
+        guard let focusedApp = NSWorkspace.shared.frontmostApplication else { return [] }
+
+        ChromiumAccessibilityWaker.shared.wakeIfNeeded(focusedApp)
+        let pid = focusedApp.processIdentifier
+        let appElement = AXUIElementCreateApplication(pid)
+        return traverseAndCollect(appElement: appElement, pid: pid, recorder: recorder)
+    }
+
+    /// Initial discovery waits for a known browser's structural web root before
+    /// doing the expensive full walk. Chromium builds that root asynchronously;
+    /// counting native toolbar controls cannot distinguish a cold renderer from
+    /// a page with few links.
+    func getClickableElementsWhenReady(
+        recorder: HintDiscoveryRecorder? = nil,
+        onBrowserRendererPending: (([UIElement]) -> Void)? = nil
+    ) async -> [UIElement] {
+        guard let focusedApp = NSWorkspace.shared.frontmostApplication else { return [] }
+
+        let pid = focusedApp.processIdentifier
+        let bundleId = focusedApp.bundleIdentifier
+        let appElement = AXUIElementCreateApplication(pid)
+        let wakeOutcome = ChromiumAccessibilityWaker.shared.wakeIfNeeded(focusedApp)
+
+        if ChromiumAccessibilityWaker.isKnownBrowser(bundleId: bundleId),
+           wakeOutcome != .skipped {
+            let immediateElements = traverseAndCollect(
+                appElement: appElement,
+                pid: pid,
+                recorder: recorder
+            )
+            if immediateElements.contains(where: \.isWebContent) {
+                return immediateElements
+            }
+            if !immediateElements.isEmpty {
+                onBrowserRendererPending?(immediateElements)
+            }
+            await awaitBrowserWebArea(appElement: appElement, pid: pid, bundleId: bundleId)
+        } else if wakeOutcome == .freshlyWoken {
+            // Electron's manual-accessibility path settles much faster than the
+            // standalone-browser path and has no structural browser chrome to
+            // distinguish from the renderer root.
+            try? await Task.sleep(for: .milliseconds(150))
+        }
+
+        guard !Task.isCancelled,
+              NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else {
+            return []
+        }
+        return traverseAndCollect(appElement: appElement, pid: pid, recorder: recorder)
+    }
+
+    /// Walk every window of `appElement`, dedupe, and return the resulting
+    /// `UIElement`s after any initial renderer-readiness wait has completed.
     private func traverseAndCollect(
         appElement: AXUIElement,
         pid: pid_t,
@@ -108,40 +164,104 @@ class AccessibilityService {
         return deduplicated
     }
 
-    /// Heuristic for "the AX tree looks suspiciously empty for a
-    /// Chromium app whose tree we just woke." Triggers exactly one
-    /// retry and only when:
-    ///   - the app is on the Chromium allow-list,
-    ///   - this discovery pass produced very few clickables,
-    ///   - the frontmost window is large enough that the emptiness
-    ///     can't be explained by a tiny popover/notification.
-    /// Skipped when the wake was already satisfied earlier in the
-    /// session — a populated Chromium tree that legitimately has few
-    /// clickables (e.g. a splash screen) shouldn't get retried.
-    private func shouldRetryForEmptyTree(
-        deduplicated: [UIElement],
+    private func awaitBrowserWebArea(
         appElement: AXUIElement,
-        bundleId: String?,
-        wakeOutcome: ChromiumAccessibilityWaker.WakeOutcome
-    ) -> Bool {
-        guard wakeOutcome == .freshlyWoken else { return false }
-        guard let bundleId, ChromiumAccessibilityWaker.isKnownChromiumApp(bundleId: bundleId) else {
-            return false
+        pid: pid_t,
+        bundleId: String?
+    ) async {
+        if let prewarm = browserPrewarms[pid] {
+            await prewarm.task.value
+            return
         }
-        guard deduplicated.count < 5 else { return false }
+        await waitForBrowserWebArea(appElement: appElement, pid: pid, bundleId: bundleId)
+    }
 
-        // Look for at least one window large enough to plausibly host
-        // hidden content. The 400×400 threshold matches the same
-        // cutoff used in `ChromiumDetector` for DevTools panels.
-        var windowsRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef) == .success,
-              let windows = windowsRef as? [AXUIElement] else {
-            return false
+    private func finishBrowserPrewarm(pid: pid_t, id: UUID) {
+        guard browserPrewarms[pid]?.id == id else { return }
+        browserPrewarms.removeValue(forKey: pid)
+    }
+
+    private func waitForBrowserWebArea(
+        appElement: AXUIElement,
+        pid: pid_t,
+        bundleId: String?
+    ) async {
+        let start = CFAbsoluteTimeGetCurrent()
+        var contentWindow = browserContentWindow(of: appElement)
+        while contentWindow == nil,
+              CFAbsoluteTimeGetCurrent() - start < Self.browserReadinessTimeout {
+            try? await Task.sleep(for: .seconds(Self.browserReadinessPollInterval))
+            guard !Task.isCancelled,
+                  NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else {
+                return
+            }
+            contentWindow = browserContentWindow(of: appElement)
         }
-        for window in windows {
-            if let frame = windowFrameAX(window), frame.width > 400, frame.height > 400 {
-                Logger.accessibility.debug("Empty-tree retry triggered for \(bundleId, privacy: .public)")
+
+        guard let contentWindow else { return }
+        let frame = windowFrameAX(contentWindow)
+        guard browserReadinessPolicy.shouldWait(
+            windowFrame: frame,
+            containsWebArea: containsWebArea(in: contentWindow)
+        ) else { return }
+
+        while CFAbsoluteTimeGetCurrent() - start < Self.browserReadinessTimeout {
+            try? await Task.sleep(for: .seconds(Self.browserReadinessPollInterval))
+            guard !Task.isCancelled,
+                  NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else {
+                return
+            }
+            if containsWebArea(in: contentWindow) {
+                let elapsed = Int((CFAbsoluteTimeGetCurrent() - start) * 1_000)
+                Logger.accessibility.debug(
+                    "Browser AXWebArea ready for \(bundleId ?? "unknown", privacy: .public) after \(elapsed, privacy: .public)ms"
+                )
+                return
+            }
+        }
+
+        Logger.accessibility.warning(
+            "Browser AXWebArea did not appear within \(Int(Self.browserReadinessTimeout * 1_000), privacy: .public)ms for \(bundleId ?? "unknown", privacy: .public)"
+        )
+    }
+
+    private func browserContentWindow(of appElement: AXUIElement) -> AXUIElement? {
+        if case .success(let window) = AXReader.element(
+            kAXFocusedWindowAttribute as CFString,
+            of: appElement
+        ) {
+            return window
+        }
+
+        guard case .success(let windows) = AXReader.elements(
+            kAXWindowsAttribute as CFString,
+            of: appElement
+        ) else { return nil }
+        return windows.max { lhs, rhs in
+            let lhsArea = windowFrameAX(lhs).map { $0.width * $0.height } ?? 0
+            let rhsArea = windowFrameAX(rhs).map { $0.width * $0.height } ?? 0
+            return lhsArea < rhsArea
+        }
+    }
+
+    /// Geometry is intentionally not required here. AXGroup containers can be
+    /// structural-only; requiring a frame before descending could hide the web
+    /// root that this readiness probe exists to detect.
+    private func containsWebArea(in root: AXUIElement) -> Bool {
+        var stack: [(element: AXUIElement, depth: Int)] = [(root, 0)]
+        var visited = 0
+
+        while let current = stack.popLast(),
+              visited < Self.webAreaProbeNodeLimit {
+            visited += 1
+            guard current.depth <= Self.webAreaProbeDepthLimit else { continue }
+
+            if case .success(let role) = AXReader.string(kAXRoleAttribute as CFString, of: current.element),
+               role == "AXWebArea" {
                 return true
+            }
+            if case .success(let children) = AXReader.elements(kAXChildrenAttribute as CFString, of: current.element) {
+                stack.append(contentsOf: children.reversed().map { ($0, current.depth + 1) })
             }
         }
         return false

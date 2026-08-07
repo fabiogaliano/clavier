@@ -2,8 +2,8 @@
 //  ChromiumDetector.swift
 //  clavier
 //
-//  Specialized detector for Chromium-based browsers (Chrome, Arc, Edge, Brave)
-//  Optimizes detection of developer tools and web content
+//  Specialized detector for known standalone Chromium browsers.
+//  Optimizes detection of developer tools and web content.
 //
 
 import Foundation
@@ -14,21 +14,7 @@ import os
 class ChromiumDetector: AppSpecificDetector {
 
     var supportedBundleIdentifiers: Set<String> {
-        [
-            "com.google.Chrome",
-            "com.google.Chrome.beta",
-            "com.google.Chrome.dev",
-            "com.google.Chrome.canary",
-            "company.thebrowser.Browser",  // Arc
-            "com.microsoft.edgemac",       // Edge
-            "com.microsoft.edgemac.Beta",
-            "com.microsoft.edgemac.Dev",
-            "com.microsoft.edgemac.Canary",
-            "com.brave.Browser",           // Brave
-            "com.brave.Browser.beta",
-            "com.brave.Browser.dev",
-            "com.brave.Browser.nightly"
-        ]
+        ChromiumAccessibilityWaker.knownBrowserBundleIds
     }
 
     var priority: Int { 100 } // High priority for early execution

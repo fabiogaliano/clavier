@@ -65,7 +65,7 @@ open clavier.xcodeproj
 - `HintAssigner` - Pure hint-token mapping.
 - `ClickService` - Posts `CGEvent` mouse and scroll wheel events.
 - `GlobalHotkeyRegistrar` / `KeyboardEventTap` - Carbon hotkey and event-tap wrappers.
-- `ChromiumAccessibilityWaker` - Sets `AXManualAccessibility` on known Electron apps so their dormant AX tree populates. See `docs/chromium-apps.md`.
+- `ChromiumAccessibilityWaker` - Enables dormant renderer AX trees: `AXManualAccessibility` for known Electron apps and application-root `AXEnhancedUserInterface` for known standalone Chromium browsers. See `docs/chromium-apps.md`.
 - `SpotifyAccessibilityHelper` - Detects Spotify's empty-tree signature (CEF can't be woken at runtime — runtime techniques were prototyped and ruled out) and surfaces `SpotifyHelpSheetWindow`. Provides `relaunchSpotifyWithFlag()` (terminate + wait + `NSWorkspace.openApplication` with `--force-renderer-accessibility`) as the universal one-click fix, plus an opt-in auto-relaunch mode that observes `NSWorkspace.didLaunchApplicationNotification` to silently re-run the dance on every Spotify launch.
 
 **Models:**
@@ -107,7 +107,7 @@ open clavier.xcodeproj
 - Defaults are registered in `AppSettings.registerDefaults()` at app launch.
 
 **Chromium-based app support:**
-- Electron apps (Slack, Discord, Notion, etc.) ship with their AX tree dormant. `ChromiumAccessibilityWaker` writes `AXManualAccessibility = true` on the app element to wake it; `AppDelegate` triggers the wake on `NSWorkspace.didActivateApplicationNotification`, and `AccessibilityService` re-applies it before each walk as a fallback. Toggleable via `chromiumAccessibilityWakeEnabled` (default true).
+- Chromium-family renderer trees can be dormant. `ChromiumAccessibilityWaker` writes `AXManualAccessibility = true` for known Electron apps and application-root `AXEnhancedUserInterface = true` for known standalone browsers (Chrome, Arc, Edge, Brave, Helium). `AppDelegate` starts activation and bounded structural `AXWebArea` prewarming on app focus; hint activation reuses that task and progressively presents native controls if the renderer remains cold. Toggleable via `chromiumAccessibilityWakeEnabled` (default true).
 - CEF apps (Spotify) cannot be woken at runtime (verified empirically — role-read activation and `AXEnhancedUserInterface` writes both fail). `SpotifyAccessibilityHelper` instead detects the empty-tree signature and shows `SpotifyHelpSheetWindow`, whose primary action is one-click `terminate + NSWorkspace.openApplication(arguments: ["--force-renderer-accessibility"])`. Works for every Spotify install. Persistence (zero-click on every launch) is provided by the opt-in `spotifyAutoRelaunchEnabled` toggle.
 - Full background, allow-list maintenance, and known dead ends: `docs/chromium-apps.md`.
 
@@ -155,7 +155,7 @@ Stored in `UserDefaults` — keys live in `AppSettings.Keys`, defaults in `AppSe
 - `showScrollAreaNumbers` (Bool): Display numbered hints on scroll areas (default: true).
 
 **Chromium app support (General tab):**
-- `chromiumAccessibilityWakeEnabled` (Bool, default: true): Wake the AX tree of known Electron apps via `AXManualAccessibility`. Disable to minimise CPU/memory impact in those apps when not using clavier with them. No effect on Chrome / Arc / Edge / Brave / VS Code (they manage their own).
+- `chromiumAccessibilityWakeEnabled` (Bool, default: true): Enable renderer AX trees in known standalone Chromium browsers and Electron apps. Disable to avoid the target apps' additional accessibility-tree CPU/memory cost.
 - `spotifyAccessibilityHelpEnabled` (Bool, default: true): Auto-present the Spotify help sheet when an empty CEF tree is detected. Disable to silence the auto-prompt; the sheet remains available manually via *Show Spotify help now…* in the General tab.
 - `spotifyAutoRelaunchEnabled` (Bool, default: false): When on, clavier observes `NSWorkspace.didLaunchApplicationNotification`, probes Spotify's AX tree ~1.5 s after launch, and silently relaunches with `--force-renderer-accessibility` if the tree is dormant. Cooldown of 10 s prevents the kill+relaunch loop. Off by default because the dance adds ~2 s to every Spotify launch even when the user doesn't need hints.
 

@@ -29,7 +29,7 @@ Free, open source, and opinionated about how it works. Alternative to Homerow, S
 
 ### App compatibility
 
-- **Electron apps**: works with Slack, Discord, Notion, and others out of the box
+- **Chromium apps**: works with browsers such as Helium and Electron apps such as Slack, Discord, and Notion
 - **Spotify**: one-click relaunch to enable accessibility; auto-relaunch option for every launch
 
 > Apps using fully custom rendering without Accessibility API support (e.g. Zed) won't expose elements to hint.
@@ -94,7 +94,7 @@ Open via menu bar > Preferences or Cmd+,.
 - **Clicking**: activation hotkey, hint alphabet, text search, continuous mode
 - **Scrolling**: activation hotkey, scroll keys, speeds, arrow key behavior
 - **Appearance**: colors, opacity, hint size and offset
-- **General**: accessibility permissions, Electron and Spotify settings
+- **General**: accessibility permissions, Chromium and Spotify settings
 
 ## Architecture
 
@@ -104,7 +104,7 @@ Two explicit state machines — `HintSession` and `ScrollSession` — each drive
 
 - **Threading**: The keyboard event tap runs on a CFRunLoop thread. All AX calls and UI mutations are confined to `@MainActor`. Shared state uses `nonisolated(unsafe)` static scalars dispatched back to main.
 - **Coordinate systems**: AX API uses bottom-left origin (Quartz). Overlay positioning flips to top-left (AppKit). Synthesized clicks flip back. `ScreenGeometry` owns both transforms.
-- **App compatibility**: Electron apps get their dormant AX tree woken via `AXManualAccessibility`. CEF apps (Spotify) can't be woken at runtime — detected and surfaced as a one-click relaunch instead.
+- **App compatibility**: dormant renderer AX trees are enabled for known Chromium browsers and Electron apps. CEF apps (Spotify) can't be woken at runtime — detected and surfaced as a one-click relaunch instead.
 
 ## Roadmap
 

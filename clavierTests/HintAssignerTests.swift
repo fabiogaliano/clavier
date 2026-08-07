@@ -78,6 +78,34 @@ final class HintAssignerTests: XCTestCase {
         XCTAssertEqual(Set(result.map { $0.hint }).count, 8)
     }
 
+    func test_minimumTokenLength_forcesStableThreeCharacterBrowserTokens() {
+        let elements = makeElements(3)
+        let result = HintAssigner.assign(
+            to: elements,
+            alphabet: alphabet("ab"),
+            minimumTokenLength: 3
+        )
+        XCTAssertEqual(result.map(\.hint), ["aaa", "aab", "aba"])
+    }
+
+    func test_browserRendererMerge_preservesVisibleTokensAndAssignsNewOnes() {
+        let initialElements = makeElements(3)
+        let initial = HintAssigner.assign(
+            to: initialElements,
+            alphabet: alphabet("ab"),
+            minimumTokenLength: 3
+        )
+        let merged = HintAssigner.assignPreservingHints(
+            to: makeElements(5),
+            previous: initial,
+            alphabet: alphabet("ab"),
+            minimumTokenLength: 3
+        )
+
+        XCTAssertEqual(Array(merged.prefix(3).map(\.hint)), initial.map(\.hint))
+        XCTAssertEqual(Set(merged.map(\.hint)).count, 5)
+    }
+
     // MARK: - Identity preservation
 
     func test_eachHintedElementCarriesOriginalElement() {

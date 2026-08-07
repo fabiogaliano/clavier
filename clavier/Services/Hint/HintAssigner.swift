@@ -24,36 +24,79 @@ enum HintAssigner {
     /// between visible elements and usable hints).
     static func assign(
         to elements: [UIElement],
-        alphabet: HintCharacters
+        alphabet: HintCharacters,
+        minimumTokenLength: Int = 2
     ) -> [HintedElement] {
+        let hints = tokens(
+            alphabet: alphabet,
+            elementCount: elements.count,
+            minimumTokenLength: minimumTokenLength
+        )
+        return zip(elements.prefix(hints.count), hints).map { element, hint in
+            HintedElement(element: element, hint: hint)
+        }
+    }
+
+    /// Preserve every still-visible token while a cold browser renderer adds
+    /// page controls to an already-visible native-chrome overlay. Without this,
+    /// crossing the two-to-three-character capacity boundary would remap every
+    /// hint while the user may already be typing.
+    static func assignPreservingHints(
+        to elements: [UIElement],
+        previous: [HintedElement],
+        alphabet: HintCharacters,
+        minimumTokenLength: Int = 2
+    ) -> [HintedElement] {
+        let available = tokens(
+            alphabet: alphabet,
+            elementCount: max(elements.count, previous.count),
+            minimumTokenLength: minimumTokenLength
+        )
+        let availableSet = Set(available)
+        let currentIdentities = Set(elements.map(\.stableID))
+        let preserved: [ElementIdentity: String] = Dictionary(
+            uniqueKeysWithValues: previous.compactMap { hinted in
+                guard currentIdentities.contains(hinted.identity),
+                      availableSet.contains(hinted.hint) else { return nil }
+                return (hinted.identity, hinted.hint)
+            }
+        )
+        let used = Set(preserved.values)
+        var unused = available.lazy.filter { !used.contains($0) }.makeIterator()
+
+        return elements.prefix(available.count).compactMap { element in
+            if let hint = preserved[element.stableID] {
+                return HintedElement(element: element, hint: hint)
+            }
+            guard let hint = unused.next() else { return nil }
+            return HintedElement(element: element, hint: hint)
+        }
+    }
+
+    private static func tokens(
+        alphabet: HintCharacters,
+        elementCount: Int,
+        minimumTokenLength: Int
+    ) -> [String] {
         let chars = alphabet.characters
         let n = chars.count
-        guard n > 0, !elements.isEmpty else { return [] }
+        guard n > 0, elementCount > 0 else { return [] }
 
         let twoCharCombos = n * n
         let threeCharCombos = n * n * n
-        let hintCount = min(elements.count, threeCharCombos)
+        let useThreeCharacters = minimumTokenLength >= 3 || elementCount > twoCharCombos
+        let hintCount = min(elementCount, useThreeCharacters ? threeCharCombos : twoCharCombos)
 
-        var hints: [String] = []
-        hints.reserveCapacity(hintCount)
-
-        if elements.count <= twoCharCombos {
-            for i in 0..<hintCount {
-                let first = chars[i / n]
-                let second = chars[i % n]
-                hints.append("\(first)\(second)")
+        return (0..<hintCount).map { index in
+            if useThreeCharacters {
+                let first = chars[index / (n * n)]
+                let second = chars[(index / n) % n]
+                let third = chars[index % n]
+                return "\(first)\(second)\(third)"
             }
-        } else {
-            for i in 0..<hintCount {
-                let first = chars[i / (n * n)]
-                let second = chars[(i / n) % n]
-                let third = chars[i % n]
-                hints.append("\(first)\(second)\(third)")
-            }
-        }
-
-        return zip(elements.prefix(hintCount), hints).map { element, hint in
-            HintedElement(element: element, hint: hint)
+            let first = chars[index / n]
+            let second = chars[index % n]
+            return "\(first)\(second)"
         }
     }
 }

@@ -36,7 +36,7 @@ struct GeneralTabView: View {
 
             Section {
                 Toggle("Wake accessibility in Chromium-based apps", isOn: $chromiumWakeEnabled)
-                Text("Allows hints to work in Slack, Discord, Notion, and other Electron apps. Slightly increases their memory usage while enabled.")
+                Text("Allows hints to work in Chromium browsers and Electron apps such as Helium, Slack, Discord, and Notion. Slightly increases their memory usage while enabled.")
                     .font(.caption)
                     .foregroundStyle(.secondary)
                     .fixedSize(horizontal: false, vertical: true)

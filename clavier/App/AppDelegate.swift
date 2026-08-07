@@ -24,13 +24,10 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         checkAccessibilityPermissions()
     }
 
-    /// Eagerly wake the AX tree of Electron apps the moment they activate,
-    /// so the user's first hint trigger doesn't race against Chromium's
-    /// tree-population. The tree typically takes 100–500 ms to populate
-    /// after `AXManualAccessibility` is set; activating the wake on
-    /// `didActivate` rather than on hint-trigger eliminates that window
-    /// for the common case where the user types the hint hotkey *after*
-    /// switching apps.
+    /// Eagerly request renderer accessibility when a known Chromium-family
+    /// app activates. Standalone browsers can take seconds to publish their
+    /// AXWebArea, so starting here hides most of that latency before the user
+    /// reaches for the hint hotkey.
     private func setupChromiumAccessibilityWake() {
         let center = NSWorkspace.shared.notificationCenter
 
@@ -51,7 +48,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         // `didActivateApplicationNotification` for clavier's process —
         // wake it immediately so the very first hint trigger works.
         if let frontmost = NSWorkspace.shared.frontmostApplication {
-            ChromiumAccessibilityWaker.shared.wakeIfNeeded(frontmost)
+            activateChromiumAccessibility(for: frontmost)
         }
     }
 
@@ -59,7 +56,12 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         guard let app = note.userInfo?[NSWorkspace.applicationUserInfoKey] as? NSRunningApplication else {
             return
         }
-        ChromiumAccessibilityWaker.shared.wakeIfNeeded(app)
+        activateChromiumAccessibility(for: app)
+    }
+
+    private func activateChromiumAccessibility(for app: NSRunningApplication) {
+        let outcome = ChromiumAccessibilityWaker.shared.wakeIfNeeded(app)
+        AccessibilityService.shared.prewarmBrowserWebArea(for: app, wakeOutcome: outcome)
     }
 
     @objc private func workspaceDidTerminateApp(_ note: Notification) {
@@ -67,6 +69,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
             return
         }
         ChromiumAccessibilityWaker.shared.forgetPid(app.processIdentifier)
+        AccessibilityService.shared.forgetBrowserPid(app.processIdentifier)
     }
 
     private func setupMenuBar() {

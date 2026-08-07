@@ -11,7 +11,7 @@ Not all "Chromium apps" are the same. Three families behave differently:
 
 | Family | Examples | AX tree default | clavier handling |
 | --- | --- | --- | --- |
-| Modern Chromium browsers | Chrome, Arc, Edge, Brave | On-demand; wakes on first AX query | Just works |
+| Modern Chromium browsers | Chrome, Arc, Edge, Brave, Helium | Dormant until enhanced UI is requested | Application-root `AXEnhancedUserInterface` + structural readiness polling |
 | Electron apps | Slack, Discord, Notion, Linear, Obsidian, 1Password 8, Cursor, Teams | Dormant; needs `AXManualAccessibility` | `ChromiumAccessibilityWaker` |
 | CEF apps | Spotify | Dormant; **no runtime wake** | `SpotifyAccessibilityHelper` (instructions) |
 
@@ -24,39 +24,53 @@ not. Setting `AXManualAccessibility` on Spotify therefore returns
 `.attributeUnsupported` — clavier silently logs this at debug level
 and falls back to the Spotify-specific help path.
 
-## Track A — Electron apps (`ChromiumAccessibilityWaker`)
+## Track A — runtime Chromium activation (`ChromiumAccessibilityWaker`)
 
-Subscribes to `NSWorkspace.didActivateApplicationNotification` and
-sets `AXManualAccessibility = kCFBooleanTrue` on the application AX
-element when a known Electron app comes to the front. Idempotent per
-pid; the woken-pid set is invalidated on
-`didTerminateApplicationNotification`.
+`AppDelegate` subscribes to `NSWorkspace.didActivateApplicationNotification`
+so renderer activation and structural readiness polling begin as soon as a
+known Chromium-family app comes to the front. The currently frontmost app is
+also handled when clavier launches. A hint activation reuses an in-flight
+prewarm instead of restarting the cold-renderer wait from the hotkey press.
+Activation is idempotent per pid and caches/tasks are invalidated on termination.
 
-`AccessibilityService.getClickableElements` also calls
-`wakeIfNeeded(...)` before walking, which catches:
+Two application-root strategies are used:
 
-- The first-frontmost case (clavier launched while a Chromium app was
-  already focused — `didActivate` doesn't fire for that app).
-- The cold-start race (user hits hint hotkey within ~150 ms of
-  switching to a fresh Chromium process).
+- Electron: write `AXManualAccessibility = true`.
+- Standalone Chromium browsers: write `AXEnhancedUserInterface = true`.
 
-When the wake is fresh, the service sleeps 150 ms before walking and
-runs an empty-tree retry once — together they cover Chromium's tree
-population latency without making the hint overlay feel laggy.
+Helium 0.15.2.1 / Chromium 151 was measured in two isolated processes. Passive
+AX traversal stayed at the native 40-node browser skeleton indefinitely;
+`AXManualAccessibility` returned `kAXErrorAttributeUnsupported`. An
+application-root `AXEnhancedUserInterface` write changed the readable value
+from false to true even though the setter returned `kAXErrorNotImplemented`.
+`AXWebArea` appeared 2.08 seconds later in both runs. The implementation
+therefore verifies the enhanced write by reading the value back instead of
+trusting the setter result alone.
 
-### Why we only set `AXManualAccessibility`, not also `AXEnhancedUserInterface`
+Initial hint discovery does not use clickable-count heuristics. Browser chrome
+can expose dozens of valid controls while page content is absent. Instead,
+`AccessibilityService.getClickableElementsWhenReady` detects whether discovered
+controls belong to web content and polls the focused browser window for the
+structural `AXWebArea` root, yielding between probes, for up to three seconds.
+When a renderer is cold, native browser-control hints are presented immediately
+using three-character tokens. Renderer controls are merged later without
+changing any visible token, so the user can act on browser chrome while Helium
+finishes publishing the page tree.
 
-`AXEnhancedUserInterface` is the older attribute Chromium also
-responds to, but setting it from outside causes window-management
-regressions (Magnet/Rectangle behaviour breaks because macOS treats
-the process as VoiceOver). Vimac removed it for that reason — see
-[Vimac issue #78](https://github.com/dexterleng/vimac/issues/78). We
-follow the same lead: `AXManualAccessibility` only.
+### Why application-root `AXEnhancedUserInterface` is scoped to browsers
+
+Vimac issue #78 found window-positioning regressions after writing
+`AXEnhancedUserInterface` to an **AXWindow**. Clavier never writes it to a
+window; the browser strategy writes only to the application AX element, while
+Electron continues using its narrower manual attribute. The allow-list keeps
+this private compatibility behavior away from unrelated native apps.
 
 ### Adding more apps to the allow-list
 
-Edit `ChromiumAccessibilityWaker.knownChromiumBundleIds`. The bundle
-id must match `NSRunningApplication.bundleIdentifier` exactly. To find
+Add standalone browsers to `ChromiumAccessibilityWaker.knownBrowserBundleIds`
+and Electron apps to `knownElectronBundleIds`. The browser set is shared with
+`ChromiumDetector`, so hint activation and scroll detection cannot drift. The
+bundle id must match `NSRunningApplication.bundleIdentifier` exactly. To find
 it for a specific app:
 
 ```bash
@@ -65,8 +79,8 @@ osascript -e 'id of app "AppName"'
 mdls -name kMDItemCFBundleIdentifier /Applications/AppName.app
 ```
 
-Adding a non-Electron app is harmless — the AX write fails with
-`.attributeUnsupported` and the wake is silently skipped on that pid.
+Do not add unrelated apps speculatively: both attributes are private runtime
+compatibility signals and activation can increase the target's renderer cost.
 
 ## Track B — Spotify (CEF) — relaunch with launch flag
 
@@ -167,10 +181,10 @@ These are documented for future agents who consider re-prototyping:
 User-controllable in `Preferences → General`:
 
 - **`chromiumAccessibilityWakeEnabled`** (default `true`) — toggles
-  Track A. When off, no app gets `AXManualAccessibility` written;
-  Slack/Discord/etc. revert to "no hints visible" behaviour. Useful
-  for users who don't use clavier in Chromium apps and want to
-  minimise their CPU/memory footprint.
+  Track A. When off, neither browser enhanced-UI activation nor Electron
+  manual activation is requested. Chromium-family apps may expose only native
+  chrome or an empty window shell. Useful for users who want to minimise the
+  target apps' CPU/memory footprint.
 - **`spotifyAccessibilityHelpEnabled`** (default `true`) — toggles
   Track B's auto-presentation. When off, the help sheet still appears
   via the manual *Show Spotify help now…* button but won't auto-fire
@@ -202,7 +216,9 @@ single AX write per app launch.
 
 These are documented for future agents who consider re-investigating:
 
-- **`AXEnhancedUserInterface` externally** — window-manager regressions.
+- **`AXEnhancedUserInterface` on an AXWindow** — window-manager regressions.
+  Application-root writes for allow-listed standalone browsers are the supported
+  path; this warning is specifically about the old window-scoped technique.
 - **CDP `Accessibility.enable`** over a debug port — populates the
   in-DevTools tree only, does not create platform NSAccessibility
   objects.
@@ -217,11 +233,11 @@ These are documented for future agents who consider re-investigating:
 
 | File | Role |
 | --- | --- |
-| `clavier/Services/ChromiumAccessibilityWaker.swift` | Track A: allow-list + AX write + per-pid cache |
+| `clavier/Services/ChromiumAccessibilityWaker.swift` | Track A: browser/Electron registries, application-root activation, read-back verification, per-pid cache |
 | `clavier/Services/Hint/SpotifyAccessibilityHelper.swift` | Track B: empty-tree detection, relaunch logic, sheet trigger |
 | `clavier/Views/SpotifyHelpSheetWindow.swift` | Track B: SwiftUI help sheet UI (one-click relaunch + auto-relaunch pointer) |
 | `clavier/App/AppDelegate.swift` | NSWorkspace activation/termination wiring |
-| `clavier/Services/AccessibilityService.swift` | Pre-walk wake + empty-tree retry |
+| `clavier/Services/AccessibilityService.swift` | Pre-walk activation + bounded structural `AXWebArea` readiness polling |
 | `clavier/Services/HintModeController.swift` | Spotify short-circuit in `activateHintMode` |
 | `clavier/Settings/AppSettings.swift` | Setting keys + defaults |
 | `clavier/Views/Preferences/GeneralTabView.swift` | UI surface for both toggles + manual help-sheet button |

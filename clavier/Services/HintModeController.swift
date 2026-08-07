@@ -19,6 +19,8 @@ class HintModeController {
 
     private var session: HintSession = .inactive
     private var previousElementCount = 0
+    private var activationTask: Task<Void, Never>?
+    private var continuousUpgradeRequestedWhileActivating = false
 
     // Auto-deactivation timer (continuous mode)
     private var deactivationTimer: Timer?
@@ -84,8 +86,21 @@ class HintModeController {
     func toggleHintMode() {
         if isActive {
             upgradeToContinuous()
-        } else {
-            activateHintMode()
+            return
+        }
+        if activationTask != nil {
+            continuousUpgradeRequestedWhileActivating = true
+            return
+        }
+
+        continuousUpgradeRequestedWhileActivating = false
+        activationTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.activationTask = nil
+                self.continuousUpgradeRequestedWhileActivating = false
+            }
+            await self.activateHintMode()
         }
     }
 
@@ -104,6 +119,7 @@ class HintModeController {
 
     private func activateDebugMode() {
         // Tearing down normal hint mode keeps the two overlays exclusive.
+        activationTask?.cancel()
         if isActive { deactivateHintMode() }
 
         let recorder = HintDiscoveryRecorder()
@@ -191,12 +207,51 @@ class HintModeController {
 
     // MARK: - Lifecycle
 
-    private func activateHintMode() {
+    private func activateHintMode() async {
         guard !isActive else { return }
 
         loadSessionSettings()
+        var presentedProvisionalBrowserHints = false
 
-        let discoveredElements = AccessibilityService.shared.getClickableElements()
+        let discoveredElements = await AccessibilityService.shared.getClickableElementsWhenReady(
+            onBrowserRendererPending: { [weak self] nativeElements in
+                guard let self else { return }
+                presentedProvisionalBrowserHints = self.openInitialSession(
+                    with: nativeElements,
+                    minimumTokenLength: 3
+                )
+                if presentedProvisionalBrowserHints {
+                    Logger.hintMode.debug(
+                        "browser: presented \(nativeElements.count, privacy: .public) native controls while renderer AX settles"
+                    )
+                }
+            }
+        )
+        guard !Task.isCancelled else { return }
+
+        if presentedProvisionalBrowserHints {
+            guard isActive else { return }
+            guard !discoveredElements.isEmpty else {
+                deactivateHintMode()
+                return
+            }
+            guard session.filter.isEmpty else { return }
+            let merged = HintAssigner.assignPreservingHints(
+                to: discoveredElements,
+                previous: hintedElements,
+                alphabet: AppSettings.hintCharacters,
+                minimumTokenLength: 3
+            )
+            session = .active(hintedElements: merged, filter: "", mode: session.mode)
+            previousElementCount = merged.count
+            renderer.updateHints(with: merged)
+            Logger.hintMode.debug(
+                "browser: merged renderer controls into \(merged.count, privacy: .public) stable hints"
+            )
+            startDeactivationTimer()
+            scheduleMainActorHydration()
+            return
+        }
 
         // CEF-app branch: Spotify can't be woken at runtime; if we
         // detect the empty-tree signature there, hand off to the help
@@ -207,15 +262,30 @@ class HintModeController {
         }
 
         guard !discoveredElements.isEmpty else { return }
+        _ = openInitialSession(with: discoveredElements)
+    }
 
-        let hintedElements = assignHints(to: discoveredElements)
+    @discardableResult
+    private func openInitialSession(
+        with elements: [UIElement],
+        minimumTokenLength: Int = 2
+    ) -> Bool {
+        guard !elements.isEmpty, !isActive else { return false }
 
+        if continuousUpgradeRequestedWhileActivating {
+            initialMode = .continuous
+        }
+        let hintedElements = HintAssigner.assign(
+            to: elements,
+            alphabet: AppSettings.hintCharacters,
+            minimumTokenLength: minimumTokenLength
+        )
         renderer.open(session: .active(hintedElements: hintedElements, filter: "", mode: initialMode))
 
         guard startEventTap() else {
             Logger.hintMode.warning("Failed to create event tap. Check Accessibility permissions in System Settings > Privacy & Security > Accessibility.")
             renderer.close()
-            return
+            return false
         }
 
         session = .active(hintedElements: hintedElements, filter: "", mode: initialMode)
@@ -224,6 +294,7 @@ class HintModeController {
 
         startDeactivationTimer()
         scheduleMainActorHydration()
+        return true
     }
 
     private func deactivateHintMode() {
@@ -240,6 +311,8 @@ class HintModeController {
         deactivationTimer?.invalidate()
         deactivationTimer = nil
 
+        activationTask?.cancel()
+        activationTask = nil
         refreshCoordinator.cancelPending()
         eventTap.stop()
         renderer.close()
