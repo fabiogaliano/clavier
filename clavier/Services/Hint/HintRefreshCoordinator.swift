@@ -2,16 +2,15 @@
 //  HintRefreshCoordinator.swift
 //  clavier
 //
-//  Async lifecycle for continuous-mode hint refresh after a click.
+//  Async lifecycle for the hint refresh that follows a click.
 //
-//  Owns the double-refresh pattern:
-//  1. Optimistic refresh after T ms (fast path — UI may already have changed).
-//  2. Fallback refresh after T+Δ ms if the element count didn't change.
-//  3. Both refreshes are cancelled automatically when a new session starts
-//     (via `cancelPending()`).
+//  Samples the UI on the schedule chosen by `HintRefreshSettler` until it
+//  settles (or the settle window runs out), then reports whether anything
+//  changed.  The decision logic lives in the settler; this type only owns the
+//  sleeping, cancellation, and logging.
 //
-//  Depends on `HintRefreshTimingPolicy` (from P4-S1) rather than
-//  `AppTimingRegistry.shared` directly, so timing can be injected in tests.
+//  Depends on `HintRefreshTimingPolicy` rather than `AppTimingRegistry.shared`
+//  directly, so timing can be injected in tests.
 //
 //  Conforms to `ModeCoordinator` marker protocol (P4-S1).
 //
@@ -22,25 +21,13 @@ import os
 
 // MARK: - Coordinator
 
-/// Coordinates the optimistic + fallback refresh cycle after a click in
-/// continuous hint mode.
-///
-/// The controller calls `scheduleRefresh(previousCount:onRefresh:)` after a
-/// click.  The coordinator fires `onRefresh` twice on the main actor — once
-/// after the optimistic delay and once after the fallback delay if needed.
-/// Calling `cancelPending()` before either fires suppresses both.
 @MainActor
 final class HintRefreshCoordinator: ModeCoordinator {
 
     private let timingPolicy: HintRefreshTimingPolicy
 
-    private static let defaultOptimisticDelay: TimeInterval = 0.050
-    private static let defaultFallbackDelay: TimeInterval = 0.100
-
     /// Retained so `cancelPending()` can cancel an in-flight cycle.
     private var refreshTask: Task<Void, Never>?
-
-    private var refreshStartTime: CFAbsoluteTime = 0
 
     init(timingPolicy: HintRefreshTimingPolicy) {
         self.timingPolicy = timingPolicy
@@ -49,64 +36,57 @@ final class HintRefreshCoordinator: ModeCoordinator {
     // MARK: - Public API
 
     /// Cancel any in-flight refresh cycle.  Call when the mode deactivates or
-    /// when a new session replaces the previous one.
+    /// when a new click / manual refresh supersedes the current one.
     func cancelPending() {
         refreshTask?.cancel()
         refreshTask = nil
     }
 
-    /// Schedule the optimistic + fallback refresh cycle.
+    /// Sample the UI after a click until it settles.
     ///
     /// - Parameters:
-    ///   - previousCount:  Element count before the click.  Used to decide
-    ///                     whether the optimistic result shows a UI change.
-    ///   - onRefresh:      Called on the main actor to run a hint refresh query.
-    ///                     Returns the new element count so the coordinator can
-    ///                     determine whether a UI change occurred.
+    ///   - baseline:   Signature of the hints on screen when the click happened.
+    ///   - sample:     Re-discovers (and re-renders if needed) on the main actor,
+    ///                 returning the new signature, or nil to stop sampling
+    ///                 (session ended, or the user started typing).
+    ///   - completion: Called once with the outcome, unless sampling was
+    ///                 stopped or cancelled first.
     func scheduleRefresh(
-        previousCount: Int,
-        onRefresh: @escaping @MainActor () -> Int
+        baseline: HintTreeSignature,
+        sample: @escaping @MainActor () -> HintTreeSignature?,
+        completion: @escaping @MainActor (HintRefreshOutcome) -> Void
     ) {
         cancelPending()
 
-        let bundleId = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
-        let delays = timingPolicy.refreshDelays(for: bundleId)
+        let app = NSWorkspace.shared.frontmostApplication
+        let delays = timingPolicy.refreshDelays(for: app?.bundleIdentifier) ?? .standard
+        let appName = app?.localizedName ?? "unknown"
+        Logger.hintMode.debug("refresh: app=\(appName, privacy: .public) first=\(Int(delays.optimistic * 1000), privacy: .public)ms window=\(Int(delays.settleWindow * 1000), privacy: .public)ms")
 
-        let optimisticDelay = delays?.optimistic ?? HintRefreshCoordinator.defaultOptimisticDelay
-        let fallbackDelay = delays?.fallback ?? HintRefreshCoordinator.defaultFallbackDelay
+        refreshTask = Task { @MainActor in
+            var settler = HintRefreshSettler(baseline: baseline, delays: delays)
+            let start = CFAbsoluteTimeGetCurrent()
+            var wait = settler.firstDelay
+            var samples = 0
 
-        let appName = NSWorkspace.shared.frontmostApplication?.localizedName ?? "unknown"
-        Logger.hintMode.debug("continuous: app=\(appName, privacy: .public) optimistic=\(Int(optimisticDelay * 1000), privacy: .public)ms fallback=\(Int(fallbackDelay * 1000), privacy: .public)ms")
+            while true {
+                do {
+                    try await Task.sleep(for: .seconds(wait))
+                } catch {
+                    return // Cancelled — a newer click, manual refresh, or deactivation.
+                }
+                guard !Task.isCancelled, let signature = sample() else { return }
+                samples += 1
 
-        refreshStartTime = CFAbsoluteTimeGetCurrent()
-
-        refreshTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            do {
-                try await Task.sleep(for: .seconds(optimisticDelay))
-                guard !Task.isCancelled else { return }
-
-                let optimisticTime = CFAbsoluteTimeGetCurrent()
-                Logger.hintMode.debug("continuous: optimistic refresh at +\(Int((optimisticTime - self.refreshStartTime) * 1000), privacy: .public)ms")
-
-                let newCount = onRefresh()
-                let uiChanged = newCount != previousCount
-
-                if uiChanged {
-                    Logger.hintMode.debug("continuous: UI changed (\(newCount, privacy: .public) elements)")
+                let elapsed = CFAbsoluteTimeGetCurrent() - start
+                switch settler.observe(signature, elapsed: elapsed) {
+                case .sampleAgain(let next):
+                    wait = next
+                case .finished(let outcome):
+                    Logger.hintMode.debug("refresh: \(String(describing: outcome), privacy: .public) after \(samples, privacy: .public) samples, \(Int(elapsed * 1000), privacy: .public)ms")
+                    completion(outcome)
                     return
                 }
-
-                Logger.hintMode.debug("continuous: UI unchanged (still \(newCount, privacy: .public) elements)")
-                try await Task.sleep(for: .seconds(fallbackDelay))
-                guard !Task.isCancelled else { return }
-
-                let fallbackTime = CFAbsoluteTimeGetCurrent()
-                Logger.hintMode.debug("continuous: fallback refresh at +\(Int((fallbackTime - self.refreshStartTime) * 1000), privacy: .public)ms")
-
-                _ = onRefresh()
-            } catch {
-                // Task cancelled — mode deactivated during refresh window
             }
         }
     }

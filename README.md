@@ -19,7 +19,8 @@ Free, open source, and opinionated about how it works. Alternative to Homerow, S
 - **Hint codes**: Letter codes over every element; type one to click instantly
 - **Search by name**: Type any word; one match auto-clicks, several are numbered, press one to select
 - **Two-stage ESC**: first press clears search, second exits
-- **Continuous mode**: press the hint shortcut again during an open session to stay across multiple clicks; hints refresh automatically
+- **Continuous mode**: press the hint shortcut again during an open session to stay across multiple clicks; hints refresh automatically once the UI settles
+- **Popup follow-through**: clicking a select, combobox, menu button, or right-clicking keeps a one-shot session open so you can pick from the popup that opens
 
 ### Scroll Mode *(in alpha)*
 

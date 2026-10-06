@@ -29,12 +29,12 @@ open clavier.xcodeproj
 
 ### Core Flow - Hint Mode
 1. **Activation**: Global hotkey (default F17, configurable) opens a one-shot `HintSession`; pressing it again upgrades that live session to continuous.
-2. **Discovery**: `AccessibilityService` delegates AX-tree traversal to `ClickableElementWalker`; clickability and ancestor dedup live in `ClickabilityPolicy` / `AncestorDedupePolicy`.
+2. **Discovery**: `AccessibilityService` walks the frontmost app's windows plus any open native menus (app-level `AXMenu` children: context menus, pop-up button and `<select>` menus), delegating AX-tree traversal to `ClickableElementWalker`; clickability and ancestor dedup live in `ClickabilityPolicy` / `AncestorDedupePolicy`.
 3. **Hint Assignment**: `HintAssigner` produces two- or three-character tokens drawn from the configured `hintCharacters` alphabet and wraps each `UIElement` in a `HintedElement`.
 4. **Overlay**: `HintOverlayRenderer` owns the `HintOverlayWindow` lifecycle; the window renders hints as positioned labels.
 5. **Input Processing**: `KeyboardEventTap` intercepts key events; `HintInputDecoder` → `HintInputReducer` map them into a `HintSession` state transition and a list of `HintSideEffect`s.
 6. **Click Execution**: `HintActionPerformer` tries `AXUIElementPerformAction` first and falls back to a synthesized `CGEvent` click via `ClickService`.
-7. **Continuous mode**: `HintRefreshCoordinator` schedules an optimistic + fallback refresh cycle after a click, tuned by `HintRefreshTimingPolicy` / `AppTimingRegistry` per frontmost bundle.
+7. **Post-click refresh**: `HintPostClickPolicy` decides whether a click closes the session or refreshes it — continuous sessions always refresh; one-shot sessions follow clicks that open a popup (`AXPopUpButton`/`AXMenuButton`/`AXComboBox`, `AXHasPopup`, right-click) and close if nothing new appears. `HintRefreshCoordinator` samples the AX tree on a backing-off schedule until `HintRefreshSettler` sees it settle, tuned by `HintRefreshTimingPolicy` / `AppTimingRegistry` per frontmost bundle. Re-renders preserve tokens of elements still on screen.
 
 ### Core Flow - Scroll Mode
 1. **Activation**: Global hotkey (default F18, configurable) triggers `ScrollModeController.toggleScrollMode()`
@@ -57,7 +57,8 @@ open clavier.xcodeproj
 - `AXReader` / `AXTextHydrator` - Batched AX reads and lazy text-attribute hydration (both `@MainActor`; AX is main-thread-only).
 - `ScrollableAreaService` / `ScrollableAreaMerger` / `ScrollableAXProbe` - Scrollable-area discovery, merging, and shared AX probe.
 - `HintOverlayRenderer` / `ScrollOverlayRenderer` - Overlay window lifecycle wrappers.
-- `HintRefreshCoordinator` - Optimistic + fallback refresh after a click (continuous mode).
+- `HintRefreshCoordinator` / `HintRefreshSettler` - Post-click sampling until the AX tree settles (async driver + pure settle policy).
+- `HintPostClickPolicy` / `HintPopupTriggerProbe` - Close vs. refresh after a click; popup-trigger detection for one-shot follow-through.
 - `ScrollDiscoveryCoordinator` / `ScrollCommandExecutor` - Two-phase discovery driver and scroll-event dispatcher.
 - `HintInputDecoder` / `ScrollInputDecoder` - CF run-loop-safe `CGEvent` decoders.
 - `HintInputReducer` / `ScrollSelectionReducer` - Pure state reducers (session + command → next session + effects).

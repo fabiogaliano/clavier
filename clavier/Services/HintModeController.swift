@@ -18,7 +18,9 @@ import os
 class HintModeController {
 
     private var session: HintSession = .inactive
-    private var previousElementCount = 0
+    /// Captured just before a click so the post-click plan can tell whether
+    /// the click opened a popup (and the one-shot session should follow it).
+    private var lastClickOpensPopup = false
     private var activationTask: Task<Void, Never>?
     private var continuousUpgradeRequestedWhileActivating = false
 
@@ -243,7 +245,6 @@ class HintModeController {
                 minimumTokenLength: 3
             )
             session = .active(hintedElements: merged, filter: "", mode: session.mode)
-            previousElementCount = merged.count
             renderer.updateHints(with: merged)
             Logger.hintMode.debug(
                 "browser: merged renderer controls into \(merged.count, privacy: .public) stable hints"
@@ -289,7 +290,6 @@ class HintModeController {
         }
 
         session = .active(hintedElements: hintedElements, filter: "", mode: initialMode)
-        previousElementCount = hintedElements.count
         HintModeController.isHintModeActive = true
 
         startDeactivationTimer()
@@ -320,54 +320,61 @@ class HintModeController {
         session = .inactive
     }
 
-    // MARK: - Hint refresh (used by refresh coordinator callback and manual refresh)
+    // MARK: - Hint refresh
 
-    /// Identifies which refresh path is running so logging stays distinguishable
-    /// between continuous-mode post-click refreshes and the explicit "rr" trigger.
-    private enum RefreshKind {
-        case continuous
-        case manual
+    private var displayedSignature: HintTreeSignature {
+        HintTreeSignature(hintedElements.map(\.identity))
     }
 
-    /// Shared refresh body: re-query elements, re-assign hints, re-render.
-    ///
-    /// Returns the new element count (0 when the refresh bailed into deactivation).
-    @discardableResult
-    private func runRefresh(_ kind: RefreshKind) -> Int {
-        guard isActive else { return 0 }
+    /// Manual refresh ("rr"): re-query immediately and supersede any
+    /// post-click sampling still in flight.
+    private func refreshNow() {
+        guard isActive else { return }
+        refreshCoordinator.cancelPending()
 
         let start = CFAbsoluteTimeGetCurrent()
-        let newElements = AccessibilityService.shared.getClickableElements()
-        guard !newElements.isEmpty else {
+        let elements = AccessibilityService.shared.getClickableElements()
+        guard !elements.isEmpty else {
             deactivateHintMode()
-            return 0
+            return
+        }
+        replaceHints(with: elements)
+        let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
+        Logger.hintMode.debug("manual: refreshed \(elements.count, privacy: .public) elements in \(Int(elapsed), privacy: .public)ms")
+    }
+
+    /// One post-click sample: re-query, and re-render only when the element
+    /// set actually changed.  Returns nil to stop sampling — the session
+    /// ended, or the user is already typing against the hints on screen.
+    private func sampleAfterClick() -> HintTreeSignature? {
+        guard isActive, session.filter.isEmpty else { return nil }
+
+        let elements = AccessibilityService.shared.getClickableElements()
+        guard !elements.isEmpty else {
+            deactivateHintMode()
+            return nil
         }
 
-        if kind == .continuous {
-            let queryEnd = CFAbsoluteTimeGetCurrent()
-            Logger.hintMode.debug("continuous: query elements \(Int((queryEnd - start) * 1000), privacy: .public)ms")
+        let signature = HintTreeSignature(elements.map(\.stableID))
+        if signature != displayedSignature {
+            replaceHints(with: elements)
         }
+        return signature
+    }
 
-        let newHintedElements = assignHints(to: newElements)
-        previousElementCount = newElements.count
-        session = .active(hintedElements: newHintedElements, filter: "", mode: session.mode)
-
-        let overlayStart = CFAbsoluteTimeGetCurrent()
-        renderer.updateHints(with: newHintedElements)
-
-        switch kind {
-        case .continuous:
-            let overlayEnd = CFAbsoluteTimeGetCurrent()
-            Logger.hintMode.debug("continuous: update overlay \(Int((overlayEnd - overlayStart) * 1000), privacy: .public)ms")
-        case .manual:
-            let elapsed = (CFAbsoluteTimeGetCurrent() - start) * 1000
-            Logger.hintMode.debug("manual: refreshed \(newElements.count, privacy: .public) elements in \(Int(elapsed), privacy: .public)ms")
-        }
-
+    /// Re-render with fresh elements.  Elements still on screen keep their
+    /// tokens, so labels don't reshuffle under the user while the UI settles.
+    private func replaceHints(with elements: [UIElement]) {
+        let hinted = HintAssigner.assignPreservingHints(
+            to: elements,
+            previous: hintedElements,
+            alphabet: AppSettings.hintCharacters
+        )
+        session = .active(hintedElements: hinted, filter: "", mode: session.mode)
+        syncTapState(from: session)
+        renderer.updateHints(with: hinted)
         startDeactivationTimer()
         scheduleMainActorHydration()
-
-        return newElements.count
     }
 
     // MARK: - Side effect execution
@@ -380,11 +387,13 @@ class HintModeController {
                 // during the refresh window that follows.
                 HintModeController.isTextSearchActive = false
                 HintModeController.numberedElementsCount = 0
+                lastClickOpensPopup = HintPopupTriggerProbe.opensPopup(element)
                 executeClick(on: element)
 
             case .performRightClick(let element):
                 HintModeController.isTextSearchActive = false
                 HintModeController.numberedElementsCount = 0
+                lastClickOpensPopup = true // a right-click opens a context menu
                 executeRightClick(on: element)
 
             case .deactivate:
@@ -404,7 +413,7 @@ class HintModeController {
                 handlePostClick()
 
             case .manualRefresh:
-                runRefresh(.manual)
+                refreshNow()
 
             case .rotateOverlap:
                 renderer.rotateOverlap()
@@ -492,22 +501,42 @@ class HintModeController {
     // MARK: - Post-click
 
     private func handlePostClick() {
-        if session.isContinuous {
-            scheduleRefresh()
-        } else {
+        let plan = HintPostClickPolicy.plan(mode: session.mode, clickOpensPopup: lastClickOpensPopup)
+        lastClickOpensPopup = false
+
+        switch plan {
+        case .close:
             deactivateHintMode()
+        case .refresh(let closeIfUnchanged):
+            scheduleRefresh(closeIfUnchanged: closeIfUnchanged)
         }
     }
 
-    private func scheduleRefresh() {
-        Logger.hintMode.debug("continuous: click performed, starting refresh")
-        let capturedCount = previousElementCount
-        if case .active(let elements, _, let mode) = session {
-            session = .active(hintedElements: elements, filter: "", mode: mode)
-        }
-        refreshCoordinator.scheduleRefresh(previousCount: capturedCount) { [weak self] in
-            self?.runRefresh(.continuous) ?? 0
-        }
+    private func scheduleRefresh(closeIfUnchanged: Bool) {
+        Logger.hintMode.debug("post-click: sampling UI (closeIfUnchanged=\(closeIfUnchanged, privacy: .public))")
+        clearFilterAfterClick()
+        refreshCoordinator.scheduleRefresh(
+            baseline: displayedSignature,
+            sample: { [weak self] in self?.sampleAfterClick() },
+            completion: { [weak self] outcome in
+                guard outcome == .unchanged, closeIfUnchanged else { return }
+                self?.deactivateHintMode()
+            }
+        )
+    }
+
+    /// The typed filter has done its job once a click fires.  Reset it (and
+    /// any text-search highlight boxes) so the overlay shows the full hint
+    /// set and post-click sampling isn't mistaken for the user still typing.
+    private func clearFilterAfterClick() {
+        guard isActive else { return }
+        let cleared = HintSession.active(hintedElements: hintedElements, filter: "", mode: session.mode)
+        session = cleared
+        renderer.present(session: cleared)
+        renderer.updateSearchBar(text: "")
+        renderer.updateMatchCount(-1)
+        renderer.setLabelsHidden(false)
+        syncTapState(from: cleared)
     }
 
     // MARK: - Hint assignment

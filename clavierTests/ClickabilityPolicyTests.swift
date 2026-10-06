@@ -424,6 +424,22 @@ final class ClickabilityPolicyTests: XCTestCase {
         )
     }
 
+    func test_classify_inWebArea_listboxOption_isPressable() {
+        // Combobox / select popups render options as pressable
+        // AXStaticText whose AXDOMRole is the ARIA role "option".
+        XCTAssertEqual(
+            policy.classify(
+                role: kAXStaticTextRole as String,
+                enabled: true,
+                hasClickAction: true,
+                hasURL: false,
+                domRole: "option",
+                webContext: .init(inWebArea: true, hasClickableAncestor: false)
+            ),
+            .staticTextPressable
+        )
+    }
+
     // MARK: - Decision.isClickable truth table for new cases
 
     func test_newDecisions_areNotClickable() {
