@@ -16,19 +16,22 @@
 
 import Foundation
 
-/// Per-app optimistic and fallback delays used by continuous hint mode refresh.
-struct HintRefreshDelays {
-    /// Delay before the first (optimistic) hint refresh after a click.
+/// Sampling schedule for the post-click refresh (see `HintRefreshSettler`).
+struct HintRefreshDelays: Equatable {
+    /// Delay before the first (optimistic) sample after a click.
     let optimistic: TimeInterval
-    /// Additional delay before the fallback refresh if the UI had not yet changed.
-    let fallback: TimeInterval
+    /// Gap before the second sample; each later gap grows geometrically.
+    let pollInterval: TimeInterval
+    /// Stop sampling once this long has passed since the click, settled or not.
+    let settleWindow: TimeInterval
+
+    static let standard = HintRefreshDelays(optimistic: 0.050, pollInterval: 0.100, settleWindow: 1.2)
 }
 
 /// Provides per-bundle-id hint refresh timing overrides.
 ///
-/// When no override is registered for a bundle ID the caller falls back to its
-/// own defaults (`HintModeController.defaultOptimisticDelay` /
-/// `HintModeController.defaultFallbackDelay`).
+/// When no override is registered for a bundle ID the caller falls back to
+/// `HintRefreshDelays.standard`.
 protocol HintRefreshTimingPolicy {
     /// Returns app-specific delays for the given bundle identifier, or `nil` to
     /// use the caller's global defaults.
@@ -62,7 +65,8 @@ final class AppTimingRegistry: HintRefreshTimingPolicy {
     }
 
     private func registerDefaults() {
-        // Chromium browsers need longer delays due to their heavy rendering pipeline.
+        // Chromium browsers need longer delays due to their heavy rendering
+        // pipeline, and web popovers often fill in from the network.
         register(
             bundleIds: [
                 "com.google.Chrome",
@@ -79,7 +83,7 @@ final class AppTimingRegistry: HintRefreshTimingPolicy {
                 "com.brave.Browser.dev",
                 "com.brave.Browser.nightly",
             ],
-            delays: HintRefreshDelays(optimistic: 0.200, fallback: 0.300)
+            delays: HintRefreshDelays(optimistic: 0.200, pollInterval: 0.300, settleWindow: 2.5)
         )
     }
 }

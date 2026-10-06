@@ -135,10 +135,15 @@ class AccessibilityService {
         recorder: HintDiscoveryRecorder?
     ) -> [UIElement] {
         var windowsRef: CFTypeRef?
-        guard AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef) == .success,
-              let windows = windowsRef as? [AXUIElement] else {
-            return []
+        let windows: [AXUIElement]
+        if AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef) == .success,
+           let found = windowsRef as? [AXUIElement] {
+            windows = found
+        } else {
+            windows = []
         }
+        let menus = openMenus(of: appElement)
+        guard !windows.isEmpty || !menus.isEmpty else { return [] }
 
         // Full desktop bounds in AX coordinates so windows on non-main
         // displays are not silently dropped by the intersection clip.
@@ -147,6 +152,9 @@ class AccessibilityService {
         var pending: [PendingElement] = []
 
         let traverseStartTime = CFAbsoluteTimeGetCurrent()
+        for menu in menus {
+            walker.walk(menu, pid: pid, clipBounds: desktopBoundsAX, into: &pending, recorder: recorder)
+        }
         for window in windows {
             let windowBounds = windowFrameAX(window) ?? desktopBoundsAX
             let visibleBounds = windowBounds.intersection(desktopBoundsAX)
@@ -162,6 +170,22 @@ class AccessibilityService {
         Logger.accessibility.debug("deduplicateElements: \(Int((dedupeEndTime - dedupeStartTime) * 1000), privacy: .public)ms (\(deduplicated.count, privacy: .public) unique)")
 
         return deduplicated
+    }
+
+    /// Open native menus (context menus, pop-up buttons, a browser's
+    /// `<select>` popup) are children of the application element, not
+    /// entries in `AXWindows`, so the window walk never reaches them.
+    private func openMenus(of appElement: AXUIElement) -> [AXUIElement] {
+        guard case .success(let children) = AXReader.elements(
+            kAXChildrenAttribute as CFString,
+            of: appElement
+        ) else { return [] }
+        return children.filter { child in
+            guard case .success(let role) = AXReader.string(kAXRoleAttribute as CFString, of: child) else {
+                return false
+            }
+            return role == kAXMenuRole as String
+        }
     }
 
     private func awaitBrowserWebArea(

@@ -72,6 +72,9 @@ struct ClickabilityPolicy {
             "details",
             "link",
             "menuitem",
+            // Listbox options (select / combobox popups) surface as pressable
+            // AXStaticText in Chromium; without this every option is dropped.
+            "option",
             "tab",
             "checkbox",
             "radio",
