@@ -40,6 +40,24 @@ final class KeymapUtilitiesTests: XCTestCase {
         ), "F17")
     }
 
+    func test_asciiCharacter_tab_returnsTabCharacter() {
+        XCTAssertEqual(KeymapUtilities.asciiCharacter(forKeyCode: 48), "\t")
+    }
+
+    /// Tab is in the table for completeness only; hint mode must keep handing
+    /// it to the focused app rather than treating it as a hint character.
+    func test_hintDecoder_tab_passesThrough() throws {
+        let event = try XCTUnwrap(CGEvent(keyboardEventSource: nil, virtualKey: 48, keyDown: true))
+        let context = HintInputDecoder.Context(
+            isTextSearchActive: false,
+            numberedElementsCount: 0,
+            hidePrefix: AppSettings.Defaults.hideHintsPrefix
+        )
+        guard case .passThrough = HintInputDecoder.decode(type: .keyDown, event: event, context: context) else {
+            return XCTFail("Tab must pass through")
+        }
+    }
+
     func test_asciiCharacter_unknownKeyCodes_returnNil() {
         XCTAssertNil(KeymapUtilities.asciiCharacter(forKeyCode: 49)) // Space is display-only
         XCTAssertNil(KeymapUtilities.asciiCharacter(forKeyCode: 36)) // Return
