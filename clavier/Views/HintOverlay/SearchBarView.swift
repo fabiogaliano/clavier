@@ -87,6 +87,7 @@ final class SearchBarView: NSView {
         countSegment.isHidden = true
         continuousSegment.isHidden = true
         helpSegment.isHidden = true
+        var placed: [SegmentView] = []
         for segment in bar.segments {
             let view: SegmentView
             switch segment {
@@ -119,11 +120,18 @@ final class SearchBarView: NSView {
             view.isHidden = false
             view.frame.origin = CGPoint(x: x, y: midY - view.frame.height / 2)
             x = view.frame.maxX + Self.gap
+            placed.append(view)
         }
         x -= Self.gap
         x += bar.segments.isEmpty ? Self.textTrailingInset : Self.segmentTrailingInset
 
         let width = max(ceil(x), Self.minimumWidth)
+        // Segments sit at the trailing end even when the minimum width adds
+        // slack, so their capsules stay concentric with the bar's.
+        let slack = width - ceil(x)
+        for view in placed {
+            view.frame.origin.x += slack
+        }
         if frame.width != width || glass == nil {
             setFrameSize(CGSize(width: width, height: Self.height))
             rebuildGlass()
