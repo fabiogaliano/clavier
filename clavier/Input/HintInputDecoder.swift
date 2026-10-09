@@ -71,19 +71,25 @@ enum HintInputDecoder {
         /// Hint token alphabet.  ⌘ + one of these letters is a cmd-click on a
         /// hint; ⌘ + anything else is still a shortcut that ends the session.
         let hintAlphabet: String
+        /// A hint is partly typed, so the next letter may complete it.  With
+        /// nothing typed, ⌘+letter can only be an app shortcut (⌘S = Save)
+        /// and must leave the session rather than start a ⌘-click.
+        let canCompleteHint: Bool
 
         init(
             isTextSearchActive: Bool,
             numberedElementsCount: Int,
             hidePrefix: String = "",
             hotkey: HotkeyChord? = nil,
-            hintAlphabet: String = ""
+            hintAlphabet: String = "",
+            canCompleteHint: Bool = true
         ) {
             self.isTextSearchActive = isTextSearchActive
             self.numberedElementsCount = numberedElementsCount
             self.hidePrefix = hidePrefix
             self.hotkey = hotkey
             self.hintAlphabet = hintAlphabet
+            self.canCompleteHint = canCompleteHint
         }
 
         /// Tap-side view of `session`; `nil` when there is no live session.
@@ -100,12 +106,15 @@ enum HintInputDecoder {
             guard session.isActive else { return nil }
             let numberedCount = session.numberedElements.count
             let inNumberedMode = numberedCount > 0 && numberedCount <= 9
+            let partialHint: Bool
+            if case .active(_, let filter, _) = session { partialHint = !filter.isEmpty } else { partialHint = false }
             self.init(
                 isTextSearchActive: inNumberedMode,
                 numberedElementsCount: inNumberedMode ? numberedCount : 0,
                 hidePrefix: hidePrefix,
                 hotkey: hotkey,
-                hintAlphabet: hintAlphabet
+                hintAlphabet: hintAlphabet,
+                canCompleteHint: partialHint
             )
         }
     }
@@ -185,7 +194,7 @@ enum HintInputDecoder {
         }
 
         if hasCommand {
-            guard context.hintAlphabet.contains(ch) else { return .dismiss }
+            guard context.canCompleteHint, context.hintAlphabet.contains(ch) else { return .dismiss }
             return .character(lower, modifier: .command)
         }
 

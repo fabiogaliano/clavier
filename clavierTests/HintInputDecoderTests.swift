@@ -7,6 +7,7 @@
 //
 
 import XCTest
+import AppKit
 import CoreGraphics
 import Carbon.HIToolbox
 @testable import clavier
@@ -212,5 +213,30 @@ final class HintInputDecoderTests: XCTestCase {
         let chord = HotkeyChord(keyCode: 64, carbonModifiers: 0)
         let context = HintInputDecoder.Context(isTextSearchActive: false, numberedElementsCount: 0, hotkey: chord)
         XCTAssertEqual(decode(64, context: context), .passThrough)
+    }
+
+    // MARK: - ⌘ needs a partly typed hint
+
+    func test_commandLetter_withNothingTyped_dismisses() {
+        let fresh = HintInputDecoder.Context(isTextSearchActive: false, numberedElementsCount: 0, hintAlphabet: "asdf", canCompleteHint: false)
+        XCTAssertEqual(decode(Key.s, flags: .maskCommand, context: fresh), .dismiss)
+    }
+
+    func test_sessionContext_canCompleteHint_followsFilter() {
+        let frame = CGRect(x: 0, y: 0, width: 40, height: 20)
+        let element = HintedElement(
+            element: UIElement(
+                stableID: ElementIdentity(pid: getpid(), role: "AXButton", frame: frame),
+                axElement: AXUIElementCreateSystemWide(),
+                frame: frame,
+                visibleFrame: frame,
+                role: "AXButton"
+            ),
+            hint: "as"
+        )
+        let empty = HintInputDecoder.Context(session: .active(hintedElements: [element], filter: "", mode: .oneShot), hidePrefix: "")
+        let partial = HintInputDecoder.Context(session: .active(hintedElements: [element], filter: "a", mode: .oneShot), hidePrefix: "")
+        XCTAssertEqual(empty?.canCompleteHint, false)
+        XCTAssertEqual(partial?.canCompleteHint, true)
     }
 }

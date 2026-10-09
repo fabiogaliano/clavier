@@ -358,8 +358,24 @@ class HintModeController {
 
     // MARK: - Dispatch (main actor command entry)
 
+    /// ⌥ clears the search only when tapped on its own.  The decoder reports
+    /// the release, so the controller remembers whether ⌥ took part in a
+    /// hover chord (⌥+letter, ⌥+Enter) since it went down.
+    private var optionChordUsed = false
+
     private func dispatch(_ command: HintInputCommand) {
         guard isActive else { return }
+        switch command {
+        case .character(_, modifier: .option), .enter(.option), .selectNumbered(_, modifier: .option):
+            optionChordUsed = true
+        case .clearSearch:
+            if optionChordUsed {
+                optionChordUsed = false
+                return
+            }
+        default:
+            break
+        }
         let (nextSession, effects) = HintInputReducer.reduce(
             session: session,
             command: command,
