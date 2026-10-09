@@ -182,7 +182,9 @@ class HintModeController {
             return
         }
 
-        guard !discoveredElements.isEmpty else {
+        // Menu bar and Dock items are always there, so they must not mask an
+        // app whose own windows exposed nothing.
+        guard discoveredElements.contains(where: { !$0.isSystemChrome }) else {
             showNothingToClick(
                 appName: appName,
                 offersHelp: frontmost?.bundleIdentifier == SpotifyAccessibilityHelper.spotifyBundleId

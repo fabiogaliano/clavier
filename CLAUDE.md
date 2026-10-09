@@ -144,7 +144,7 @@ Stored in `UserDefaults` — keys live in `AppSettings.Keys`, defaults in `AppSe
 **Hint Mode (appearance):**
 - `hintSize` (Double): Font size (10–20pt, default: 12).
 - `hintBackgroundHex`, `hintBorderHex`, `hintTextHex`, `highlightTextHex` (String): Hex colors for the four overlay surfaces.
-- `hintBackgroundOpacity`, `hintBorderOpacity` (Double): 0–1 opacity for tint/border (defaults: 0.3 / 0.6).
+- `hintBackgroundOpacity`, `hintBorderOpacity` (Double): 0–1 opacity for the glass tint and the specular top edge (defaults: 0.72 / 0.4).
 - `hintHorizontalOffset` (Double): Pixel offset for hint placement, −200…+200 (default: −25).
 
 **Scroll Mode:**

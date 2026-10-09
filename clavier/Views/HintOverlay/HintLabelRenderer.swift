@@ -85,17 +85,20 @@ enum HintLabelRenderer {
         )
     }
 
-    /// Tokens are matched lowercase but drawn uppercase. The typed prefix
-    /// is drawn at full strength and the rest dimmed, so the label reads as
-    /// "you have typed this, press one of these next".
+    /// Tokens are matched lowercase but drawn uppercase. Once something is
+    /// typed, the prefix is drawn at full strength and the rest dimmed, so
+    /// the label reads as "you have typed this, press one of these next".
+    /// Before any typing every label is at full strength: dimming would only
+    /// cost legibility with nothing to contrast against.
     static func attributedToken(_ token: String, typedPrefix: String, style: OverlayStyle) -> NSAttributedString {
         let display = token.uppercased()
         let font = labelFont(style)
         let paragraph = NSMutableParagraphStyle()
         paragraph.alignment = .center
+        let baseColor = typedPrefix.isEmpty ? style.textColor : style.remainderTextColor
         let result = NSMutableAttributedString(string: display, attributes: [
             .font: font,
-            .foregroundColor: style.remainderTextColor,
+            .foregroundColor: baseColor,
             .paragraphStyle: paragraph,
         ])
         let length = (display as NSString).length
