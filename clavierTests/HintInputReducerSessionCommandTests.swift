@@ -2,8 +2,9 @@
 //  HintInputReducerSessionCommandTests.swift
 //  clavierTests
 //
-//  Commands the controller sends on its own rather than from a key press:
-//  re-running the filter once element text arrives.
+//  Commands that don't map to a plain hint keystroke: dismissal (Cmd
+//  shortcut, app switch, mouse click) and re-running the filter once
+//  element text arrives.
 //
 
 import XCTest
@@ -27,6 +28,49 @@ final class HintInputReducerSessionCommandTests: XCTestCase {
     }
 
     private let context = HintInputContext(textSearchEnabled: true, minSearchChars: 2, refreshTrigger: "rr")
+
+    private func isOnlyDeactivate(_ effects: [HintSideEffect]) -> Bool {
+        guard effects.count == 1, case .deactivate = effects[0] else { return false }
+        return true
+    }
+
+    // MARK: - dismiss
+
+    func test_dismiss_fromActiveSession_deactivates() {
+        let session = HintSession.active(hintedElements: [makeHinted(hint: "aa")], filter: "", mode: .continuous)
+
+        let (next, effects) = HintInputReducer.reduce(session: session, command: .dismiss, context: context)
+
+        XCTAssertFalse(next.isActive)
+        XCTAssertTrue(isOnlyDeactivate(effects))
+    }
+
+    func test_dismiss_withTypedFilter_deactivatesInOneStep() {
+        // Unlike Escape, leaving the session must not stop at clearing the filter.
+        let session = HintSession.active(hintedElements: [makeHinted(hint: "aa")], filter: "a", mode: .oneShot)
+
+        let (next, effects) = HintInputReducer.reduce(session: session, command: .dismiss, context: context)
+
+        XCTAssertFalse(next.isActive)
+        XCTAssertTrue(isOnlyDeactivate(effects))
+    }
+
+    func test_dismiss_fromTextSearch_deactivates() {
+        let elements = [makeHinted(hint: "aa", text: "Save"), makeHinted(hint: "as", text: "Save As", x: 50)]
+        let session = HintSession.textSearch(hintedElements: elements, matches: elements, filter: "sav", mode: .oneShot)
+
+        let (next, effects) = HintInputReducer.reduce(session: session, command: .dismiss, context: context)
+
+        XCTAssertFalse(next.isActive)
+        XCTAssertTrue(isOnlyDeactivate(effects))
+    }
+
+    func test_dismiss_whenInactive_isNoOp() {
+        let (next, effects) = HintInputReducer.reduce(session: .inactive, command: .dismiss, context: context)
+
+        XCTAssertFalse(next.isActive)
+        XCTAssertTrue(effects.isEmpty)
+    }
 
     // MARK: - reapplyFilter
 

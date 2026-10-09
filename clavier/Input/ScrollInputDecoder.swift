@@ -26,7 +26,7 @@ import AppKit
 ///
 /// The event tap callback decodes a raw `CGEvent` into one of these cases
 /// and dispatches it to the main thread, where `ScrollModeController` acts on it.
-enum ScrollInputCommand {
+enum ScrollInputCommand: Equatable {
     case escape
     case backspace
     case digit(Int)

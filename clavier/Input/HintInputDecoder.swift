@@ -29,7 +29,7 @@ import AppKit
 ///
 /// The event tap callback decodes a raw `CGEvent` into one of these cases and
 /// dispatches it to the main thread, where `HintModeController` acts on it.
-enum HintInputCommand {
+enum HintInputCommand: Equatable {
     case escape
     case backspace
     case enter(withControl: Bool)
