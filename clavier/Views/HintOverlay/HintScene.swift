@@ -40,6 +40,8 @@ struct HintScene {
         var searchText: String = ""
         /// -1 means "no search active" (see `MatchCountPresenter`).
         var matchCount: Int = -1
+        /// Text hydration still running: a zero count is "unknown", not "none".
+        var isHydrating: Bool = false
         /// Hide-prefix mode: hint tokens hidden while search keeps working.
         var labelsHidden: Bool = false
     }

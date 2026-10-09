@@ -29,7 +29,7 @@ import AppKit
 ///
 /// The event tap callback decodes a raw `CGEvent` into one of these cases and
 /// dispatches it to the main thread, where `HintModeController` acts on it.
-enum HintInputCommand {
+enum HintInputCommand: Equatable {
     case escape
     case backspace
     case enter(withControl: Bool)
@@ -41,6 +41,12 @@ enum HintInputCommand {
     /// character for text search).
     case spaceKey
     case passThrough
+    /// The user is leaving the session (a Cmd shortcut, an app switch, a
+    /// mouse click).  The tap still passes the triggering key through.
+    case dismiss
+    /// Not produced by the decoder: the controller sends it when element text
+    /// arrives after the user already typed, so the filter is matched again.
+    case reapplyFilter
 }
 
 // MARK: - Decoder
@@ -50,9 +56,9 @@ enum HintInputDecoder {
 
     /// Caller-supplied context read on the CF run loop thread.
     ///
-    /// Fields must come from `nonisolated(unsafe)` statics so the
-    /// callback can access them without crossing actor boundaries.
-    struct Context {
+    /// The controller publishes one of these behind a lock whenever its
+    /// session changes; the tap callback copies it once per event.
+    struct Context: Equatable, Sendable {
         let isTextSearchActive: Bool
         let numberedElementsCount: Int
         /// Single non-alphanumeric marker the user has configured to hide
@@ -69,6 +75,22 @@ enum HintInputDecoder {
             self.isTextSearchActive = isTextSearchActive
             self.numberedElementsCount = numberedElementsCount
             self.hidePrefix = hidePrefix
+        }
+
+        /// Tap-side view of `session`; `nil` when there is no live session.
+        ///
+        /// Numbered selection is only exposed for 1–9 matches: more than nine
+        /// render as highlight boxes without numbers, so digits must keep
+        /// typing into the filter.
+        init?(session: HintSession, hidePrefix: String) {
+            guard session.isActive else { return nil }
+            let numberedCount = session.numberedElements.count
+            let inNumberedMode = numberedCount > 0 && numberedCount <= 9
+            self.init(
+                isTextSearchActive: inNumberedMode,
+                numberedElementsCount: inNumberedMode ? numberedCount : 0,
+                hidePrefix: hidePrefix
+            )
         }
     }
 
@@ -89,6 +111,10 @@ enum HintInputDecoder {
         }
 
         guard type == .keyDown else { return .passThrough }
+
+        // Cmd+anything is a system or app shortcut (Cmd+Tab, Cmd+W, …), never
+        // hint input; decoding it as a letter would eat the shortcut.
+        if flags.contains(.maskCommand) { return .dismiss }
 
         switch keyCode {
         case 53: return .escape

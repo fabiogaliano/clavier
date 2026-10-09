@@ -93,7 +93,6 @@ enum HintInputReducer {
     ///   - context:  Caller-supplied settings snapshot (UserDefaults values
     ///               already read on the main actor before calling in).
     /// - Returns:    Next session state and list of effects to execute.
-    @MainActor
     static func reduce(
         session: HintSession,
         command: HintInputCommand,
@@ -126,6 +125,13 @@ enum HintInputReducer {
 
         case .passThrough:
             return (session, [])
+
+        case .dismiss:
+            return (.inactive, [.deactivate])
+
+        case .reapplyFilter:
+            guard !session.filter.isEmpty else { return (session, []) }
+            return handleInput(session: session, context: context)
         }
     }
 

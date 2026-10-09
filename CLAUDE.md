@@ -66,6 +66,8 @@ open clavier.xcodeproj
 - `HintAssigner` - Pure hint-token mapping.
 - `ClickService` - Posts `CGEvent` mouse and scroll wheel events.
 - `GlobalHotkeyRegistrar` / `KeyboardEventTap` - Carbon hotkey and event-tap wrappers.
+- `SessionDismissalMonitor` - Ends hint/scroll sessions on app activation or a user mouse-down (ignores clavier's own tagged synthetic clicks); routed through the reducers as `.dismiss`.
+- `HintDebugModeController` - Debug discovery overlay + JSON snapshot on its own hotkey/tap slot; tears hint mode down for exclusivity.
 - `ChromiumAccessibilityWaker` - Enables dormant renderer AX trees: `AXManualAccessibility` for known Electron apps and application-root `AXEnhancedUserInterface` for known standalone Chromium browsers. See `docs/chromium-apps.md`.
 - `SpotifyAccessibilityHelper` - Detects Spotify's empty-tree signature (CEF can't be woken at runtime — runtime techniques were prototyped and ruled out) and surfaces `SpotifyHelpSheetWindow`. Provides `relaunchSpotifyWithFlag()` (terminate + wait + `NSWorkspace.openApplication` with `--force-renderer-accessibility`) as the universal one-click fix, plus an opt-in auto-relaunch mode that observes `NSWorkspace.didLaunchApplicationNotification` to silently re-run the dance on every Spotify launch.
 
@@ -98,7 +100,7 @@ open clavier.xcodeproj
 
 **Event tap threading:**
 - Event-tap callback runs on the CF run loop, not on the main actor.
-- `nonisolated(unsafe)` static scalars are used for thread-safe gate state.
+- Each controller publishes one decoder `Context` snapshot behind an `OSAllocatedUnfairLock` whenever its session changes (`nil` = no live session); the tap callback reads it once per event.
 - UI/state mutations are dispatched back to the main queue via `DispatchQueue.main.async`.
 - All Accessibility API calls are confined to `@MainActor` per Apple DTS guidance.
 
@@ -166,7 +168,7 @@ Stored in `UserDefaults` — keys live in `AppSettings.Keys`, defaults in `AppSe
 - The event tap requires Accessibility permissions to intercept keyboard events.
 - Overlay windows use `.screenSaver` level to appear above all content.
 - Hints use a monospaced system font for consistent sizing.
-- Backspace deletes the last typed character; ESC has two-stage behaviour in hint mode (clear search, then exit) and single-stage in scroll mode.
+- Backspace deletes the last typed character; ESC has two-stage behaviour in hint mode (clear search, then exit) and single-stage in scroll mode. Any Cmd+key passes through and ends the session in both modes.
 - Scroll mode uses `CGEvent` scroll-wheel events at configurable speed multipliers.
 - `ShortcutRecorderView` uses `NSEvent` monitors to capture key combinations in real time.
 - Carbon modifier constants (`cmdKey`, `shiftKey`, `optionKey`, `controlKey`) are used for hotkey storage.

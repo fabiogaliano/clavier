@@ -28,7 +28,6 @@ final class ScrollSelectionReducerArrowModeTests: XCTestCase {
         )
     }
 
-    @MainActor
     func test_arrowKey_inSelectMode_selectsNextArea() {
         let areas = [makeArea(), makeArea(.init(x: 0, y: 200, width: 100, height: 100))]
         let session = ScrollSession.active(areas: areas, selected: 0, pendingInput: "")
@@ -42,7 +41,6 @@ final class ScrollSelectionReducerArrowModeTests: XCTestCase {
         XCTAssertTrue(selected, "expected .selectArea(1) when arrowMode == .select")
     }
 
-    @MainActor
     func test_arrowKey_inScrollMode_performsScroll() {
         let areas = [makeArea()]
         let session = ScrollSession.active(areas: areas, selected: 0, pendingInput: "")

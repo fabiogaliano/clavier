@@ -20,13 +20,19 @@ import os
 class ScrollModeController {
 
     private let renderer = ScrollOverlayRenderer()
-    private var session: ScrollSession = .inactive
+    private var session: ScrollSession = .inactive {
+        didSet { publishTapContext(for: session) }
+    }
+    /// True from the moment the tap + overlay are up until they are torn
+    /// down.  Distinct from `session.isActive` because the reducer sets
+    /// `session = .inactive` before `applyEffects` runs `.deactivate`.
+    private var isSessionOpen = false
     private var deactivationTimer: Timer?
     private var activationStart = Date()
 
-    // CF run-loop readable scalars (see CLAUDE.md threading note).
-    private nonisolated(unsafe) static var isScrollModeActive = false
-    private nonisolated(unsafe) static var scrollKeysCache = "hjkl"
+    /// The only scroll state the CF run-loop tap callback reads; `nil` means
+    /// no live session.
+    private nonisolated static let tapContext = OSAllocatedUnfairLock<ScrollInputDecoder.Context?>(initialState: nil)
 
     // Back-reference for CF run-loop callback dispatch.
     private static var sharedInstance: ScrollModeController?
@@ -34,6 +40,7 @@ class ScrollModeController {
     // Shared input infrastructure
     private let hotkeyRegistrar = GlobalHotkeyRegistrar(signature: "SCRL", hotkeyID: 2)
     private let eventTap = KeyboardEventTap(slotIndex: 1)
+    private let dismissalMonitor = SessionDismissalMonitor()
 
     // Decomposed scroll modules (P4-S3)
     private let discoveryCoordinator = ScrollDiscoveryCoordinator(
@@ -107,7 +114,8 @@ class ScrollModeController {
             return false
         }
 
-        ScrollModeController.isScrollModeActive = true
+        isSessionOpen = true
+        dismissalMonitor.start { [weak self] in self?.dispatch(.dismiss) }
         startDeactivationTimer()
 
         let elapsed = Date().timeIntervalSince(activationStart)
@@ -116,17 +124,15 @@ class ScrollModeController {
     }
 
     private func deactivateScrollMode() {
-        // Gated on the static flag rather than `session.isActive` because the
-        // reducer sets `session = .inactive` before `applyEffects` fires
-        // `.deactivate`; a session-based guard would early-return here and
-        // leak the event tap + overlay.
-        guard ScrollModeController.isScrollModeActive else { return }
+        // A session-based guard would early-return after the reducer's
+        // `.inactive` transition and leak the event tap + overlay.
+        guard isSessionOpen else { return }
+        isSessionOpen = false
 
         deactivationTimer?.invalidate()
         deactivationTimer = nil
 
-        ScrollModeController.isScrollModeActive = false
-
+        dismissalMonitor.stop()
         eventTap.stop()
 
         renderer.close()
@@ -142,16 +148,18 @@ class ScrollModeController {
 
         let started = eventTap.start(
             eventMask: eventMask,
-            isActiveGate: { ScrollModeController.isScrollModeActive },
+            isActiveGate: { ScrollModeController.tapContext.withLock { $0 != nil } },
             handler: { type, event in
-                let context = ScrollInputDecoder.Context(
-                    scrollKeys: ScrollModeController.scrollKeysCache
-                )
+                // The session can end between the gate and this read.
+                guard let context = ScrollModeController.tapContext.withLock({ $0 }) else {
+                    return Unmanaged.passRetained(event)
+                }
                 let command = ScrollInputDecoder.decode(type: type, event: event, context: context)
 
                 DispatchQueue.main.async {
                     ScrollModeController.sharedInstance?.dispatch(command)
                 }
+                if case .dismiss = command { return Unmanaged.passRetained(event) }
                 return nil
             }
         )
@@ -253,8 +261,13 @@ class ScrollModeController {
             autoDeactivation: autoDeactivation,
             deactivationDelay: deactivationDelay == 0 ? AppSettings.Defaults.scrollDeactivationDelay : deactivationDelay
         )
+    }
 
-        ScrollModeController.scrollKeysCache = scrollKeys.rawString
+    private func publishTapContext(for session: ScrollSession) {
+        let context = session.isActive
+            ? ScrollInputDecoder.Context(scrollKeys: inputContext.scrollKeys.rawString)
+            : nil
+        ScrollModeController.tapContext.withLock { $0 = context }
     }
 
     // MARK: - Deactivation timer

@@ -236,16 +236,17 @@ class HintOverlayWindow: NSWindow {
         if previous?.chrome.searchText != scene.chrome.searchText {
             searchTextField?.stringValue = scene.chrome.searchText
         }
-        if previous?.chrome.matchCount != scene.chrome.matchCount {
-            applyMatchCount(scene.chrome.matchCount)
+        if previous?.chrome.matchCount != scene.chrome.matchCount
+            || previous?.chrome.isHydrating != scene.chrome.isHydrating {
+            applyMatchCount(scene.chrome.matchCount, isHydrating: scene.chrome.isHydrating)
         }
         if previous?.isContinuous != scene.isContinuous {
             applyContinuousMode(scene.isContinuous)
         }
     }
 
-    private func applyMatchCount(_ count: Int) {
-        let style = MatchCountPresenter.style(forCount: count)
+    private func applyMatchCount(_ count: Int, isHydrating: Bool) {
+        let style = MatchCountPresenter.style(forCount: count, isHydrating: isHydrating)
         matchCountLabel?.stringValue = style.labelText
         matchCountLabel?.textColor = style.labelColor
         matchCountBadge?.isHidden = style.labelText.isEmpty

@@ -64,8 +64,9 @@ final class HintOverlayRenderer {
         render()
     }
 
-    func updateMatchCount(_ count: Int) {
+    func updateMatchCount(_ count: Int, isHydrating: Bool = false) {
         chrome.matchCount = count
+        chrome.isHydrating = isHydrating
         render()
     }
 

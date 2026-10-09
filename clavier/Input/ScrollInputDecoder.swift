@@ -26,13 +26,16 @@ import AppKit
 ///
 /// The event tap callback decodes a raw `CGEvent` into one of these cases
 /// and dispatches it to the main thread, where `ScrollModeController` acts on it.
-enum ScrollInputCommand {
+enum ScrollInputCommand: Equatable {
     case escape
     case backspace
     case digit(Int)
     case arrowKey(ScrollDirection, isShift: Bool)
     case scrollKey(ScrollDirection, isShift: Bool)
     case consume
+    /// The user is leaving the session (a Cmd shortcut, an app switch, a
+    /// mouse click).  The tap still passes the triggering key through.
+    case dismiss
 }
 
 // MARK: - Decoder
@@ -42,9 +45,9 @@ enum ScrollInputDecoder {
 
     /// Caller-supplied context read on the CF run loop thread.
     ///
-    /// Both fields must come from `nonisolated(unsafe)` statics so the
-    /// callback can access them without crossing actor boundaries.
-    struct Context {
+    /// The controller publishes one of these behind a lock whenever its
+    /// session changes; the tap callback copies it once per event.
+    struct Context: Equatable, Sendable {
         /// The four-character scroll-key string (e.g. "hjkl").
         let scrollKeys: String
     }
@@ -61,6 +64,10 @@ enum ScrollInputDecoder {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
         let isShift = flags.contains(.maskShift)
+
+        // Cmd+anything is a system or app shortcut; swallowing it would
+        // leave the user unable to Cmd+Tab out of scroll mode.
+        if flags.contains(.maskCommand) { return .dismiss }
 
         switch keyCode {
         case 53: return .escape

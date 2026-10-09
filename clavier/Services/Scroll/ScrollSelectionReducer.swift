@@ -82,7 +82,6 @@ enum ScrollSelectionReducer {
     ///   - command:  Decoded keyboard command (from `ScrollInputDecoder`).
     ///   - context:  Settings snapshot captured at activation.
     /// - Returns:    Next session state and list of effects to execute.
-    @MainActor
     static func reduce(
         session: ScrollSession,
         command: ScrollInputCommand,
@@ -91,7 +90,7 @@ enum ScrollSelectionReducer {
         guard session.isActive else { return (session, []) }
 
         switch command {
-        case .escape:
+        case .escape, .dismiss:
             return (.inactive, [.deactivate])
 
         case .backspace:

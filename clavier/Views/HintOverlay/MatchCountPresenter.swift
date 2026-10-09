@@ -34,7 +34,17 @@ enum MatchCountPresenter {
     ///
     /// `-1` is the sentinel for "reset / no search active" — callers pass it
     /// when filters clear or the overlay transitions back to hint-prefix mode.
-    static func style(forCount count: Int) -> Style {
+    ///
+    /// `isHydrating`: element text is still being read, so a zero count only
+    /// means "not known yet" and must not flash the red no-match state.
+    static func style(forCount count: Int, isHydrating: Bool = false) -> Style {
+        if count == 0 && isHydrating {
+            return Style(
+                labelText: "…",
+                labelColor: .secondaryLabelColor,
+                borderColor: .systemBlue
+            )
+        }
         switch count {
         case -1:
             return Style(

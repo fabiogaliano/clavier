@@ -17,45 +17,37 @@ import os
 @MainActor
 class HintModeController {
 
-    private var session: HintSession = .inactive
+    private var session: HintSession = .inactive {
+        didSet { publishTapContext(for: session) }
+    }
+    /// True from the moment the tap + overlay are up until they are torn
+    /// down.  Distinct from `session.isActive` because the reducer sets
+    /// `session = .inactive` before `applyEffects` runs `.deactivate`.
+    private var isSessionOpen = false
     /// Captured just before a click so the post-click plan can tell whether
     /// the click opened a popup (and the one-shot session should follow it).
     private var lastClickOpensPopup = false
     private var activationTask: Task<Void, Never>?
+    /// Non-nil while text attributes for the current hints are still being
+    /// read; a "no matches" result in that window is not yet trustworthy.
+    private var hydrationTask: Task<Void, Never>?
     private var continuousUpgradeRequestedWhileActivating = false
 
     // Auto-deactivation timer (continuous mode)
     private var deactivationTimer: Timer?
-    private var autoDeactivation = false
-    private var deactivationDelay: Double = 5.0
-    private var initialMode: HintSessionMode = .oneShot
 
-    // Settings loaded at activation, valid for the lifetime of that session
-    private var inputContext = HintInputContext(
-        textSearchEnabled: true,
-        minSearchChars: 2,
-        refreshTrigger: "rr",
-        hidePrefix: ""
-    )
+    /// Captured at activation, valid for the lifetime of that session.
+    private var config = HintSessionConfig.default
 
-    // CF run loop-readable scalars (see threading note in CLAUDE.md)
-    private nonisolated(unsafe) static var isHintModeActive = false
-    private nonisolated(unsafe) static var isTextSearchActive = false
-    private nonisolated(unsafe) static var numberedElementsCount = 0
-    /// Mirror of `inputContext.hidePrefix` exposed to the CF run loop so the
-    /// decoder can allow the configured marker character through its whitelist.
-    private nonisolated(unsafe) static var hidePrefix: String = ""
+    /// The only hint state the CF run-loop tap callback reads.  Published as
+    /// one value so the callback can never observe a half-updated mix of
+    /// fields; `nil` means no live session, so every event passes through.
+    private nonisolated static let tapContext = OSAllocatedUnfairLock<HintInputDecoder.Context?>(initialState: nil)
 
     // Shared input infrastructure (P2-S1)
     private let hotkeyRegistrar = GlobalHotkeyRegistrar(signature: "KNAV", hotkeyID: 1)
-    private let debugHotkeyRegistrar = GlobalHotkeyRegistrar(signature: "KDBG", hotkeyID: 2)
     private let eventTap = KeyboardEventTap(slotIndex: 0)
-
-    // Debug mode state — independent of normal hint mode so ESC and its
-    // own overlay don't collide with the production path.
-    private var debugOverlay: HintDebugOverlayWindow?
-    private let debugEventTap = KeyboardEventTap(slotIndex: 2)
-    private nonisolated(unsafe) static var isDebugActive = false
+    private let dismissalMonitor = SessionDismissalMonitor()
 
     // Decomposed modules (P4-S2)
     private let renderer = HintOverlayRenderer()
@@ -77,11 +69,6 @@ class HintModeController {
             keyCodeKey: AppSettings.Keys.hintShortcutKeyCode,
             modifiersKey: AppSettings.Keys.hintShortcutModifiers,
             onActivation: { [weak self] in self?.toggleHintMode() }
-        )
-        debugHotkeyRegistrar.register(
-            keyCodeKey: AppSettings.Keys.hintDebugShortcutKeyCode,
-            modifiersKey: AppSettings.Keys.hintDebugShortcutModifiers,
-            onActivation: { [weak self] in self?.toggleDebugHintMode() }
         )
     }
 
@@ -106,113 +93,12 @@ class HintModeController {
         }
     }
 
-    // MARK: - Debug mode
-
-    /// Public entry: runs one discovery pass with a recorder, opens the
-    /// colored debug overlay, and writes a JSON snapshot.  Pressing ESC
-    /// (or the debug hotkey again) dismisses the overlay.
-    func toggleDebugHintMode() {
-        if HintModeController.isDebugActive {
-            deactivateDebugMode()
-        } else {
-            activateDebugMode()
-        }
-    }
-
-    private func activateDebugMode() {
-        // Tearing down normal hint mode keeps the two overlays exclusive.
-        activationTask?.cancel()
-        if isActive { deactivateHintMode() }
-
-        let recorder = HintDiscoveryRecorder()
-        // Capture the same `[UIElement]` hint mode would consume so the
-        // debug path can replay production hint assignment + placement
-        // and join the results back onto the event stream.  Any drift
-        // between the two paths is automatically impossible because the
-        // walker, assigner, and layout helper used here are identical.
-        let elements = AccessibilityService.shared.getClickableElements(recorder: recorder)
-        let hinted = assignHints(to: elements)
-        let desktopSize = ScreenGeometry.desktopBoundsInAppKit.size
-        let labeled = HintLayout.buildLabels(for: hinted, windowSize: desktopSize)
-
-        // `view.frame` is window-local; event frames are screen-global.
-        // Convert once so the snapshot stores a frame in the same
-        // coordinate system as every other frame field.
-        let windowOrigin = ScreenGeometry.desktopBoundsInAppKit.origin
-        let hintInfo: [ElementIdentity: HintDebugSnapshot.HintInfo] = Dictionary(
-            uniqueKeysWithValues: labeled.map { entry in
-                let screenFrame = entry.view.frame.offsetBy(dx: windowOrigin.x, dy: windowOrigin.y)
-                return (
-                    entry.hinted.identity,
-                    HintDebugSnapshot.HintInfo(hint: entry.hinted.hint, frame: screenFrame)
-                )
-            }
-        )
-
-        let frontApp = NSWorkspace.shared.frontmostApplication
-        let snapshotURL = HintDebugSnapshot.write(
-            recorder: recorder,
-            app: frontApp,
-            hintInfo: hintInfo
-        )
-
-        let summary = recorder.summary()
-        Logger.hintMode.debug("debug: visited=\(summary.visited, privacy: .public) accepted=\(summary.accepted, privacy: .public) deduped=\(summary.deduped, privacy: .public) tooSmall=\(summary.rejectedTooSmall, privacy: .public) rejected=\(summary.rejectedNotClickable, privacy: .public) clipped=\(summary.clipped, privacy: .public) pruned=\(summary.prunedSubtrees, privacy: .public) hinted=\(hinted.count, privacy: .public)")
-        if let snapshotURL {
-            Logger.hintMode.debug("debug: snapshot \(snapshotURL.path, privacy: .public)")
-        }
-
-        let overlay = HintDebugOverlayWindow(
-            events: recorder.events,
-            labeledHints: labeled,
-            snapshotPath: snapshotURL?.path
-        )
-        overlay.show()
-        self.debugOverlay = overlay
-        HintModeController.isDebugActive = true
-
-        // Use a CGEvent tap (same pattern as hint mode) because a menu-bar
-        // app never becomes key and `NSEvent.addLocalMonitorForEvents`
-        // therefore never fires.  The tap is gated by `isDebugActive` so
-        // it's inert the moment we deactivate.
-        let eventMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
-        let started = debugEventTap.start(
-            eventMask: eventMask,
-            isActiveGate: { HintModeController.isDebugActive },
-            handler: { type, event in
-                guard type == .keyDown else { return Unmanaged.passRetained(event) }
-                let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
-                if keyCode == 53 {
-                    DispatchQueue.main.async {
-                        HintModeController.sharedInstance?.deactivateDebugMode()
-                    }
-                    return nil
-                }
-                return Unmanaged.passRetained(event)
-            }
-        )
-
-        if !started {
-            Logger.hintMode.warning("Failed to start debug event tap. ESC will not dismiss — use the menu or the debug hotkey.")
-        }
-    }
-
-    private func deactivateDebugMode() {
-        guard HintModeController.isDebugActive else { return }
-        HintModeController.isDebugActive = false
-
-        debugEventTap.stop()
-
-        debugOverlay?.close()
-        debugOverlay = nil
-    }
-
     // MARK: - Lifecycle
 
     private func activateHintMode() async {
         guard !isActive else { return }
 
-        loadSessionSettings()
+        config = .load()
         var presentedProvisionalBrowserHints = false
 
         let discoveredElements = await AccessibilityService.shared.getClickableElementsWhenReady(
@@ -273,9 +159,8 @@ class HintModeController {
     ) -> Bool {
         guard !elements.isEmpty, !isActive else { return false }
 
-        if continuousUpgradeRequestedWhileActivating {
-            initialMode = .continuous
-        }
+        let initialMode: HintSessionMode = continuousUpgradeRequestedWhileActivating
+            ? .continuous : config.initialMode
         let hintedElements = HintAssigner.assign(
             to: elements,
             alphabet: AppSettings.hintCharacters,
@@ -289,31 +174,33 @@ class HintModeController {
             return false
         }
 
+        isSessionOpen = true
         session = .active(hintedElements: hintedElements, filter: "", mode: initialMode)
-        HintModeController.isHintModeActive = true
+        dismissalMonitor.start { [weak self] in self?.dispatch(.dismiss) }
 
         startDeactivationTimer()
         scheduleMainActorHydration()
         return true
     }
 
-    private func deactivateHintMode() {
-        // Gated on the static flag rather than `session.isActive` because the
-        // reducer may set `session = .inactive` before `applyEffects` fires
-        // `.deactivate`; a session-based guard would early-return here and
-        // leak the event tap + overlay.
-        guard HintModeController.isHintModeActive else { return }
+    /// Cancels an activation still in flight too, so a caller that needs
+    /// hint mode gone (debug mode's exclusivity) gets it from one call.
+    func deactivateHintMode() {
+        activationTask?.cancel()
+        activationTask = nil
 
-        HintModeController.isHintModeActive = false
-        HintModeController.isTextSearchActive = false
-        HintModeController.numberedElementsCount = 0
+        // A session-based guard would early-return after the reducer's
+        // `.inactive` transition and leak the event tap + overlay.
+        guard isSessionOpen else { return }
+        isSessionOpen = false
 
         deactivationTimer?.invalidate()
         deactivationTimer = nil
 
-        activationTask?.cancel()
-        activationTask = nil
         refreshCoordinator.cancelPending()
+        hydrationTask?.cancel()
+        hydrationTask = nil
+        dismissalMonitor.stop()
         eventTap.stop()
         renderer.close()
 
@@ -371,7 +258,6 @@ class HintModeController {
             alphabet: AppSettings.hintCharacters
         )
         session = .active(hintedElements: hinted, filter: "", mode: session.mode)
-        syncTapState(from: session)
         renderer.updateHints(with: hinted)
         startDeactivationTimer()
         scheduleMainActorHydration()
@@ -383,16 +269,10 @@ class HintModeController {
         for effect in effects {
             switch effect {
             case .performClick(let element):
-                // Reset tap state before clicking so number keys are not intercepted
-                // during the refresh window that follows.
-                HintModeController.isTextSearchActive = false
-                HintModeController.numberedElementsCount = 0
                 lastClickOpensPopup = HintPopupTriggerProbe.opensPopup(element)
                 executeClick(on: element)
 
             case .performRightClick(let element):
-                HintModeController.isTextSearchActive = false
-                HintModeController.numberedElementsCount = 0
                 lastClickOpensPopup = true // a right-click opens a context menu
                 executeRightClick(on: element)
 
@@ -401,13 +281,12 @@ class HintModeController {
 
             case .updateOverlay(let session):
                 renderer.present(session: session)
-                syncTapState(from: session)
 
             case .showSearchBar(let text):
                 renderer.updateSearchBar(text: text)
 
             case .updateMatchCount(let count):
-                renderer.updateMatchCount(count)
+                renderer.updateMatchCount(count, isHydrating: hydrationTask != nil)
 
             case .scheduleRefresh:
                 handlePostClick()
@@ -424,14 +303,9 @@ class HintModeController {
         }
     }
 
-    private func syncTapState(from session: HintSession) {
-        // Only expose numbered mode to the event tap when the numbered matches are
-        // actually in 1-9 range — >9 matches show green highlights but don't use
-        // number key selection (matching the pre-refactor behaviour).
-        let numberedCount = session.numberedElements.count
-        let inNumberedMode = numberedCount > 0 && numberedCount <= 9
-        HintModeController.isTextSearchActive = inNumberedMode
-        HintModeController.numberedElementsCount = inNumberedMode ? numberedCount : 0
+    private func publishTapContext(for session: HintSession) {
+        let context = HintInputDecoder.Context(session: session, hidePrefix: config.inputContext.hidePrefix)
+        HintModeController.tapContext.withLock { $0 = context }
     }
 
     // MARK: - Event tap
@@ -444,22 +318,21 @@ class HintModeController {
 
         return eventTap.start(
             eventMask: eventMask,
-            isActiveGate: { HintModeController.isHintModeActive },
+            isActiveGate: { HintModeController.tapContext.withLock { $0 != nil } },
             handler: { type, event in
-                let context = HintInputDecoder.Context(
-                    isTextSearchActive: HintModeController.isTextSearchActive,
-                    numberedElementsCount: HintModeController.numberedElementsCount,
-                    hidePrefix: HintModeController.hidePrefix
-                )
+                // The session can end between the gate and this read.
+                guard let context = HintModeController.tapContext.withLock({ $0 }) else {
+                    return Unmanaged.passRetained(event)
+                }
                 let command = HintInputDecoder.decode(type: type, event: event, context: context)
 
                 switch command {
                 case .passThrough:
                     return Unmanaged.passRetained(event)
 
-                case .clearSearch:
+                case .clearSearch, .dismiss:
                     DispatchQueue.main.async {
-                        HintModeController.sharedInstance?.dispatch(.clearSearch)
+                        HintModeController.sharedInstance?.dispatch(command)
                     }
                     return Unmanaged.passRetained(event)
 
@@ -480,7 +353,7 @@ class HintModeController {
         let (nextSession, effects) = HintInputReducer.reduce(
             session: session,
             command: command,
-            context: inputContext
+            context: config.inputContext
         )
         session = nextSession
         applyEffects(effects)
@@ -536,17 +409,6 @@ class HintModeController {
         renderer.updateSearchBar(text: "")
         renderer.updateMatchCount(-1)
         renderer.setLabelsHidden(false)
-        syncTapState(from: cleared)
-    }
-
-    // MARK: - Hint assignment
-
-    /// Assign hint tokens to discovered elements for a session.
-    ///
-    /// Reads the current alphabet from `AppSettings` and delegates to
-    /// `HintAssigner` (pure mapping — no AX / UserDefaults interior state).
-    private func assignHints(to elements: [UIElement]) -> [HintedElement] {
-        HintAssigner.assign(to: elements, alphabet: AppSettings.hintCharacters)
     }
 
     // MARK: - Text attribute hydration
@@ -559,23 +421,25 @@ class HintModeController {
     /// yielding to the current run loop turn so the overlay paints first, then
     /// performing the AX reads synchronously on the main actor.  The name
     /// `scheduleMainActorHydration` is kept deliberately unambiguous about that.
+    ///
+    /// Keys typed before the pass starts are matched against elements with
+    /// no text yet, so once it lands the current filter is re-run and the
+    /// matches update in place instead of leaving a stale "0".
     private func scheduleMainActorHydration() {
-        Task { @MainActor in
+        hydrationTask?.cancel()
+        hydrationTask = Task { @MainActor [weak self] in
+            guard let self, !Task.isCancelled else { return }
             var domainElements = self.hintedElements.map { $0.element }
             AXTextHydrator.hydrate(&domainElements)
+            self.hydrationTask = nil
             guard self.isActive else { return }
             let updatedHinted = zip(self.hintedElements, domainElements).map { hinted, updated in
                 HintedElement(element: updated, hint: hinted.hint)
             }
-            switch self.session {
-            case .active(_, let filter, let mode):
-                self.session = .active(hintedElements: updatedHinted, filter: filter, mode: mode)
-            case .textSearch(_, let matches, let filter, let mode):
-                let matchIDs = Set(matches.map { $0.identity })
-                let updatedMatches = updatedHinted.filter { matchIDs.contains($0.identity) }
-                self.session = .textSearch(hintedElements: updatedHinted, matches: updatedMatches, filter: filter, mode: mode)
-            case .inactive:
-                break
+            let filter = self.session.filter
+            self.session = .active(hintedElements: updatedHinted, filter: filter, mode: self.session.mode)
+            if !filter.isEmpty {
+                self.dispatch(.reapplyFilter)
             }
         }
     }
@@ -583,10 +447,10 @@ class HintModeController {
     // MARK: - Auto-deactivation
 
     private func startDeactivationTimer() {
-        guard session.isContinuous && autoDeactivation else { return }
+        guard let delay = config.autoDeactivationDelay(for: session.mode) else { return }
 
         deactivationTimer?.invalidate()
-        deactivationTimer = Timer.scheduledTimer(withTimeInterval: deactivationDelay, repeats: false) { [weak self] _ in
+        deactivationTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 self?.deactivateHintMode()
             }
@@ -607,22 +471,5 @@ class HintModeController {
 
         renderer.setContinuousMode(true)
         startDeactivationTimer()
-    }
-
-    private func loadSessionSettings() {
-        autoDeactivation = UserDefaults.standard.bool(forKey: AppSettings.Keys.autoHintDeactivation)
-        deactivationDelay = UserDefaults.standard.double(forKey: AppSettings.Keys.hintDeactivationDelay)
-        if deactivationDelay == 0 { deactivationDelay = 5.0 }
-        initialMode = UserDefaults.standard.bool(forKey: AppSettings.Keys.continuousClickMode)
-            ? .continuous : .oneShot
-
-        let prefix = AppSettings.hideHintsPrefix
-        inputContext = HintInputContext(
-            textSearchEnabled: UserDefaults.standard.bool(forKey: AppSettings.Keys.textSearchEnabled),
-            minSearchChars: AppSettings.minSearchCharacters,
-            refreshTrigger: AppSettings.manualRefreshTrigger,
-            hidePrefix: prefix
-        )
-        HintModeController.hidePrefix = prefix
     }
 }

@@ -6,6 +6,7 @@ import os
 class AppDelegate: NSObject, NSApplicationDelegate {
     private var statusItem: NSStatusItem?
     private var hintModeController: HintModeController?
+    private var hintDebugModeController: HintDebugModeController?
     private var scrollModeController: ScrollModeController?
     private var hintMenuItem: NSMenuItem?
     private var scrollMenuItem: NSMenuItem?
@@ -187,8 +188,13 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
 
     private func setupHintMode() {
-        hintModeController = HintModeController()
-        hintModeController?.registerGlobalHotkey()
+        let controller = HintModeController()
+        controller.registerGlobalHotkey()
+        hintModeController = controller
+
+        let debugController = HintDebugModeController(hintModeController: controller)
+        debugController.registerGlobalHotkey()
+        hintDebugModeController = debugController
     }
 
     private func setupScrollMode() {
