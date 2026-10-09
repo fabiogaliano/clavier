@@ -16,6 +16,8 @@ class ClickService {
     func click(at point: CGPoint) {
         let clickDown = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left)
         let clickUp = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left)
+        SyntheticClickTag.tag(clickDown)
+        SyntheticClickTag.tag(clickUp)
 
         clickDown?.post(tap: .cghidEventTap)
         clickUp?.post(tap: .cghidEventTap)
@@ -24,6 +26,8 @@ class ClickService {
     func rightClick(at point: CGPoint) {
         let clickDown = CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown, mouseCursorPosition: point, mouseButton: .right)
         let clickUp = CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp, mouseCursorPosition: point, mouseButton: .right)
+        SyntheticClickTag.tag(clickDown)
+        SyntheticClickTag.tag(clickUp)
 
         clickDown?.post(tap: .cghidEventTap)
         clickUp?.post(tap: .cghidEventTap)

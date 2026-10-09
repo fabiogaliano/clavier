@@ -81,7 +81,7 @@ enum ScrollSelectionReducer {
         guard session.isActive else { return (session, []) }
 
         switch command {
-        case .escape:
+        case .escape, .dismiss:
             return (.inactive, [.deactivate])
 
         case .backspace:

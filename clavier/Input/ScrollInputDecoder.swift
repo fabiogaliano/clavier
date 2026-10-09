@@ -33,6 +33,9 @@ enum ScrollInputCommand {
     case arrowKey(ScrollDirection, isShift: Bool)
     case scrollKey(ScrollDirection, isShift: Bool)
     case consume
+    /// The user is leaving the session (a Cmd shortcut, an app switch, a
+    /// mouse click).  The tap still passes the triggering key through.
+    case dismiss
 }
 
 // MARK: - Decoder
@@ -61,6 +64,10 @@ enum ScrollInputDecoder {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
         let isShift = flags.contains(.maskShift)
+
+        // Cmd+anything is a system or app shortcut; swallowing it would
+        // leave the user unable to Cmd+Tab out of scroll mode.
+        if flags.contains(.maskCommand) { return .dismiss }
 
         switch keyCode {
         case 53: return .escape

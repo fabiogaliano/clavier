@@ -41,6 +41,9 @@ enum HintInputCommand {
     /// character for text search).
     case spaceKey
     case passThrough
+    /// The user is leaving the session (a Cmd shortcut, an app switch, a
+    /// mouse click).  The tap still passes the triggering key through.
+    case dismiss
 }
 
 // MARK: - Decoder
@@ -105,6 +108,10 @@ enum HintInputDecoder {
         }
 
         guard type == .keyDown else { return .passThrough }
+
+        // Cmd+anything is a system or app shortcut (Cmd+Tab, Cmd+W, …), never
+        // hint input; decoding it as a letter would eat the shortcut.
+        if flags.contains(.maskCommand) { return .dismiss }
 
         switch keyCode {
         case 53: return .escape

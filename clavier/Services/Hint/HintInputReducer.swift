@@ -126,6 +126,9 @@ enum HintInputReducer {
 
         case .passThrough:
             return (session, [])
+
+        case .dismiss:
+            return (.inactive, [.deactivate])
         }
     }
 

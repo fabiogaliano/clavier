@@ -52,6 +52,7 @@ class HintModeController {
     // Shared input infrastructure (P2-S1)
     private let hotkeyRegistrar = GlobalHotkeyRegistrar(signature: "KNAV", hotkeyID: 1)
     private let eventTap = KeyboardEventTap(slotIndex: 0)
+    private let dismissalMonitor = SessionDismissalMonitor()
 
     // Decomposed modules (P4-S2)
     private let renderer = HintOverlayRenderer()
@@ -181,6 +182,7 @@ class HintModeController {
 
         isSessionOpen = true
         session = .active(hintedElements: hintedElements, filter: "", mode: initialMode)
+        dismissalMonitor.start { [weak self] in self?.dispatch(.dismiss) }
 
         startDeactivationTimer()
         scheduleMainActorHydration()
@@ -202,6 +204,7 @@ class HintModeController {
         deactivationTimer = nil
 
         refreshCoordinator.cancelPending()
+        dismissalMonitor.stop()
         eventTap.stop()
         renderer.close()
 
@@ -331,9 +334,9 @@ class HintModeController {
                 case .passThrough:
                     return Unmanaged.passRetained(event)
 
-                case .clearSearch:
+                case .clearSearch, .dismiss:
                     DispatchQueue.main.async {
-                        HintModeController.sharedInstance?.dispatch(.clearSearch)
+                        HintModeController.sharedInstance?.dispatch(command)
                     }
                     return Unmanaged.passRetained(event)
 

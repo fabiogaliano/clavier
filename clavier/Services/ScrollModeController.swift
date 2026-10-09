@@ -39,6 +39,7 @@ class ScrollModeController {
     // Shared input infrastructure
     private let hotkeyRegistrar = GlobalHotkeyRegistrar(signature: "SCRL", hotkeyID: 2)
     private let eventTap = KeyboardEventTap(slotIndex: 1)
+    private let dismissalMonitor = SessionDismissalMonitor()
 
     // Decomposed scroll modules (P4-S3)
     private let discoveryCoordinator = ScrollDiscoveryCoordinator(
@@ -146,6 +147,7 @@ class ScrollModeController {
         }
 
         isSessionOpen = true
+        dismissalMonitor.start { [weak self] in self?.dispatch(.dismiss) }
         startDeactivationTimer()
 
         let elapsed = Date().timeIntervalSince(activationStart)
@@ -193,6 +195,7 @@ class ScrollModeController {
         deactivationTimer?.invalidate()
         deactivationTimer = nil
 
+        dismissalMonitor.stop()
         eventTap.stop()
 
         renderer.close()
@@ -219,6 +222,7 @@ class ScrollModeController {
                 DispatchQueue.main.async {
                     ScrollModeController.sharedInstance?.dispatch(command)
                 }
+                if case .dismiss = command { return Unmanaged.passRetained(event) }
                 return nil
             }
         )
