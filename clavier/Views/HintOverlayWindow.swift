@@ -11,7 +11,7 @@ class HintOverlayWindow: NSWindow {
     /// reassignment across session refreshes (F06).
     private var hintViews: [ElementIdentity: NSView] = [:]
     /// Numbered labels or outline boxes for the current text-search results.
-    private var elementHighlights: [UUID: NSView] = [:]
+    private var elementHighlights: [ElementIdentity: NSView] = [:]
     private var searchBarView: NSView?
     private var searchTextField: NSTextField?
     private var matchCountBadge: NSView?
@@ -211,18 +211,24 @@ class HintOverlayWindow: NSWindow {
             var engine = HintPlacementEngine(windowSize: self.frame.size, elementFrames: obstacles)
             for label in labels {
                 let hintView = HintLabelRenderer.createHintLabel(for: label.hinted, style: style, engine: &engine)
-                self.contentView?.addSubview(hintView)
-                elementHighlights[label.hinted.element.id] = hintView
+                addHighlight(hintView, for: label.identity)
             }
 
         case .highlights(let boxes):
             for box in boxes {
-                let highlightView = MatchHighlightRenderer.createHighlightView(frame: box.frame)
-                self.contentView?.addSubview(highlightView)
-                elementHighlights[UUID()] = highlightView
+                addHighlight(MatchHighlightRenderer.createHighlightView(frame: box.frame), for: box.identity)
             }
             for (_, view) in hintViews { view.isHidden = true }
         }
+    }
+
+    /// Two matches can share an identity (same pid, role and rounded frame);
+    /// they draw on the same spot, so the later one replaces the earlier
+    /// rather than leaving an untracked view behind.
+    private func addHighlight(_ view: NSView, for identity: ElementIdentity) {
+        elementHighlights[identity]?.removeFromSuperview()
+        self.contentView?.addSubview(view)
+        elementHighlights[identity] = view
     }
 
     private func applyChrome(_ scene: HintScene) {

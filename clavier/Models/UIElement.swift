@@ -19,11 +19,7 @@ import AppKit
 /// for dedup) is NOT stored here — it lives in a traversal-local wrapper
 /// inside `AccessibilityService` and is collapsed before this value is
 /// produced.
-struct UIElement: Identifiable {
-    /// Transient id retained for `Identifiable` conformance required by
-    /// SwiftUI/ForEach.  Overlay diff and deduplication must use `stableID`
-    /// rather than this value — see `ElementIdentity` in `StableIdentity.swift`.
-    let id = UUID()
+struct UIElement: Equatable {
     /// Stable content-addressed identity for overlay diffing (P3-S1) and
     /// cross-pass deduplication.  Derived from pid, role, and rounded frame.
     let stableID: ElementIdentity

@@ -20,7 +20,7 @@ import Foundation
 ///
 /// Created by `HintModeController.assignHints()` and consumed by
 /// `HintOverlayWindow` for rendering and diff-keying.
-struct HintedElement {
+struct HintedElement: Equatable {
     var element: UIElement
     let hint: String
 
