@@ -42,4 +42,15 @@ final class MatchCountPresenterTests: XCTestCase {
         let style = MatchCountPresenter.style(forCount: 123)
         XCTAssertEqual(style.labelText, "123")
     }
+
+    func test_zeroMatchesWhileHydrating_showsPendingInsteadOfRed() {
+        let style = MatchCountPresenter.style(forCount: 0, isHydrating: true)
+        XCTAssertEqual(style.labelText, "…")
+        XCTAssertNotEqual(style.borderColor, .systemRed)
+    }
+
+    func test_nonZeroMatchesWhileHydrating_showsRealCount() {
+        let style = MatchCountPresenter.style(forCount: 3, isHydrating: true)
+        XCTAssertEqual(style.labelText, "3")
+    }
 }

@@ -129,6 +129,10 @@ enum HintInputReducer {
 
         case .dismiss:
             return (.inactive, [.deactivate])
+
+        case .reapplyFilter:
+            guard !session.filter.isEmpty else { return (session, []) }
+            return handleInput(session: session, context: context)
         }
     }
 

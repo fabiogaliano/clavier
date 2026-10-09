@@ -44,6 +44,9 @@ enum HintInputCommand {
     /// The user is leaving the session (a Cmd shortcut, an app switch, a
     /// mouse click).  The tap still passes the triggering key through.
     case dismiss
+    /// Not produced by the decoder: the controller sends it when element text
+    /// arrives after the user already typed, so the filter is matched again.
+    case reapplyFilter
 }
 
 // MARK: - Decoder

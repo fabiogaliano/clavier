@@ -89,8 +89,8 @@ class HintOverlayWindow: NSWindow {
         searchTextField?.stringValue = text
     }
 
-    func updateMatchCount(_ count: Int) {
-        let style = MatchCountPresenter.style(forCount: count)
+    func updateMatchCount(_ count: Int, isHydrating: Bool = false) {
+        let style = MatchCountPresenter.style(forCount: count, isHydrating: isHydrating)
         matchCountLabel?.stringValue = style.labelText
         matchCountLabel?.textColor = style.labelColor
         matchCountBadge?.isHidden = style.labelText.isEmpty

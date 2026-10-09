@@ -63,8 +63,8 @@ final class HintOverlayRenderer {
     }
 
     /// Update just the match count badge.
-    func updateMatchCount(_ count: Int) {
-        window?.updateMatchCount(count)
+    func updateMatchCount(_ count: Int, isHydrating: Bool = false) {
+        window?.updateMatchCount(count, isHydrating: isHydrating)
     }
 
     /// Replace all hints with a fresh element list (used by refresh).

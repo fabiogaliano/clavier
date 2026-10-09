@@ -28,6 +28,9 @@ class HintModeController {
     /// the click opened a popup (and the one-shot session should follow it).
     private var lastClickOpensPopup = false
     private var activationTask: Task<Void, Never>?
+    /// Non-nil while text attributes for the current hints are still being
+    /// read; a "no matches" result in that window is not yet trustworthy.
+    private var hydrationTask: Task<Void, Never>?
     private var continuousUpgradeRequestedWhileActivating = false
 
     // Auto-deactivation timer (continuous mode)
@@ -204,6 +207,8 @@ class HintModeController {
         deactivationTimer = nil
 
         refreshCoordinator.cancelPending()
+        hydrationTask?.cancel()
+        hydrationTask = nil
         dismissalMonitor.stop()
         eventTap.stop()
         renderer.close()
@@ -290,7 +295,7 @@ class HintModeController {
                 renderer.updateSearchBar(text: text)
 
             case .updateMatchCount(let count):
-                renderer.updateMatchCount(count)
+                renderer.updateMatchCount(count, isHydrating: hydrationTask != nil)
 
             case .scheduleRefresh:
                 handlePostClick()
@@ -425,23 +430,25 @@ class HintModeController {
     /// yielding to the current run loop turn so the overlay paints first, then
     /// performing the AX reads synchronously on the main actor.  The name
     /// `scheduleMainActorHydration` is kept deliberately unambiguous about that.
+    ///
+    /// Keys typed before the pass starts are matched against elements with
+    /// no text yet, so once it lands the current filter is re-run and the
+    /// matches update in place instead of leaving a stale "0".
     private func scheduleMainActorHydration() {
-        Task { @MainActor in
+        hydrationTask?.cancel()
+        hydrationTask = Task { @MainActor [weak self] in
+            guard let self, !Task.isCancelled else { return }
             var domainElements = self.hintedElements.map { $0.element }
             AXTextHydrator.hydrate(&domainElements)
+            self.hydrationTask = nil
             guard self.isActive else { return }
             let updatedHinted = zip(self.hintedElements, domainElements).map { hinted, updated in
                 HintedElement(element: updated, hint: hinted.hint)
             }
-            switch self.session {
-            case .active(_, let filter, let mode):
-                self.session = .active(hintedElements: updatedHinted, filter: filter, mode: mode)
-            case .textSearch(_, let matches, let filter, let mode):
-                let matchIDs = Set(matches.map { $0.identity })
-                let updatedMatches = updatedHinted.filter { matchIDs.contains($0.identity) }
-                self.session = .textSearch(hintedElements: updatedHinted, matches: updatedMatches, filter: filter, mode: mode)
-            case .inactive:
-                break
+            let filter = self.session.filter
+            self.session = .active(hintedElements: updatedHinted, filter: filter, mode: self.session.mode)
+            if !filter.isEmpty {
+                self.dispatch(.reapplyFilter)
             }
         }
     }
