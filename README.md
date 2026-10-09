@@ -78,7 +78,7 @@ open clavier.xcodeproj
 | Start every session continuous | Enable the Clicking preference |
 | Select numbered match | 1-9 (when text search shows 2-9 matches) |
 | Click first match | Enter |
-| Right-click / double-click / ⌘-click / hover | Hold Ctrl / Shift / Cmd / Option on the last hint letter, on Enter, or on the match number |
+| Right-click / double-click / hover | Hold Ctrl / Shift / Option on the last hint letter, on Enter, or on the match number |
 | Clear search text | Release Option |
 | Manual refresh | Type "rr" (configurable) |
 | **Scroll Mode** | |

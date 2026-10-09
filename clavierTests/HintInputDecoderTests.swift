@@ -74,7 +74,7 @@ final class HintInputDecoderTests: XCTestCase {
     // MARK: - Click modifiers on letters
 
     private var alphabet: HintInputDecoder.Context {
-        HintInputDecoder.Context(isTextSearchActive: false, numberedElementsCount: 0, hintAlphabet: "asdfhjkl")
+        HintInputDecoder.Context(isTextSearchActive: false, numberedElementsCount: 0)
     }
 
     func test_controlLetter_decodesWithControlModifier() {
@@ -85,11 +85,8 @@ final class HintInputDecoderTests: XCTestCase {
         XCTAssertEqual(decode(Key.s, flags: .maskAlternate, context: alphabet), .character("s", modifier: .option))
     }
 
-    func test_commandHintLetter_decodesWithCommandModifier() {
-        XCTAssertEqual(decode(Key.s, flags: .maskCommand, context: alphabet), .character("s", modifier: .command))
-    }
-
-    func test_commandNonHintKey_stillDismisses() {
+    func test_commandAnything_dismisses() {
+        XCTAssertEqual(decode(Key.s, flags: .maskCommand, context: alphabet), .dismiss)
         XCTAssertEqual(decode(Key.w, flags: .maskCommand, context: alphabet), .dismiss)
         XCTAssertEqual(decode(Key.tab, flags: .maskCommand, context: alphabet), .dismiss)
         XCTAssertEqual(decode(Key.one, flags: .maskCommand, context: alphabet), .dismiss)
@@ -98,11 +95,8 @@ final class HintInputDecoderTests: XCTestCase {
         XCTAssertEqual(decode(Key.delete, flags: .maskCommand, context: alphabet), .dismiss)
     }
 
-    func test_commandWinsOverOtherModifiers() {
-        XCTAssertEqual(
-            decode(Key.s, flags: [.maskCommand, .maskShift, .maskControl], context: alphabet),
-            .character("s", modifier: .command)
-        )
+    func test_commandWithOtherModifiers_stillDismisses() {
+        XCTAssertEqual(decode(Key.s, flags: [.maskCommand, .maskShift, .maskControl], context: alphabet), .dismiss)
     }
 
     func test_controlWinsOverOptionAndShift() {
@@ -156,7 +150,7 @@ final class HintInputDecoderTests: XCTestCase {
         XCTAssertEqual(decode(Key.returnKey), .enter(.none))
         XCTAssertEqual(decode(Key.returnKey, flags: .maskControl), .enter(.control))
         XCTAssertEqual(decode(Key.returnKey, flags: .maskShift), .enter(.shift))
-        XCTAssertEqual(decode(Key.returnKey, flags: .maskCommand), .enter(.command))
+        XCTAssertEqual(decode(Key.returnKey, flags: .maskCommand), .dismiss)
         XCTAssertEqual(decode(Key.returnKey, flags: .maskAlternate), .enter(.option))
     }
 
@@ -183,7 +177,7 @@ final class HintInputDecoderTests: XCTestCase {
         let searching = HintInputDecoder.Context(isTextSearchActive: true, numberedElementsCount: 3)
         XCTAssertEqual(decode(Key.one, flags: .maskControl, context: searching), .selectNumbered(1, modifier: .control))
         XCTAssertEqual(decode(Key.one, flags: .maskShift, context: searching), .selectNumbered(1, modifier: .shift))
-        XCTAssertEqual(decode(Key.one, flags: .maskCommand, context: searching), .selectNumbered(1, modifier: .command))
+        XCTAssertEqual(decode(Key.one, flags: .maskCommand, context: searching), .dismiss)
         XCTAssertEqual(decode(Key.one, flags: .maskAlternate, context: searching), .selectNumbered(1, modifier: .option))
     }
 
@@ -215,28 +209,4 @@ final class HintInputDecoderTests: XCTestCase {
         XCTAssertEqual(decode(64, context: context), .passThrough)
     }
 
-    // MARK: - ⌘ needs a partly typed hint
-
-    func test_commandLetter_withNothingTyped_dismisses() {
-        let fresh = HintInputDecoder.Context(isTextSearchActive: false, numberedElementsCount: 0, hintAlphabet: "asdf", canCompleteHint: false)
-        XCTAssertEqual(decode(Key.s, flags: .maskCommand, context: fresh), .dismiss)
-    }
-
-    func test_sessionContext_canCompleteHint_followsFilter() {
-        let frame = CGRect(x: 0, y: 0, width: 40, height: 20)
-        let element = HintedElement(
-            element: UIElement(
-                stableID: ElementIdentity(pid: getpid(), role: "AXButton", frame: frame),
-                axElement: AXUIElementCreateSystemWide(),
-                frame: frame,
-                visibleFrame: frame,
-                role: "AXButton"
-            ),
-            hint: "as"
-        )
-        let empty = HintInputDecoder.Context(session: .active(hintedElements: [element], filter: "", mode: .oneShot), hidePrefix: "")
-        let partial = HintInputDecoder.Context(session: .active(hintedElements: [element], filter: "a", mode: .oneShot), hidePrefix: "")
-        XCTAssertEqual(empty?.canCompleteHint, false)
-        XCTAssertEqual(partial?.canCompleteHint, true)
-    }
 }

@@ -32,7 +32,6 @@ final class HintInputReducerClickModifierTests: XCTestCase {
         (.none, .primary),
         (.control, .secondary),
         (.shift, .double),
-        (.command, .commandClick),
         (.option, .hover)
     ]
 
@@ -80,7 +79,7 @@ final class HintInputReducerClickModifierTests: XCTestCase {
     // MARK: - Non-final letter
 
     func test_modifierOnNonFinalLetter_isIgnored() {
-        for modifier in [ClickModifier.control, .shift, .command, .option] {
+        for modifier in [ClickModifier.control, .shift, .option] {
             let session = HintSession.active(hintedElements: hintElements(), filter: "", mode: .oneShot)
             let (next, effects) = reduce(session, .character("a", modifier: modifier))
             XCTAssertEqual(next.filter, "a", "\(modifier)")

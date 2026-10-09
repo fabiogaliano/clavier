@@ -13,15 +13,13 @@ enum ClickModifier: Equatable, Sendable {
     case none
     case control
     case shift
-    case command
     case option
 
-    /// ⌘ wins over ⌃, ⌃ over ⌥, ⌥ over ⇧, so a chord with several modifiers
-    /// resolves to exactly one verb instead of being rejected.
+    /// ⌃ wins over ⌥, ⌥ over ⇧, so a chord with several modifiers resolves
+    /// to exactly one verb instead of being rejected.  ⌘ is deliberately not
+    /// a verb: ⌘+key is always an app shortcut and leaves the session.
     init(flags: CGEventFlags) {
-        if flags.contains(.maskCommand) {
-            self = .command
-        } else if flags.contains(.maskControl) {
+        if flags.contains(.maskControl) {
             self = .control
         } else if flags.contains(.maskAlternate) {
             self = .option
@@ -37,7 +35,6 @@ enum ClickModifier: Equatable, Sendable {
         case .none: return .primary
         case .control: return .secondary
         case .shift: return .double
-        case .command: return .commandClick
         case .option: return .hover
         }
     }

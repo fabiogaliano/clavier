@@ -312,8 +312,7 @@ class HintModeController {
             hotkey: HotkeyChord(
                 keyCodeKey: AppSettings.Keys.hintShortcutKeyCode,
                 modifiersKey: AppSettings.Keys.hintShortcutModifiers
-            ),
-            hintAlphabet: AppSettings.hintCharacters.rawString
+            )
         )
         HintModeController.tapContext.withLock { $0 = context }
     }

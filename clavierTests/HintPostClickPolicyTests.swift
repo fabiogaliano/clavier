@@ -39,7 +39,7 @@ final class HintPostClickPolicyTests: XCTestCase {
     }
 
     func test_pressingKinds_followTheTargetLikeALeftClick() {
-        for kind in [HintClickKind.primary, .double, .commandClick] {
+        for kind in [HintClickKind.primary, .double] {
             XCTAssertTrue(HintPostClickPolicy.clickOpensPopup(kind: kind) { true }, "\(kind)")
             XCTAssertFalse(HintPostClickPolicy.clickOpensPopup(kind: kind) { false }, "\(kind)")
         }

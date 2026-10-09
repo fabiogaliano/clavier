@@ -33,10 +33,6 @@ enum HintActionPerformer {
         case .double:
             // AX has no double-press action, so this is always synthesized.
             ClickService.shared.doubleClick(at: quartzCenter(of: element))
-        case .commandClick:
-            // AXPress can't carry modifier flags; only a synthesized click
-            // reaches the app as a ⌘-click.
-            ClickService.shared.click(at: quartzCenter(of: element), flags: .maskCommand)
         case .hover:
             ClickService.shared.moveCursor(to: quartzCenter(of: element))
         }

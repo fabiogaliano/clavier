@@ -68,28 +68,17 @@ enum HintInputDecoder {
         let hidePrefix: String
         /// The session's own toggle hotkey, exempt from the ⌘-dismiss rule.
         let hotkey: HotkeyChord?
-        /// Hint token alphabet.  ⌘ + one of these letters is a cmd-click on a
-        /// hint; ⌘ + anything else is still a shortcut that ends the session.
-        let hintAlphabet: String
-        /// A hint is partly typed, so the next letter may complete it.  With
-        /// nothing typed, ⌘+letter can only be an app shortcut (⌘S = Save)
-        /// and must leave the session rather than start a ⌘-click.
-        let canCompleteHint: Bool
 
         init(
             isTextSearchActive: Bool,
             numberedElementsCount: Int,
             hidePrefix: String = "",
-            hotkey: HotkeyChord? = nil,
-            hintAlphabet: String = "",
-            canCompleteHint: Bool = true
+            hotkey: HotkeyChord? = nil
         ) {
             self.isTextSearchActive = isTextSearchActive
             self.numberedElementsCount = numberedElementsCount
             self.hidePrefix = hidePrefix
             self.hotkey = hotkey
-            self.hintAlphabet = hintAlphabet
-            self.canCompleteHint = canCompleteHint
         }
 
         /// Tap-side view of `session`; `nil` when there is no live session.
@@ -97,24 +86,15 @@ enum HintInputDecoder {
         /// Numbered selection is only exposed for 1–9 matches: more than nine
         /// render as highlight boxes without numbers, so digits must keep
         /// typing into the filter.
-        init?(
-            session: HintSession,
-            hidePrefix: String,
-            hotkey: HotkeyChord? = nil,
-            hintAlphabet: String = ""
-        ) {
+        init?(session: HintSession, hidePrefix: String, hotkey: HotkeyChord? = nil) {
             guard session.isActive else { return nil }
             let numberedCount = session.numberedElements.count
             let inNumberedMode = numberedCount > 0 && numberedCount <= 9
-            let partialHint: Bool
-            if case .active(_, let filter, _) = session { partialHint = !filter.isEmpty } else { partialHint = false }
             self.init(
                 isTextSearchActive: inNumberedMode,
                 numberedElementsCount: inNumberedMode ? numberedCount : 0,
                 hidePrefix: hidePrefix,
-                hotkey: hotkey,
-                hintAlphabet: hintAlphabet,
-                canCompleteHint: partialHint
+                hotkey: hotkey
             )
         }
     }
@@ -145,17 +125,17 @@ enum HintInputDecoder {
             return .passThrough
         }
 
-        let modifier = ClickModifier(flags: flags)
-        let hasCommand = modifier == .command
+        // ⌘+anything is a system or app shortcut (⌘Tab, ⌘W, ⌘S, …), never
+        // hint input; decoding it would eat the shortcut.
+        if flags.contains(.maskCommand) { return .dismiss }
 
-        // ⌘ only selects (Enter, a numbered match, a hint letter); with any
-        // other key it is a system or app shortcut (Cmd+Tab, Cmd+W, …) and
-        // decoding it as input would eat the shortcut.
+        let modifier = ClickModifier(flags: flags)
+
         switch keyCode {
-        case 53: return hasCommand ? .dismiss : .escape
+        case 53: return .escape
         case 36: return .enter(modifier)
-        case 51: return hasCommand ? .dismiss : .backspace
-        case 49: return hasCommand ? .dismiss : .spaceKey
+        case 51: return .backspace
+        case 49: return .spaceKey
         default: break
         }
 
@@ -185,17 +165,12 @@ enum HintInputDecoder {
         } else if let base = KeymapUtilities.asciiCharacter(forKeyCode: keyCode) {
             character = base
         } else {
-            return hasCommand ? .dismiss : .passThrough
+            return .passThrough
         }
 
         let lower = character.lowercased()
         guard lower.count == 1, let ch = lower.first else {
             return .passThrough
-        }
-
-        if hasCommand {
-            guard context.canCompleteHint, context.hintAlphabet.contains(ch) else { return .dismiss }
-            return .character(lower, modifier: .command)
         }
 
         let isBaseAllowed = ch.isLetter || ch.isNumber || "-._".contains(ch)

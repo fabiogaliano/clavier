@@ -13,8 +13,6 @@ enum HintClickKind: Equatable, Sendable {
     /// Right click / context menu.
     case secondary
     case double
-    /// Left click with ⌘ held: open in new tab, add to selection.
-    case commandClick
     /// Move the cursor onto the element without clicking.
     case hover
 }

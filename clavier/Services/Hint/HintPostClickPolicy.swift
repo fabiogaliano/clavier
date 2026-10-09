@@ -51,7 +51,7 @@ enum HintPostClickPolicy {
             // Nothing was pressed, so there is no popup to follow; a one-shot
             // session has done its job once the cursor is in place.
             return false
-        case .primary, .double, .commandClick:
+        case .primary, .double:
             return targetOpensPopup()
         }
     }
