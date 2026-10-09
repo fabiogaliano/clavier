@@ -81,7 +81,7 @@ open clavier.xcodeproj
 **Views:**
 - `HintOverlayWindow` - Borderless `.screenSaver`-level `NSWindow` rendering hint labels and highlights.
 - `ScrollOverlayWindow` - Overlay window for numbered scroll-area indicators and selection highlight.
-- `PreferencesView` - SwiftUI Settings form with four tabs (Clicking, Scrolling, Appearance, General).
+- `PreferencesView` - SwiftUI Settings form with four tabs (Hints, Scrolling, Appearance, General).
 - `ShortcutRecorderView` - SwiftUI component for recording custom keyboard shortcuts with live preview.
 - `SpotifyHelpSheetWindow` - Floating SwiftUI window with a one-click relaunch button for Spotify and an "enable auto-relaunch in Preferences" pointer.
 

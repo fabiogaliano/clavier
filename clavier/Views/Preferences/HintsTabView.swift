@@ -1,6 +1,6 @@
 import SwiftUI
 
-struct ClickingTabView: View {
+struct HintsTabView: View {
     @AppStorage(AppSettings.Keys.hintShortcutKeyCode) private var hintShortcutKeyCode: Int = AppSettings.Defaults.hintShortcutKeyCode
     @AppStorage(AppSettings.Keys.hintShortcutModifiers) private var hintShortcutModifiers: Int = AppSettings.Defaults.hintShortcutModifiers
     @AppStorage(AppSettings.Keys.hintCharacters) private var hintCharacters: String = AppSettings.Defaults.hintCharacters

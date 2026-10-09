@@ -3,7 +3,7 @@ import SwiftUI
 struct PreferencesView: View {
     var body: some View {
         TabView {
-            ClickingTabView()
+            HintsTabView()
                 .tabItem {
                     Label("Hints", systemImage: "cursorarrow.click")
                 }
