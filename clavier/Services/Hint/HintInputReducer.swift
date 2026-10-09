@@ -93,7 +93,6 @@ enum HintInputReducer {
     ///   - context:  Caller-supplied settings snapshot (UserDefaults values
     ///               already read on the main actor before calling in).
     /// - Returns:    Next session state and list of effects to execute.
-    @MainActor
     static func reduce(
         session: HintSession,
         command: HintInputCommand,

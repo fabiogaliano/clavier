@@ -9,7 +9,6 @@
 import XCTest
 @testable import clavier
 
-@MainActor
 final class HintInputReducerSessionCommandTests: XCTestCase {
 
     private let dummyAX: AXUIElement = AXUIElementCreateApplication(getpid())

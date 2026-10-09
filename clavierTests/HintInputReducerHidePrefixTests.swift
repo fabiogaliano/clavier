@@ -8,7 +8,6 @@
 import XCTest
 @testable import clavier
 
-@MainActor
 final class HintInputReducerHidePrefixTests: XCTestCase {
 
     private let dummyAX: AXUIElement = AXUIElementCreateApplication(getpid())
