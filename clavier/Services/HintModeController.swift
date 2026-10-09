@@ -56,6 +56,9 @@ class HintModeController {
     // Static back-reference for the CF run loop callback path
     private static var sharedInstance: HintModeController?
 
+    /// Lets Preferences start a session on its own window as a self-test.
+    static var shared: HintModeController? { sharedInstance }
+
     // MARK: - Convenience accessors
 
     private var isActive: Bool { session.isActive }

@@ -29,6 +29,21 @@ struct GeneralTabView: View {
                         _ = AXIsProcessTrustedWithOptions(options as CFDictionary)
                     }
                 }
+
+                Button("Try hints on this window") {
+                    Task { @MainActor in
+                        // Let this click's mouse-up land before the overlay
+                        // and event tap take over.
+                        try? await Task.sleep(for: .milliseconds(150))
+                        HintModeController.shared?.toggleHintMode()
+                    }
+                }
+                .disabled(!accessibilityGranted)
+                if !accessibilityGranted {
+                    Text("Needs Accessibility access to read this window's controls.")
+                        .font(.caption)
+                        .foregroundStyle(.secondary)
+                }
             }
             .onReceive(permissionTimer) { _ in
                 accessibilityGranted = AXIsProcessTrusted()
