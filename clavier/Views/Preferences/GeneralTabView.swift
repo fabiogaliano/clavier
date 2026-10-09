@@ -68,11 +68,18 @@ struct GeneralTabView: View {
                     .font(.headline)
                 Text("Navigate any macOS app without touching the mouse.")
                     .foregroundStyle(.secondary)
-                Text("Version 1.0")
+                Text(versionString)
                     .font(.caption)
                     .foregroundStyle(.secondary)
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var versionString: String {
+        let info = Bundle.main.infoDictionary
+        let version = info?["CFBundleShortVersionString"] as? String ?? "?"
+        guard let build = info?["CFBundleVersion"] as? String else { return "Version \(version)" }
+        return "Version \(version) (\(build))"
     }
 }
