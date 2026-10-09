@@ -2,7 +2,8 @@
 //  HintActionPerformer.swift
 //  clavier
 //
-//  Executes primary and secondary clicks on a hinted element.
+//  Executes the click verbs (primary, secondary, double, ⌘-click, hover)
+//  on a hinted element.
 //
 //  Each action first attempts an AX action (`kAXPressAction` for primary,
 //  `"AXShowMenu"` for secondary) and falls back to a synthesized CGEvent
@@ -22,6 +23,24 @@ import ApplicationServices
 enum HintActionPerformer {
 
     private static let primaryActionPolicy = HintActionPolicy()
+
+    static func perform(_ kind: HintClickKind, on element: UIElement) {
+        switch kind {
+        case .primary:
+            performPrimary(on: element)
+        case .secondary:
+            performSecondary(on: element)
+        case .double:
+            // AX has no double-press action, so this is always synthesized.
+            ClickService.shared.doubleClick(at: quartzCenter(of: element))
+        case .commandClick:
+            // AXPress can't carry modifier flags; only a synthesized click
+            // reaches the app as a ⌘-click.
+            ClickService.shared.click(at: quartzCenter(of: element), flags: .maskCommand)
+        case .hover:
+            ClickService.shared.moveCursor(to: quartzCenter(of: element))
+        }
+    }
 
     /// Perform the element's primary action (single click equivalent).
     ///
@@ -45,8 +64,7 @@ enum HintActionPerformer {
             if axStatus == .success { return }
         }
 
-        let point = ScreenGeometry.appKitCenterToQuartz(element.centerPoint)
-        ClickService.shared.click(at: point)
+        ClickService.shared.click(at: quartzCenter(of: element))
     }
 
     /// Perform the element's secondary action (right click / context menu).
@@ -57,7 +75,10 @@ enum HintActionPerformer {
         let axStatus = AXUIElementPerformAction(element.axElement, "AXShowMenu" as CFString)
         guard axStatus != .success else { return }
 
-        let point = ScreenGeometry.appKitCenterToQuartz(element.centerPoint)
-        ClickService.shared.rightClick(at: point)
+        ClickService.shared.rightClick(at: quartzCenter(of: element))
+    }
+
+    private static func quartzCenter(of element: UIElement) -> CGPoint {
+        ScreenGeometry.appKitCenterToQuartz(element.centerPoint)
     }
 }

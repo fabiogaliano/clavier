@@ -32,10 +32,10 @@ import AppKit
 enum HintInputCommand: Equatable {
     case escape
     case backspace
-    case enter(withControl: Bool)
+    case enter(ClickModifier)
     case clearSearch
-    case selectNumbered(Int)
-    case character(String)
+    case selectNumbered(Int, modifier: ClickModifier = .none)
+    case character(String, modifier: ClickModifier = .none)
     /// Space pressed in hint mode — semantics resolved by the reducer
     /// (rotate overlap when filter is empty, otherwise treat as a space
     /// character for text search).
@@ -68,17 +68,22 @@ enum HintInputDecoder {
         let hidePrefix: String
         /// The session's own toggle hotkey, exempt from the ⌘-dismiss rule.
         let hotkey: HotkeyChord?
+        /// Hint token alphabet.  ⌘ + one of these letters is a cmd-click on a
+        /// hint; ⌘ + anything else is still a shortcut that ends the session.
+        let hintAlphabet: String
 
         init(
             isTextSearchActive: Bool,
             numberedElementsCount: Int,
             hidePrefix: String = "",
-            hotkey: HotkeyChord? = nil
+            hotkey: HotkeyChord? = nil,
+            hintAlphabet: String = ""
         ) {
             self.isTextSearchActive = isTextSearchActive
             self.numberedElementsCount = numberedElementsCount
             self.hidePrefix = hidePrefix
             self.hotkey = hotkey
+            self.hintAlphabet = hintAlphabet
         }
 
         /// Tap-side view of `session`; `nil` when there is no live session.
@@ -86,7 +91,12 @@ enum HintInputDecoder {
         /// Numbered selection is only exposed for 1–9 matches: more than nine
         /// render as highlight boxes without numbers, so digits must keep
         /// typing into the filter.
-        init?(session: HintSession, hidePrefix: String, hotkey: HotkeyChord? = nil) {
+        init?(
+            session: HintSession,
+            hidePrefix: String,
+            hotkey: HotkeyChord? = nil,
+            hintAlphabet: String = ""
+        ) {
             guard session.isActive else { return nil }
             let numberedCount = session.numberedElements.count
             let inNumberedMode = numberedCount > 0 && numberedCount <= 9
@@ -94,7 +104,8 @@ enum HintInputDecoder {
                 isTextSearchActive: inNumberedMode,
                 numberedElementsCount: inNumberedMode ? numberedCount : 0,
                 hidePrefix: hidePrefix,
-                hotkey: hotkey
+                hotkey: hotkey,
+                hintAlphabet: hintAlphabet
             )
         }
     }
@@ -107,12 +118,14 @@ enum HintInputDecoder {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
 
-        // Option key press → clear search
+        // Clear search fires on Option *release*: pressing ⌥ is also the
+        // start of a ⌥+letter hover, and clearing on press would wipe the
+        // first hint letter before the completing one arrives.
         if type == .flagsChanged && (keyCode == 58 || keyCode == 61) {
             if flags.contains(.maskAlternate) {
-                return .clearSearch
+                return .passThrough
             }
-            return .passThrough
+            return .clearSearch
         }
 
         guard type == .keyDown else { return .passThrough }
@@ -123,15 +136,17 @@ enum HintInputDecoder {
             return .passThrough
         }
 
-        // Cmd+anything is a system or app shortcut (Cmd+Tab, Cmd+W, …), never
-        // hint input; decoding it as a letter would eat the shortcut.
-        if flags.contains(.maskCommand) { return .dismiss }
+        let modifier = ClickModifier(flags: flags)
+        let hasCommand = modifier == .command
 
+        // ⌘ only selects (Enter, a numbered match, a hint letter); with any
+        // other key it is a system or app shortcut (Cmd+Tab, Cmd+W, …) and
+        // decoding it as input would eat the shortcut.
         switch keyCode {
-        case 53: return .escape
-        case 36: return .enter(withControl: flags.contains(.maskControl))
-        case 51: return .backspace
-        case 49: return .spaceKey
+        case 53: return hasCommand ? .dismiss : .escape
+        case 36: return .enter(modifier)
+        case 51: return hasCommand ? .dismiss : .backspace
+        case 49: return hasCommand ? .dismiss : .spaceKey
         default: break
         }
 
@@ -141,27 +156,37 @@ enum HintInputDecoder {
                 18: 1, 19: 2, 20: 3, 21: 4, 23: 5, 22: 6, 26: 7, 28: 8, 25: 9
             ]
             if let number = numberKeyMap[keyCode], number <= context.numberedElementsCount {
-                return .selectNumbered(number)
+                return .selectNumbered(number, modifier: modifier)
             }
         }
 
         // Character keys. Base table holds plain unmodified keys; the
         // shifted-punctuation table supplies shift-produced symbols (including
-        // keys absent from the base table like `/` and `\`).
+        // keys absent from the base table like `/` and `\`).  A shifted
+        // symbol is a different character, not a ⇧-modified one, so it
+        // carries no modifier.
         let character: String
-        if flags.contains(.maskShift), let shifted = shiftedPunctuation[keyCode] {
+        var characterModifier = modifier
+        if modifier == .shift, let shifted = shiftedPunctuation[keyCode] {
             character = shifted
-        } else if keyCode == 27 && flags.contains(.maskShift) {
+            characterModifier = .none
+        } else if keyCode == 27 && modifier == .shift {
             character = "_"
+            characterModifier = .none
         } else if let base = KeymapUtilities.asciiCharacter(forKeyCode: keyCode) {
             character = base
         } else {
-            return .passThrough
+            return hasCommand ? .dismiss : .passThrough
         }
 
         let lower = character.lowercased()
         guard lower.count == 1, let ch = lower.first else {
             return .passThrough
+        }
+
+        if hasCommand {
+            guard context.hintAlphabet.contains(ch) else { return .dismiss }
+            return .character(lower, modifier: .command)
         }
 
         let isBaseAllowed = ch.isLetter || ch.isNumber || "-._".contains(ch)
@@ -170,7 +195,7 @@ enum HintInputDecoder {
             return .passThrough
         }
 
-        return .character(lower)
+        return .character(lower, modifier: characterModifier)
     }
 
     /// Shift-modified punctuation characters produced by common US-QWERTY

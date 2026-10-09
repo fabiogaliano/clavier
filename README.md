@@ -78,7 +78,8 @@ open clavier.xcodeproj
 | Start every session continuous | Enable the Clicking preference |
 | Select numbered match | 1-9 (when text search shows 2-9 matches) |
 | Click first match | Enter |
-| Right-click first match | Ctrl + Enter |
+| Right-click / double-click / ⌘-click / hover | Hold Ctrl / Shift / Cmd / Option on the last hint letter, on Enter, or on the match number |
+| Clear search text | Release Option |
 | Manual refresh | Type "rr" (configurable) |
 | **Scroll Mode** | |
 | Activate Scroll Mode | F18 |
@@ -106,10 +107,6 @@ Two explicit state machines — `HintSession` and `ScrollSession` — each drive
 - **Threading**: The keyboard event tap runs on a CFRunLoop thread. All AX calls and UI mutations are confined to `@MainActor`. Shared state uses `nonisolated(unsafe)` static scalars dispatched back to main.
 - **Coordinate systems**: AX API uses bottom-left origin (Quartz). Overlay positioning flips to top-left (AppKit). Synthesized clicks flip back. `ScreenGeometry` owns both transforms.
 - **App compatibility**: dormant renderer AX trees are enabled for known Chromium browsers and Electron apps. CEF apps (Spotify) can't be woken at runtime — detected and surfaced as a one-click relaunch instead.
-
-## Roadmap
-
-- Configurable right-click shortcut (currently hardcoded to Ctrl+Enter)
 
 ## License
 

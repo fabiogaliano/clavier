@@ -40,6 +40,22 @@ enum HintPostClickPolicy {
         }
     }
 
+    /// Whether a click of `kind` should be treated as opening a popup.
+    /// `targetOpensPopup` probes the live element and is only evaluated for
+    /// kinds that press it the way a left click would.
+    static func clickOpensPopup(kind: HintClickKind, targetOpensPopup: () -> Bool) -> Bool {
+        switch kind {
+        case .secondary:
+            return true // a right-click opens a context menu
+        case .hover:
+            // Nothing was pressed, so there is no popup to follow; a one-shot
+            // session has done its job once the cursor is in place.
+            return false
+        case .primary, .double, .commandClick:
+            return targetOpensPopup()
+        }
+    }
+
     static func opensPopup(role: String, hasPopup: Bool?) -> Bool {
         popupTriggerRoles.contains(role) || hasPopup == true
     }

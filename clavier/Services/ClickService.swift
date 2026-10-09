@@ -13,29 +13,44 @@ class ClickService {
 
     static let shared = ClickService()
 
-    func click(at point: CGPoint) {
-        let clickDown = CGEvent(mouseEventSource: nil, mouseType: .leftMouseDown, mouseCursorPosition: point, mouseButton: .left)
-        let clickUp = CGEvent(mouseEventSource: nil, mouseType: .leftMouseUp, mouseCursorPosition: point, mouseButton: .left)
-        SyntheticClickTag.tag(clickDown)
-        SyntheticClickTag.tag(clickUp)
-
-        clickDown?.post(tap: .cghidEventTap)
-        clickUp?.post(tap: .cghidEventTap)
+    /// `flags` is set explicitly on every event: the user is usually still
+    /// holding the modifier that chose the verb (⌃, ⇧), and letting it leak
+    /// into the click would turn a double click into a shift-double-click.
+    func click(at point: CGPoint, flags: CGEventFlags = []) {
+        postClick(at: point, button: .left, flags: flags, clickState: 1)
     }
 
     func rightClick(at point: CGPoint) {
-        let clickDown = CGEvent(mouseEventSource: nil, mouseType: .rightMouseDown, mouseCursorPosition: point, mouseButton: .right)
-        let clickUp = CGEvent(mouseEventSource: nil, mouseType: .rightMouseUp, mouseCursorPosition: point, mouseButton: .right)
-        SyntheticClickTag.tag(clickDown)
-        SyntheticClickTag.tag(clickUp)
-
-        clickDown?.post(tap: .cghidEventTap)
-        clickUp?.post(tap: .cghidEventTap)
+        postClick(at: point, button: .right, flags: [], clickState: 1)
     }
 
+    /// The second press carries click state 2; without it apps see two
+    /// unrelated single clicks rather than a double click.
     func doubleClick(at point: CGPoint) {
-        for _ in 0..<2 {
-            click(at: point)
+        postClick(at: point, button: .left, flags: [], clickState: 1)
+        postClick(at: point, button: .left, flags: [], clickState: 2)
+    }
+
+    func moveCursor(to point: CGPoint) {
+        let move = CGEvent(mouseEventSource: nil, mouseType: .mouseMoved, mouseCursorPosition: point, mouseButton: .left)
+        move?.flags = []
+        SyntheticClickTag.tag(move)
+        move?.post(tap: .cghidEventTap)
+    }
+
+    private func postClick(at point: CGPoint, button: CGMouseButton, flags: CGEventFlags, clickState: Int64) {
+        let (downType, upType): (CGEventType, CGEventType) = button == .right
+            ? (.rightMouseDown, .rightMouseUp)
+            : (.leftMouseDown, .leftMouseUp)
+        let events = [
+            CGEvent(mouseEventSource: nil, mouseType: downType, mouseCursorPosition: point, mouseButton: button),
+            CGEvent(mouseEventSource: nil, mouseType: upType, mouseCursorPosition: point, mouseButton: button)
+        ]
+        for event in events {
+            event?.flags = flags
+            event?.setIntegerValueField(.mouseEventClickState, value: clickState)
+            SyntheticClickTag.tag(event)
+            event?.post(tap: .cghidEventTap)
         }
     }
 

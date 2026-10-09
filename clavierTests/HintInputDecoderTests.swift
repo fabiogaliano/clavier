@@ -15,6 +15,8 @@ final class HintInputDecoderTests: XCTestCase {
 
     private enum Key {
         static let a: CGKeyCode = 0
+        static let s: CGKeyCode = 1
+        static let semicolon: CGKeyCode = 41
         static let w: CGKeyCode = 13
         static let one: CGKeyCode = 18
         static let four: CGKeyCode = 21
@@ -48,8 +50,8 @@ final class HintInputDecoderTests: XCTestCase {
         XCTAssertEqual(decode(Key.a), .character("a"))
     }
 
-    func test_shiftedLetter_decodesAsLowercaseCharacter() {
-        XCTAssertEqual(decode(Key.a, flags: .maskShift), .character("a"))
+    func test_shiftedLetter_decodesAsLowercaseCharacterWithShiftModifier() {
+        XCTAssertEqual(decode(Key.a, flags: .maskShift), .character("a", modifier: .shift))
     }
 
     func test_shiftMinus_decodesAsUnderscore() {
@@ -63,14 +65,64 @@ final class HintInputDecoderTests: XCTestCase {
         XCTAssertEqual(decode(Key.slash, flags: .maskShift, context: withPrefix), .character("?"))
     }
 
-    // MARK: - Modifiers
-
-    func test_optionPress_clearsSearch() {
-        XCTAssertEqual(decode(Key.option, flags: .maskAlternate, type: .flagsChanged), .clearSearch)
+    func test_shiftedPunctuationHidePrefix_carriesNoModifier() {
+        let withPrefix = HintInputDecoder.Context(isTextSearchActive: false, numberedElementsCount: 0, hidePrefix: ":")
+        XCTAssertEqual(decode(Key.semicolon, flags: .maskShift, context: withPrefix), .character(":"))
     }
 
-    func test_optionRelease_passesThrough() {
-        XCTAssertEqual(decode(Key.option, flags: [], type: .flagsChanged), .passThrough)
+    // MARK: - Click modifiers on letters
+
+    private var alphabet: HintInputDecoder.Context {
+        HintInputDecoder.Context(isTextSearchActive: false, numberedElementsCount: 0, hintAlphabet: "asdfhjkl")
+    }
+
+    func test_controlLetter_decodesWithControlModifier() {
+        XCTAssertEqual(decode(Key.s, flags: .maskControl, context: alphabet), .character("s", modifier: .control))
+    }
+
+    func test_optionLetter_decodesWithOptionModifier() {
+        XCTAssertEqual(decode(Key.s, flags: .maskAlternate, context: alphabet), .character("s", modifier: .option))
+    }
+
+    func test_commandHintLetter_decodesWithCommandModifier() {
+        XCTAssertEqual(decode(Key.s, flags: .maskCommand, context: alphabet), .character("s", modifier: .command))
+    }
+
+    func test_commandNonHintKey_stillDismisses() {
+        XCTAssertEqual(decode(Key.w, flags: .maskCommand, context: alphabet), .dismiss)
+        XCTAssertEqual(decode(Key.tab, flags: .maskCommand, context: alphabet), .dismiss)
+        XCTAssertEqual(decode(Key.one, flags: .maskCommand, context: alphabet), .dismiss)
+        XCTAssertEqual(decode(Key.escape, flags: .maskCommand, context: alphabet), .dismiss)
+        XCTAssertEqual(decode(Key.space, flags: .maskCommand, context: alphabet), .dismiss)
+        XCTAssertEqual(decode(Key.delete, flags: .maskCommand, context: alphabet), .dismiss)
+    }
+
+    func test_commandWinsOverOtherModifiers() {
+        XCTAssertEqual(
+            decode(Key.s, flags: [.maskCommand, .maskShift, .maskControl], context: alphabet),
+            .character("s", modifier: .command)
+        )
+    }
+
+    func test_controlWinsOverOptionAndShift() {
+        XCTAssertEqual(
+            decode(Key.s, flags: [.maskControl, .maskAlternate, .maskShift], context: alphabet),
+            .character("s", modifier: .control)
+        )
+    }
+
+    func test_capsLock_isNotAModifier() {
+        XCTAssertEqual(decode(Key.s, flags: .maskAlphaShift, context: alphabet), .character("s"))
+    }
+
+    // MARK: - Modifiers
+
+    func test_optionPress_passesThroughSoItCanStartAHover() {
+        XCTAssertEqual(decode(Key.option, flags: .maskAlternate, type: .flagsChanged), .passThrough)
+    }
+
+    func test_optionRelease_clearsSearch() {
+        XCTAssertEqual(decode(Key.option, flags: [], type: .flagsChanged), .clearSearch)
     }
 
     func test_cmdLetter_dismissesInsteadOfTypingTheLetter() {
@@ -99,9 +151,12 @@ final class HintInputDecoderTests: XCTestCase {
         XCTAssertEqual(decode(Key.escape), .escape)
     }
 
-    func test_return_withAndWithoutControl() {
-        XCTAssertEqual(decode(Key.returnKey), .enter(withControl: false))
-        XCTAssertEqual(decode(Key.returnKey, flags: .maskControl), .enter(withControl: true))
+    func test_return_carriesTheHeldModifier() {
+        XCTAssertEqual(decode(Key.returnKey), .enter(.none))
+        XCTAssertEqual(decode(Key.returnKey, flags: .maskControl), .enter(.control))
+        XCTAssertEqual(decode(Key.returnKey, flags: .maskShift), .enter(.shift))
+        XCTAssertEqual(decode(Key.returnKey, flags: .maskCommand), .enter(.command))
+        XCTAssertEqual(decode(Key.returnKey, flags: .maskAlternate), .enter(.option))
     }
 
     func test_delete() {
@@ -121,6 +176,14 @@ final class HintInputDecoderTests: XCTestCase {
     func test_digit_duringTextSearch_selectsNumberedMatch() {
         let searching = HintInputDecoder.Context(isTextSearchActive: true, numberedElementsCount: 3)
         XCTAssertEqual(decode(Key.one, context: searching), .selectNumbered(1))
+    }
+
+    func test_digitWithModifier_duringTextSearch_carriesTheModifier() {
+        let searching = HintInputDecoder.Context(isTextSearchActive: true, numberedElementsCount: 3)
+        XCTAssertEqual(decode(Key.one, flags: .maskControl, context: searching), .selectNumbered(1, modifier: .control))
+        XCTAssertEqual(decode(Key.one, flags: .maskShift, context: searching), .selectNumbered(1, modifier: .shift))
+        XCTAssertEqual(decode(Key.one, flags: .maskCommand, context: searching), .selectNumbered(1, modifier: .command))
+        XCTAssertEqual(decode(Key.one, flags: .maskAlternate, context: searching), .selectNumbered(1, modifier: .option))
     }
 
     func test_digit_beyondMatchCount_staysACharacter() {

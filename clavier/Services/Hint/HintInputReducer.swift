@@ -24,10 +24,8 @@ import Foundation
 /// executes the corresponding operation.  Conforms to `ReducerSideEffect`
 /// from P4-S1.
 enum HintSideEffect: ReducerSideEffect {
-    /// Perform a primary (left) click on the given element.
-    case performClick(on: UIElement)
-    /// Perform a right-click (AXShowMenu or CGEvent) on the given element.
-    case performRightClick(on: UIElement)
+    /// Click (or hover) the given element.
+    case perform(HintClickKind, on: UIElement)
     /// Deactivate hint mode entirely.
     case deactivate
     /// Update the overlay to reflect the current session state.
@@ -107,21 +105,26 @@ enum HintInputReducer {
         case .backspace:
             return handleBackspace(session: session, context: context)
 
-        case .character(let char):
+        case .character(let char, let modifier):
             let newFilter = session.filter + char
-            return handleInput(session: sessionWithFilter(session, newFilter), context: context)
+            return handleInput(
+                session: sessionWithFilter(session, newFilter),
+                context: context,
+                completionKind: modifier.clickKind
+            )
 
         case .spaceKey:
             return handleSpaceKey(session: session, context: context)
 
         case .clearSearch:
+            guard !session.filter.isEmpty else { return (session, []) }
             return handleClearSearch(session: session)
 
-        case .selectNumbered(let number):
-            return handleSelectNumbered(number: number, session: session)
+        case .selectNumbered(let number, let modifier):
+            return handleSelectNumbered(number: number, kind: modifier.clickKind, session: session)
 
-        case .enter(let withControl):
-            return handleEnter(session: session, withControl: withControl, context: context)
+        case .enter(let modifier):
+            return handleEnter(session: session, kind: modifier.clickKind, context: context)
 
         case .passThrough:
             return (session, [])
@@ -193,6 +196,7 @@ enum HintInputReducer {
 
     private static func handleSelectNumbered(
         number: Int,
+        kind: HintClickKind,
         session: HintSession
     ) -> (HintSession, [HintSideEffect]) {
         guard case .textSearch(let elements, let matches, _, let mode) = session,
@@ -200,7 +204,7 @@ enum HintInputReducer {
         let hintedElement = matches[number - 1]
         let nextSession = HintSession.active(hintedElements: elements, filter: "", mode: mode)
         return (nextSession, [
-            .performClick(on: hintedElement.element),
+            .perform(kind, on: hintedElement.element),
             .showSearchBar(text: ""),
             .updateMatchCount(-1),
             .setLabelsHidden(false),
@@ -210,17 +214,14 @@ enum HintInputReducer {
 
     private static func handleEnter(
         session: HintSession,
-        withControl: Bool,
+        kind: HintClickKind,
         context: HintInputContext
     ) -> (HintSession, [HintSideEffect]) {
         let effective = effectiveFilter(session.filter, context: context)
         guard effective.count >= context.minSearchChars else { return (session, []) }
         let matches = searchElementsByText(effective, in: session.hintedElements)
         guard let first = matches.first else { return (session, []) }
-        let clickEffect: HintSideEffect = withControl
-            ? .performRightClick(on: first.element)
-            : .performClick(on: first.element)
-        return (session, [clickEffect, .scheduleRefresh])
+        return (session, [.perform(kind, on: first.element), .scheduleRefresh])
     }
 
     // MARK: - Core input dispatch (filter change)
@@ -230,9 +231,14 @@ enum HintInputReducer {
     /// This is the central branching point that was previously `processInput` in
     /// `HintModeController`.  The logic is unchanged — only the I/O (overlay calls)
     /// is expressed as side effects rather than direct method calls.
+    ///
+    /// `completionKind` comes from the modifier held on the keystroke that
+    /// produced this filter.  It applies only if that keystroke completes a
+    /// hint token; on any other keystroke the modifier is ignored.
     private static func handleInput(
         session: HintSession,
-        context: HintInputContext
+        context: HintInputContext,
+        completionKind: HintClickKind = .primary
     ) -> (HintSession, [HintSideEffect]) {
         let rawInput = session.filter
         let hideActive = isHidePrefixActive(rawInput, context: context)
@@ -266,7 +272,7 @@ enum HintInputReducer {
             effects.append(.showSearchBar(text: ""))
             effects.append(.updateMatchCount(-1))
             effects.append(.setLabelsHidden(false))
-            effects.append(.performClick(on: matched.element))
+            effects.append(.perform(completionKind, on: matched.element))
             effects.append(.scheduleRefresh)
             return (nextSession, effects)
         }
@@ -311,7 +317,9 @@ enum HintInputReducer {
             effects.append(.showSearchBar(text: ""))
             effects.append(.updateMatchCount(-1))
             effects.append(.setLabelsHidden(false))
-            effects.append(.performClick(on: textMatches[0].element))
+            // Always a plain click: a modifier while typing a search word is
+            // capitalisation, not a request for a different verb.
+            effects.append(.perform(.primary, on: textMatches[0].element))
             effects.append(.scheduleRefresh)
             return (nextSession, effects)
         }
