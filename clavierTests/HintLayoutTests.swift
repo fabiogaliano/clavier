@@ -84,7 +84,7 @@ final class HintLayoutTests: XCTestCase {
             windowSize: windowSize,
             elementFrames: [element.visibleFrame]
         )
-        let style = HintStyle()
+        let style = AppSettings.hintStyle
         let expected = engine.place(
             element: element,
             labelSize: built.view.frame.size,

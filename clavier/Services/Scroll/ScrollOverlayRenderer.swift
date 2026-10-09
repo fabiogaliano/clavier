@@ -27,7 +27,7 @@ final class ScrollOverlayRenderer {
 
     /// Open the overlay with an initial list of numbered areas (usually one).
     func open(initialAreas: [NumberedArea]) {
-        let newWindow = ScrollOverlayWindow(numberedAreas: initialAreas)
+        let newWindow = ScrollOverlayWindow(numberedAreas: initialAreas, style: AppSettings.scrollStyle)
         newWindow.show()
         self.window = newWindow
     }

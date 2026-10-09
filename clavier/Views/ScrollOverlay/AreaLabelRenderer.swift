@@ -1,27 +1,5 @@
 import AppKit
 
-/// Appearance snapshot for scroll-mode number labels.
-struct ScrollAreaStyle {
-    let fontSize: CGFloat
-    let backgroundColor: NSColor
-    let textColor: NSColor
-    let bgOpacity: CGFloat
-    let bdrOpacity: CGFloat
-
-    init() {
-        let size = UserDefaults.standard.double(forKey: AppSettings.Keys.scrollHintSize)
-        fontSize = size > 0 ? CGFloat(size) : CGFloat(AppSettings.Defaults.scrollHintSize)
-        let bgHex = UserDefaults.standard.string(forKey: AppSettings.Keys.scrollBackgroundHex) ?? AppSettings.Defaults.scrollBackgroundHex
-        let txHex = UserDefaults.standard.string(forKey: AppSettings.Keys.scrollTextHex) ?? AppSettings.Defaults.scrollTextHex
-        backgroundColor = AppearanceColor.effectiveTint(customHex: bgHex)
-        textColor = NSColor(hex: txHex)
-        let bgOp = UserDefaults.standard.double(forKey: AppSettings.Keys.scrollBackgroundOpacity)
-        bgOpacity = bgOp > 0 ? CGFloat(bgOp) : CGFloat(AppSettings.Defaults.scrollBackgroundOpacity)
-        let bdOp = UserDefaults.standard.double(forKey: AppSettings.Keys.scrollBorderOpacity)
-        bdrOpacity = bdOp > 0 ? CGFloat(bdOp) : CGFloat(AppSettings.Defaults.scrollBorderOpacity)
-    }
-}
-
 /// Creates numbered area label views for the scroll overlay.
 ///
 /// The window owns the identity cache; this is a pure view factory.
@@ -30,7 +8,7 @@ enum AreaLabelRenderer {
     static let cornerRadius: CGFloat = 8
 
     @MainActor
-    static func createHintLabel(for numbered: NumberedArea, style: ScrollAreaStyle = ScrollAreaStyle()) -> NSView {
+    static func createHintLabel(for numbered: NumberedArea, style: OverlayStyle) -> NSView {
         let label = NSTextField(labelWithString: numbered.number)
         label.font = NSFont.monospacedSystemFont(ofSize: style.fontSize, weight: .bold)
         label.textColor = style.textColor
@@ -49,20 +27,18 @@ enum AreaLabelRenderer {
         }()
         label.sizeToFit()
 
-        let paddingX: CGFloat = 10
-        let paddingY: CGFloat = 6
-        let width = label.frame.width + paddingX * 2
-        let height = label.frame.height + paddingY * 2
+        let width = label.frame.width + style.paddingX * 2
+        let height = label.frame.height + style.paddingY * 2
 
         let container = GlassBackdrop.make(
             size: CGSize(width: width, height: height),
             cornerRadius: cornerRadius,
             tintColor: style.backgroundColor,
-            tintAlpha: style.bgOpacity,
-            borderAlpha: style.bdrOpacity
+            tintAlpha: style.backgroundOpacity,
+            borderAlpha: style.borderOpacity
         )
 
-        label.frame = CGRect(x: 0, y: paddingY, width: width, height: label.frame.height)
+        label.frame = CGRect(x: 0, y: style.paddingY, width: width, height: label.frame.height)
         container.addSubview(label)
 
         let localOrigin = ScreenGeometry.toWindowLocal(

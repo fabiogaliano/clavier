@@ -8,12 +8,12 @@ import AppKit
 /// produces or mutates views.
 enum MatchHighlightRenderer {
 
-    /// Creates a soft-filled highlight over a matched text-search element.
-    /// Thinner border + low-alpha fill reads as "this is the match" without
+    /// Creates a soft-filled highlight over a matched text-search element
+    /// (`frame` in screen coordinates). Thinner border + low-alpha fill reads as "this is the match" without
     /// overpowering the underlying UI element.
     @MainActor
-    static func createHighlightView(for element: UIElement) -> NSView {
-        let localFrame = ScreenGeometry.toWindowLocal(element.visibleFrame.insetBy(dx: -2, dy: -2))
+    static func createHighlightView(frame: CGRect) -> NSView {
+        let localFrame = ScreenGeometry.toWindowLocal(frame)
         let highlightView = NSView(frame: localFrame)
         highlightView.wantsLayer = true
         highlightView.layer?.borderWidth = 2
@@ -25,13 +25,11 @@ enum MatchHighlightRenderer {
 
     /// Applies two-color attributed text to a hint label's text field so the
     /// already-typed prefix appears in the highlight color.
-    static func highlightPrefix(in textField: NSTextField?, prefix: String, hint: String) {
+    static func highlightPrefix(in textField: NSTextField?, prefix: String, hint: String, style: OverlayStyle) {
         guard let textField = textField else { return }
 
-        let highlightHex = UserDefaults.standard.string(forKey: AppSettings.Keys.highlightTextHex) ?? AppSettings.Defaults.highlightTextHex
-        let textHex = UserDefaults.standard.string(forKey: AppSettings.Keys.hintTextHex) ?? AppSettings.Defaults.hintTextHex
-        let highlightColor = NSColor(hex: highlightHex)
-        let textColor = NSColor(hex: textHex)
+        let highlightColor = style.highlightTextColor
+        let textColor = style.textColor
 
         let attributedString = NSMutableAttributedString(string: hint)
         attributedString.addAttribute(.foregroundColor, value: highlightColor, range: NSRange(location: 0, length: prefix.count))

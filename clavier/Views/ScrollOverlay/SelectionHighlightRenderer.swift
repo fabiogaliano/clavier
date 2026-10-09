@@ -16,7 +16,6 @@ enum SelectionHighlightRenderer {
     ) {
         highlightView?.frame = ScreenGeometry.toWindowLocal(numbered.area.frame)
         highlightView?.isHidden = false
-        applyActiveStyle(highlightView)
 
         for (identity, view) in hintViews {
             view.alphaValue = identity == numbered.identity ? 1.0 : 0.35
@@ -34,14 +33,12 @@ enum SelectionHighlightRenderer {
         }
     }
 
-    /// Applies the visual style to the shared highlight view. Called at setup
-    /// and on each selection so the style tracks accent/color preference
-    /// changes without rebuilding the view.
+    /// Applies the visual style to the shared highlight view, once at setup
+    /// with the session's style snapshot.
     @MainActor
-    static func applyActiveStyle(_ view: NSView?) {
+    static func applyActiveStyle(_ view: NSView?, style: OverlayStyle) {
         guard let view = view else { return }
-        let borderHex = UserDefaults.standard.string(forKey: AppSettings.Keys.scrollBorderHex) ?? AppSettings.Defaults.scrollBorderHex
-        let tint = AppearanceColor.effectiveTint(customHex: borderHex)
+        let tint = style.borderColor
         view.wantsLayer = true
         view.layer?.borderColor = tint.withAlphaComponent(0.9).cgColor
         view.layer?.backgroundColor = tint.withAlphaComponent(0.08).cgColor

@@ -10,9 +10,11 @@ class ScrollOverlayWindow: NSWindow {
     private var hintViews: [AreaIdentity: NSView] = [:]
     private var highlightView: NSView?
     private var selectedAreaIndex: Int?
+    private let style: OverlayStyle
 
-    init(numberedAreas: [NumberedArea]) {
+    init(numberedAreas: [NumberedArea], style: OverlayStyle) {
         self.numberedAreas = numberedAreas
+        self.style = style
 
         let desktopBounds = ScreenGeometry.desktopBoundsInAppKit
 
@@ -43,7 +45,7 @@ class ScrollOverlayWindow: NSWindow {
 
         let highlight = NSView(frame: .zero)
         highlight.isHidden = true
-        SelectionHighlightRenderer.applyActiveStyle(highlight)
+        SelectionHighlightRenderer.applyActiveStyle(highlight, style: style)
         containerView.addSubview(highlight)
         highlightView = highlight
 
@@ -51,7 +53,7 @@ class ScrollOverlayWindow: NSWindow {
 
         if showNumbers {
             for numbered in numberedAreas {
-                let hintView = AreaLabelRenderer.createHintLabel(for: numbered)
+                let hintView = AreaLabelRenderer.createHintLabel(for: numbered, style: style)
                 containerView.addSubview(hintView)
                 hintViews[numbered.identity] = hintView
             }
@@ -71,7 +73,7 @@ class ScrollOverlayWindow: NSWindow {
         let showNumbers = UserDefaults.standard.bool(forKey: AppSettings.Keys.showScrollAreaNumbers)
         guard showNumbers else { return }
 
-        let hintView = AreaLabelRenderer.createHintLabel(for: numbered)
+        let hintView = AreaLabelRenderer.createHintLabel(for: numbered, style: style)
         contentView?.addSubview(hintView)
         hintViews[numbered.identity] = hintView
 
