@@ -102,7 +102,7 @@ enum GlassBackdrop {
     /// Each line is the shape minus itself shifted by 1 px, so it follows the
     /// corner curve and thins out toward the sides the way a lit glass edge
     /// does, instead of reading as a flat 1 px border.
-    private static func addSpecularRim(to container: NSView, cornerRadius: CGFloat, top: CGFloat, bottom: CGFloat) {
+    static func addSpecularRim(to container: NSView, cornerRadius: CGFloat, top: CGFloat, bottom: CGFloat) {
         let bounds = container.bounds
         let radius = min(cornerRadius, bounds.height / 2, bounds.width / 2)
 

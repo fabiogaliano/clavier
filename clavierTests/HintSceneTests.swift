@@ -161,21 +161,93 @@ final class HintSceneTests: XCTestCase {
         XCTAssertTrue(scene.isPillVisible)
     }
 
-    func test_pill_visibleWithStatus_andShowsStatusText() {
-        let scene = HintScene.derive(
-            from: .active(hintedElements: elements, filter: "a", mode: .oneShot),
-            chrome: .init(searchText: "a", status: "No elements found")
-        )
+    func test_pill_visibleWithStatus_evenWithoutSession() {
+        let scene = HintScene.derive(from: .inactive, chrome: .init(status: .waiting(appName: "Chrome")))
         XCTAssertTrue(scene.isPillVisible)
-        XCTAssertEqual(scene.pillText, "No elements found")
     }
 
-    func test_pillText_isSearchTextWithoutStatus() {
+    func test_pill_visibleInContinuousMode() {
         let scene = HintScene.derive(
+            from: .active(hintedElements: elements, filter: "", mode: .continuous),
+            chrome: .init()
+        )
+        XCTAssertTrue(scene.isPillVisible)
+    }
+
+    // MARK: - Bar
+
+    func test_bar_waiting_showsProgressAndCancelHint() {
+        let bar = HintScene.derive(from: .inactive, chrome: .init(status: .waiting(appName: "Chrome"))).bar
+        XCTAssertEqual(bar.icon, .progress)
+        XCTAssertEqual(bar.body, .message("Waiting for Chrome", detail: "Esc to cancel"))
+        XCTAssertEqual(bar.segments, [])
+    }
+
+    func test_bar_nothingToClick_offersHelpOnlyWhenAsked() {
+        let spotify = HintScene.derive(
+            from: .inactive,
+            chrome: .init(status: .nothingToClick(appName: "Spotify", offersHelp: true))
+        ).bar
+        XCTAssertEqual(spotify.icon, .nothingToClick)
+        XCTAssertEqual(spotify.body, .message("Nothing to click in Spotify", detail: nil))
+        XCTAssertEqual(spotify.segments, [.help("Why?")])
+
+        let other = HintScene.derive(
+            from: .inactive,
+            chrome: .init(status: .nothingToClick(appName: "Finder", offersHelp: false))
+        ).bar
+        XCTAssertEqual(other.segments, [])
+    }
+
+    func test_bar_statusWinsOverSearchText() {
+        let bar = HintScene.derive(
+            from: .active(hintedElements: elements, filter: "a", mode: .oneShot),
+            chrome: .init(searchText: "a", status: .waiting(appName: "Arc"))
+        ).bar
+        XCTAssertEqual(bar.body, .message("Waiting for Arc", detail: "Esc to cancel"))
+    }
+
+    func test_bar_search_showsQueryAndCount() {
+        let bar = HintScene.derive(
+            from: .textSearch(hintedElements: elements, matches: [], filter: "inv", mode: .oneShot),
+            chrome: .init(searchText: "inv", matchCount: 3)
+        ).bar
+        XCTAssertEqual(bar.icon, .search)
+        XCTAssertEqual(bar.body, .query("inv"))
+        XCTAssertEqual(bar.segments, [.count(MatchCountPresenter.style(forCount: 3))])
+    }
+
+    func test_bar_continuous_carriesCountdown() {
+        let countdown = HintScene.Countdown(secondsLeft: 4, totalSeconds: 5)
+        let bar = HintScene.derive(
+            from: .active(hintedElements: elements, filter: "", mode: .continuous),
+            chrome: .init(countdown: countdown)
+        ).bar
+        XCTAssertEqual(bar.icon, .keyboard)
+        XCTAssertEqual(bar.body, .placeholder("type to search"))
+        XCTAssertEqual(bar.segments, [.continuous(countdown)])
+    }
+
+    func test_bar_continuousWithoutAutoDeactivation_hasNoCountdown() {
+        let bar = HintScene.derive(
+            from: .active(hintedElements: elements, filter: "", mode: .continuous),
+            chrome: .init()
+        ).bar
+        XCTAssertEqual(bar.segments, [.continuous(nil)])
+    }
+
+    func test_bar_oneShot_hasNoContinuousSegment() {
+        let bar = HintScene.derive(
             from: .textSearch(hintedElements: elements, matches: [], filter: "zz", mode: .oneShot),
             chrome: .init(searchText: "zz")
-        )
-        XCTAssertEqual(scene.pillText, "zz")
+        ).bar
+        XCTAssertEqual(bar.segments, [])
+    }
+
+    func test_countdown_fraction_isClamped() {
+        XCTAssertEqual(HintScene.Countdown(secondsLeft: 4, totalSeconds: 5).fraction, 0.8, accuracy: 0.0001)
+        XCTAssertEqual(HintScene.Countdown(secondsLeft: 9, totalSeconds: 5).fraction, 1)
+        XCTAssertEqual(HintScene.Countdown(secondsLeft: 3, totalSeconds: 0).fraction, 0)
     }
 
     func test_pill_hiddenWhenInactive() {

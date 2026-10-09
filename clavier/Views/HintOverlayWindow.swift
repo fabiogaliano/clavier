@@ -12,13 +12,11 @@ class HintOverlayWindow: NSWindow {
     private var hintViews: [ElementIdentity: NSView] = [:]
     /// Numbered labels or outline boxes for the current text-search results.
     private var elementHighlights: [ElementIdentity: NSView] = [:]
-    private var searchBarView: NSView?
-    private var searchTextField: NSTextField?
-    private var matchCountBadge: NSView?
-    private var matchCountLabel: NSTextField?
-    private var continuousModeIndicator: NSView?
-    /// Last scene applied, so chrome-only changes (search text, match count)
-    /// don't rebuild labels on every keystroke.
+    private let barPanel = HintBarPanel()
+    /// Invoked when the user clicks the bar's help segment.
+    var onBarHelp: (() -> Void)?
+    /// Last scene applied, so chrome-only changes (search text, match count,
+    /// countdown) don't rebuild labels on every keystroke or tick.
     private var renderedScene: HintScene?
     /// Monotonically increasing Space-press count used to rotate z-order in
     /// overlap groups. Reset on every fresh layout so pressing Space after
@@ -51,28 +49,24 @@ class HintOverlayWindow: NSWindow {
         let containerView = NSView(frame: CGRect(origin: .zero, size: self.frame.size))
         containerView.wantsLayer = true
         self.contentView = containerView
-        setupSearchBar()
+        barPanel.barView.onHelp = { [weak self] in self?.onBarHelp?() }
     }
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
 
-    private func setupSearchBar() {
-        let windowOrigin = ScreenGeometry.desktopBoundsInAppKit.origin
-        let components = SearchBarView.make(windowOrigin: windowOrigin)
-        self.searchBarView = components.container
-        self.searchTextField = components.textField
-        self.matchCountBadge = components.countBadge
-        self.matchCountLabel = components.countLabel
-        components.container.isHidden = true
-        self.contentView?.addSubview(components.container)
-    }
-
     func show() {
         self.orderFrontRegardless()
+        // A child window always stays above its parent, so labels can never
+        // cover the bar.
+        if barPanel.parent == nil {
+            addChildWindow(barPanel, ordered: .above)
+        }
     }
 
     override func close() {
+        removeChildWindow(barPanel)
+        barPanel.close()
         hintViews.removeAll()
         elementHighlights.removeAll()
         self.contentView?.subviews.forEach { $0.removeFromSuperview() }
@@ -147,7 +141,6 @@ class HintOverlayWindow: NSWindow {
                 hintViews[labeled.hinted.identity] = labeled.view
             }
             snapshotPreviousPlacements()
-            bringChromeToFront()
             return
         }
 
@@ -177,7 +170,6 @@ class HintOverlayWindow: NSWindow {
         }
 
         snapshotPreviousPlacements()
-        bringChromeToFront()
     }
 
     private func applyContent(_ scene: HintScene, style: OverlayStyle) {
@@ -227,98 +219,13 @@ class HintOverlayWindow: NSWindow {
 
     private func applyChrome(_ scene: HintScene) {
         let previous = renderedScene
-        if previous?.pillText != scene.pillText {
-            searchTextField?.stringValue = scene.pillText
+        if scene.isPillVisible {
+            let bar = scene.bar
+            if previous?.isPillVisible != true || previous?.bar != bar {
+                barPanel.apply(bar)
+            }
         }
-        if previous?.chrome.matchCount != scene.chrome.matchCount
-            || previous?.chrome.isHydrating != scene.chrome.isHydrating {
-            applyMatchCount(scene.chrome.matchCount, isHydrating: scene.chrome.isHydrating)
-        }
-        if previous?.isContinuous != scene.isContinuous {
-            applyContinuousMode(scene.isContinuous)
-        }
-        applyPillVisibility(scene.isPillVisible)
-    }
-
-    private func applyPillVisibility(_ visible: Bool) {
-        guard let bar = searchBarView, bar.isHidden == visible else { return }
-        bar.isHidden = !visible
-        guard visible,
-              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
-              let layer = bar.layer else { return }
-
-        let fade = CABasicAnimation(keyPath: "opacity")
-        fade.fromValue = 0
-        fade.toValue = 1
-
-        // AppKit pins a backing layer's anchor to its origin, so scale about
-        // the centre explicitly or the pill grows out of its corner.
-        let center = CGPoint(x: bar.bounds.midX, y: bar.bounds.midY)
-        var from = CATransform3DMakeTranslation(center.x, center.y, 0)
-        from = CATransform3DScale(from, 0.96, 0.96, 1)
-        from = CATransform3DTranslate(from, -center.x, -center.y, 0)
-        let scale = CABasicAnimation(keyPath: "transform")
-        scale.fromValue = NSValue(caTransform3D: from)
-        scale.toValue = NSValue(caTransform3D: CATransform3DIdentity)
-
-        let group = CAAnimationGroup()
-        group.animations = [fade, scale]
-        group.duration = 0.12
-        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
-        layer.add(group, forKey: "pillAppear")
-    }
-
-    private func applyMatchCount(_ count: Int, isHydrating: Bool) {
-        let style = MatchCountPresenter.style(forCount: count, isHydrating: isHydrating)
-        matchCountLabel?.stringValue = style.labelText
-        matchCountLabel?.textColor = style.labelColor
-        matchCountBadge?.isHidden = style.labelText.isEmpty
-        matchCountBadge?.layer?.backgroundColor = style.labelColor.withAlphaComponent(0.18).cgColor
-        matchCountBadge?.layer?.borderColor = style.labelColor.withAlphaComponent(0.4).cgColor
-    }
-
-    private func applyContinuousMode(_ isContinuous: Bool) {
-        guard isContinuous else {
-            continuousModeIndicator?.removeFromSuperview()
-            continuousModeIndicator = nil
-            return
-        }
-
-        let indicator = continuousModeIndicator ?? NSView()
-        let size: CGFloat = 6
-        indicator.wantsLayer = true
-        indicator.layer?.backgroundColor = NSColor.systemGreen.cgColor
-        indicator.layer?.cornerRadius = size / 2
-
-        // Anchor to the left edge of the search bar so the indicator
-        // stays visible regardless of focused-window geometry.
-        if let bar = searchBarView {
-            indicator.frame = CGRect(
-                x: bar.frame.minX - size - 6,
-                y: bar.frame.midY - size / 2,
-                width: size,
-                height: size
-            )
-        }
-
-        if indicator.superview == nil {
-            contentView?.addSubview(indicator)
-        }
-        continuousModeIndicator = indicator
-        bringChromeToFront()
-    }
-
-    /// Raise all persistent chrome (search bar, match badge, continuous-mode
-    /// indicator) above the hint layer so overlap rotation and hint refreshes
-    /// never bury them.
-    private func bringChromeToFront() {
-        guard let contentView else { return }
-        if let bar = searchBarView {
-            contentView.addSubview(bar, positioned: .above, relativeTo: nil)
-        }
-        if let indicator = continuousModeIndicator {
-            contentView.addSubview(indicator, positioned: .above, relativeTo: nil)
-        }
+        barPanel.setBarVisible(scene.isPillVisible)
     }
 
     /// Record the current placement frames keyed by element identity so the
@@ -358,7 +265,5 @@ class HintOverlayWindow: NSWindow {
             let members = group.memberIndices.map { visibleEntries[$0].view }
             HintOverlapCycler.applyZOrder(to: members, in: containerView, step: overlapRotationStep)
         }
-
-        bringChromeToFront()
     }
 }

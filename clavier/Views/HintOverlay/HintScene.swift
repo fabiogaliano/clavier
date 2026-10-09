@@ -34,6 +34,52 @@ struct HintScene {
         case highlights([HighlightBox])
     }
 
+    /// A controller message that takes over the bar while there are no
+    /// hints to act on.
+    enum Status: Equatable {
+        /// Discovery is still waiting for the app's accessibility tree.
+        case waiting(appName: String)
+        /// Discovery finished empty. `offersHelp` when the app is one with a
+        /// known fix (Spotify's dormant CEF tree).
+        case nothingToClick(appName: String, offersHelp: Bool)
+    }
+
+    /// Time left before continuous mode deactivates itself.
+    struct Countdown: Equatable {
+        let secondsLeft: Int
+        let totalSeconds: Int
+
+        /// Ring fill, 1 when freshly reset and 0 at deactivation.
+        var fraction: Double {
+            guard totalSeconds > 0 else { return 0 }
+            return min(max(Double(secondsLeft) / Double(totalSeconds), 0), 1)
+        }
+    }
+
+    /// What the bar draws, decided here so the view only lays it out.
+    struct Bar: Equatable {
+        enum Icon: Equatable { case keyboard, search, progress, nothingToClick }
+
+        enum Body: Equatable {
+            case query(String)
+            case placeholder(String)
+            case message(String, detail: String?)
+        }
+
+        enum Segment: Equatable {
+            case count(MatchCountPresenter.Style)
+            /// `nil` countdown: continuous without auto-deactivation, so
+            /// there is nothing to drain.
+            case continuous(Countdown?)
+            /// Opens the help for an app that cannot be hinted as-is.
+            case help(String)
+        }
+
+        let icon: Icon
+        let body: Body
+        let segments: [Segment]
+    }
+
     /// State the reducer emits as separate effects rather than storing in
     /// the session.
     struct Chrome: Equatable {
@@ -44,8 +90,10 @@ struct HintScene {
         var isHydrating: Bool = false
         /// Hide-prefix mode: hint tokens hidden while search keeps working.
         var labelsHidden: Bool = false
-        /// Controller message shown in the pill in place of the search text.
-        var status: String? = nil
+        /// Controller message shown in the bar in place of the search text.
+        var status: Status? = nil
+        /// Continuous-mode auto-deactivation; `nil` when it is off.
+        var countdown: Countdown? = nil
     }
 
     /// The full token assignment the overlay lays out; `content` decides
@@ -54,8 +102,9 @@ struct HintScene {
     let content: Content
     let chrome: Chrome
     let isContinuous: Bool
-    /// Most sessions are a two-key token and never search, so the search pill
-    /// stays out of the way until typing stops being a hint prefix.
+    /// Most sessions are a two-key token and never search, so the bar stays
+    /// out of the way until typing stops being a hint prefix, a status needs
+    /// saying, or continuous mode needs its countdown.
     let isPillVisible: Bool
 
     static let maxNumberedMatches = 9
@@ -71,7 +120,7 @@ struct HintScene {
     }
 
     private static func pillVisible(for session: HintSession, chrome: Chrome) -> Bool {
-        if chrome.status != nil || chrome.labelsHidden { return true }
+        if chrome.status != nil || chrome.labelsHidden || session.isContinuous { return true }
         switch session {
         case .inactive:
             return false
@@ -82,9 +131,35 @@ struct HintScene {
         }
     }
 
-    /// What the pill's text field shows: a status message wins over the
-    /// typed search text.
-    var pillText: String { chrome.status ?? chrome.searchText }
+    var bar: Bar {
+        switch chrome.status {
+        case .waiting(let appName):
+            return Bar(icon: .progress, body: .message("Waiting for \(appName)", detail: "Esc to cancel"), segments: [])
+        case .nothingToClick(let appName, let offersHelp):
+            return Bar(
+                icon: .nothingToClick,
+                body: .message("Nothing to click in \(appName)", detail: nil),
+                segments: offersHelp ? [.help("Why?")] : []
+            )
+        case nil:
+            break
+        }
+
+        let searching = chrome.labelsHidden || !chrome.searchText.isEmpty
+        var segments: [Bar.Segment] = []
+        let count = MatchCountPresenter.style(forCount: chrome.matchCount, isHydrating: chrome.isHydrating)
+        if !count.labelText.isEmpty {
+            segments.append(.count(count))
+        }
+        if isContinuous {
+            segments.append(.continuous(chrome.countdown))
+        }
+        return Bar(
+            icon: searching ? .search : .keyboard,
+            body: chrome.searchText.isEmpty ? .placeholder("type to search") : .query(chrome.searchText),
+            segments: segments
+        )
+    }
 
     private static func content(for session: HintSession) -> Content {
         switch session {

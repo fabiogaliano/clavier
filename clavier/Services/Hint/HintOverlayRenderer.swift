@@ -29,6 +29,9 @@ final class HintOverlayRenderer {
     private var session: HintSession = .inactive
     private var chrome = HintScene.Chrome()
 
+    /// Invoked when the user clicks the bar's help segment.
+    var onHelpRequested: (() -> Void)?
+
     // MARK: - Lifecycle
 
     /// Open the overlay for the initial session.
@@ -37,6 +40,7 @@ final class HintOverlayRenderer {
         self.session = session
         chrome = HintScene.Chrome()
         let newWindow = HintOverlayWindow()
+        newWindow.onBarHelp = { [weak self] in self?.onHelpRequested?() }
         self.window = newWindow
         render()
         newWindow.show()
@@ -75,7 +79,8 @@ final class HintOverlayRenderer {
         session = .active(hintedElements: hintedElements, filter: "", mode: session.mode)
         // A refresh implies the user started a new selection gesture; drop
         // search state and hide-mode so the redrawn labels are visible.
-        chrome = HintScene.Chrome()
+        // The countdown belongs to the session, not the gesture.
+        chrome = HintScene.Chrome(countdown: chrome.countdown)
         render()
     }
 
@@ -103,6 +108,13 @@ final class HintOverlayRenderer {
         case .textSearch(let elements, let matches, let filter, _):
             session = .textSearch(hintedElements: elements, matches: matches, filter: filter, mode: mode)
         }
+        render()
+    }
+
+    /// Continuous-mode time left; `nil` when auto-deactivation is off.
+    func setCountdown(_ countdown: HintScene.Countdown?) {
+        guard chrome.countdown != countdown else { return }
+        chrome.countdown = countdown
         render()
     }
 

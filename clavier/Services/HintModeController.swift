@@ -35,6 +35,10 @@ class HintModeController {
 
     // Auto-deactivation timer (continuous mode)
     private var deactivationTimer: Timer?
+    /// Drives the bar's countdown ring once a second; the one-shot
+    /// `deactivationTimer` stays the authority on when the session ends.
+    private var countdownTimer: Timer?
+    private var deactivationDeadline: Date?
 
     /// Captured at activation, valid for the lifetime of that session.
     private var config = HintSessionConfig.default
@@ -199,6 +203,7 @@ class HintModeController {
 
         deactivationTimer?.invalidate()
         deactivationTimer = nil
+        stopCountdown()
 
         refreshCoordinator.cancelPending()
         hydrationTask?.cancel()
@@ -461,7 +466,10 @@ class HintModeController {
     // MARK: - Auto-deactivation
 
     private func startDeactivationTimer() {
-        guard let delay = config.autoDeactivationDelay(for: session.mode) else { return }
+        guard let delay = config.autoDeactivationDelay(for: session.mode) else {
+            stopCountdown()
+            return
+        }
 
         deactivationTimer?.invalidate()
         deactivationTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
@@ -469,6 +477,33 @@ class HintModeController {
                 self?.deactivateHintMode()
             }
         }
+        startCountdown(delay: delay)
+    }
+
+    private func startCountdown(delay: TimeInterval) {
+        countdownTimer?.invalidate()
+        let deadline = Date().addingTimeInterval(delay)
+        deactivationDeadline = deadline
+        publishCountdown()
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.publishCountdown()
+            }
+        }
+    }
+
+    private func publishCountdown() {
+        guard let deadline = deactivationDeadline,
+              let delay = config.autoDeactivationDelay(for: session.mode) else { return }
+        let left = max(Int(deadline.timeIntervalSinceNow.rounded()), 0)
+        renderer.setCountdown(HintScene.Countdown(secondsLeft: left, totalSeconds: Int(delay.rounded())))
+    }
+
+    private func stopCountdown() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        deactivationDeadline = nil
+        renderer.setCountdown(nil)
     }
 
     private func upgradeToContinuous() {
