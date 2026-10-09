@@ -252,18 +252,8 @@ class HintOverlayWindow: NSWindow {
         overlapRotationStep += 1
 
         for group in groups {
-            let members = group.memberIndices.map { visibleEntries[$0] }
-            let size = members.count
-            let top = HintOverlapCycler.topMember(size: size, step: overlapRotationStep)
-            // Desired visual order from top-front to bottom-back:
-            //   [members[top], members[top+1], ..., members[top-1]] (mod size)
-            // `addSubview(positioned: .above, relativeTo: nil)` raises the
-            // given view to the front, so we add bottom-up — the last call
-            // wins the frontmost slot.
-            for i in stride(from: size - 1, through: 0, by: -1) {
-                let entry = members[(top + i) % size]
-                containerView.addSubview(entry.view, positioned: .above, relativeTo: nil)
-            }
+            let members = group.memberIndices.map { visibleEntries[$0].view }
+            HintOverlapCycler.applyZOrder(to: members, in: containerView, step: overlapRotationStep)
         }
 
         bringChromeToFront()

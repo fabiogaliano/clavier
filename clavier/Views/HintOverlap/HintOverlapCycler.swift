@@ -13,7 +13,7 @@
 //  running overlay window.
 //
 
-import CoreGraphics
+import AppKit
 
 struct HintOverlapCycler {
 
@@ -80,5 +80,20 @@ struct HintOverlapCycler {
         guard size > 0 else { return 0 }
         let r = step % size
         return r >= 0 ? r : r + size
+    }
+
+    /// Restack one overlap group so `members[topMember(size:step:)]` is
+    /// frontmost and the rest follow in cyclic order behind it.
+    ///
+    /// `members` must be in the group's original placement order.
+    @MainActor
+    static func applyZOrder(to members: [NSView], in container: NSView, step: Int) {
+        let size = members.count
+        let top = topMember(size: size, step: step)
+        // `addSubview(_:positioned: .above, relativeTo: nil)` raises to the
+        // front, so raise back-most first and let the last call win.
+        for i in stride(from: size - 1, through: 0, by: -1) {
+            container.addSubview(members[(top + i) % size], positioned: .above, relativeTo: nil)
+        }
     }
 }

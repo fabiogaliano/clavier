@@ -98,4 +98,53 @@ final class HintOverlapCyclerTests: XCTestCase {
     func test_sizeZeroDoesNotCrash() {
         XCTAssertEqual(HintOverlapCycler.topMember(size: 0, step: 5), 0)
     }
+
+    // MARK: - Z-order application
+
+    @MainActor
+    private func makeGroup(_ count: Int) -> (container: NSView, members: [NSView]) {
+        let container = NSView(frame: CGRect(x: 0, y: 0, width: 200, height: 200))
+        let members = (0..<count).map { _ in NSView(frame: CGRect(x: 0, y: 0, width: 20, height: 20)) }
+        members.forEach { container.addSubview($0) }
+        return (container, members)
+    }
+
+    /// Subviews are back-to-front, so reverse to read the visual stack from the front.
+    @MainActor
+    private func frontToBack(_ container: NSView, _ members: [NSView]) -> [Int] {
+        container.subviews.reversed().compactMap { view in members.firstIndex { $0 === view } }
+    }
+
+    @MainActor
+    func test_applyZOrder_putsTopMemberInFront_andRestCyclicallyBehind() {
+        let (container, members) = makeGroup(3)
+
+        HintOverlapCycler.applyZOrder(to: members, in: container, step: 1)
+        XCTAssertEqual(frontToBack(container, members), [1, 2, 0])
+
+        HintOverlapCycler.applyZOrder(to: members, in: container, step: 2)
+        XCTAssertEqual(frontToBack(container, members), [2, 0, 1])
+    }
+
+    @MainActor
+    func test_applyZOrder_afterGroupSizeSteps_restoresPlacementOrder() {
+        let (container, members) = makeGroup(3)
+
+        HintOverlapCycler.applyZOrder(to: members, in: container, step: 3)
+
+        XCTAssertEqual(frontToBack(container, members), [0, 1, 2])
+    }
+
+    @MainActor
+    func test_applyZOrder_leavesNonMemberSubviewsBehindTheGroup() {
+        let (container, members) = makeGroup(2)
+        let unrelated = NSView(frame: .zero)
+        container.addSubview(unrelated)
+
+        HintOverlapCycler.applyZOrder(to: members, in: container, step: 1)
+
+        XCTAssertEqual(frontToBack(container, members), [1, 0])
+        XCTAssertTrue(container.subviews.first === unrelated)
+        XCTAssertEqual(container.subviews.count, 3)
+    }
 }
