@@ -44,6 +44,8 @@ struct HintScene {
         var isHydrating: Bool = false
         /// Hide-prefix mode: hint tokens hidden while search keeps working.
         var labelsHidden: Bool = false
+        /// Controller message shown in the pill in place of the search text.
+        var status: String? = nil
     }
 
     /// The full token assignment the overlay lays out; `content` decides
@@ -52,6 +54,9 @@ struct HintScene {
     let content: Content
     let chrome: Chrome
     let isContinuous: Bool
+    /// Most sessions are a two-key token and never search, so the search pill
+    /// stays out of the way until typing stops being a hint prefix.
+    let isPillVisible: Bool
 
     static let maxNumberedMatches = 9
 
@@ -60,9 +65,26 @@ struct HintScene {
             hintedElements: session.hintedElements,
             content: content(for: session),
             chrome: chrome,
-            isContinuous: session.isContinuous
+            isContinuous: session.isContinuous,
+            isPillVisible: pillVisible(for: session, chrome: chrome)
         )
     }
+
+    private static func pillVisible(for session: HintSession, chrome: Chrome) -> Bool {
+        if chrome.status != nil || chrome.labelsHidden { return true }
+        switch session {
+        case .inactive:
+            return false
+        case .active(let elements, let filter, _):
+            return !filter.isEmpty && !elements.contains { $0.hint.hasPrefix(filter) }
+        case .textSearch:
+            return true
+        }
+    }
+
+    /// What the pill's text field shows: a status message wins over the
+    /// typed search text.
+    var pillText: String { chrome.status ?? chrome.searchText }
 
     private static func content(for session: HintSession) -> Content {
         switch session {

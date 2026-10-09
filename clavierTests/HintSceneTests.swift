@@ -119,6 +119,69 @@ final class HintSceneTests: XCTestCase {
         XCTAssertFalse(scene.isContinuous)
     }
 
+    // MARK: - Search pill visibility
+
+    func test_pill_hiddenForEmptyFilter() {
+        let scene = HintScene.derive(
+            from: .active(hintedElements: elements, filter: "", mode: .oneShot),
+            chrome: .init()
+        )
+        XCTAssertFalse(scene.isPillVisible)
+    }
+
+    func test_pill_hiddenWhileFilterIsAHintPrefix() {
+        let scene = HintScene.derive(
+            from: .active(hintedElements: elements, filter: "s", mode: .oneShot),
+            chrome: .init(searchText: "s")
+        )
+        XCTAssertFalse(scene.isPillVisible)
+    }
+
+    func test_pill_visibleOnceFilterStopsMatchingPrefixes() {
+        let scene = HintScene.derive(
+            from: .active(hintedElements: elements, filter: "x", mode: .oneShot),
+            chrome: .init(searchText: "x")
+        )
+        XCTAssertTrue(scene.isPillVisible)
+    }
+
+    func test_pill_visibleDuringTextSearch() {
+        let scene = HintScene.derive(
+            from: .textSearch(hintedElements: elements, matches: [], filter: "zz", mode: .oneShot),
+            chrome: .init(searchText: "zz", matchCount: 0)
+        )
+        XCTAssertTrue(scene.isPillVisible)
+    }
+
+    func test_pill_visibleInHidePrefixMode() {
+        let scene = HintScene.derive(
+            from: .active(hintedElements: elements, filter: "", mode: .oneShot),
+            chrome: .init(labelsHidden: true)
+        )
+        XCTAssertTrue(scene.isPillVisible)
+    }
+
+    func test_pill_visibleWithStatus_andShowsStatusText() {
+        let scene = HintScene.derive(
+            from: .active(hintedElements: elements, filter: "a", mode: .oneShot),
+            chrome: .init(searchText: "a", status: "No elements found")
+        )
+        XCTAssertTrue(scene.isPillVisible)
+        XCTAssertEqual(scene.pillText, "No elements found")
+    }
+
+    func test_pillText_isSearchTextWithoutStatus() {
+        let scene = HintScene.derive(
+            from: .textSearch(hintedElements: elements, matches: [], filter: "zz", mode: .oneShot),
+            chrome: .init(searchText: "zz")
+        )
+        XCTAssertEqual(scene.pillText, "zz")
+    }
+
+    func test_pill_hiddenWhenInactive() {
+        XCTAssertFalse(HintScene.derive(from: .inactive, chrome: .init()).isPillVisible)
+    }
+
     // MARK: - Equality drives redraw skipping
 
     func test_contentEquality_ignoresChromeOnlyChanges() {

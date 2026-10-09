@@ -64,6 +64,7 @@ class HintOverlayWindow: NSWindow {
         self.searchTextField = components.textField
         self.matchCountBadge = components.countBadge
         self.matchCountLabel = components.countLabel
+        components.container.isHidden = true
         self.contentView?.addSubview(components.container)
     }
 
@@ -233,8 +234,8 @@ class HintOverlayWindow: NSWindow {
 
     private func applyChrome(_ scene: HintScene) {
         let previous = renderedScene
-        if previous?.chrome.searchText != scene.chrome.searchText {
-            searchTextField?.stringValue = scene.chrome.searchText
+        if previous?.pillText != scene.pillText {
+            searchTextField?.stringValue = scene.pillText
         }
         if previous?.chrome.matchCount != scene.chrome.matchCount
             || previous?.chrome.isHydrating != scene.chrome.isHydrating {
@@ -243,6 +244,35 @@ class HintOverlayWindow: NSWindow {
         if previous?.isContinuous != scene.isContinuous {
             applyContinuousMode(scene.isContinuous)
         }
+        applyPillVisibility(scene.isPillVisible)
+    }
+
+    private func applyPillVisibility(_ visible: Bool) {
+        guard let bar = searchBarView, bar.isHidden == visible else { return }
+        bar.isHidden = !visible
+        guard visible,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion,
+              let layer = bar.layer else { return }
+
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0
+        fade.toValue = 1
+
+        // AppKit pins a backing layer's anchor to its origin, so scale about
+        // the centre explicitly or the pill grows out of its corner.
+        let center = CGPoint(x: bar.bounds.midX, y: bar.bounds.midY)
+        var from = CATransform3DMakeTranslation(center.x, center.y, 0)
+        from = CATransform3DScale(from, 0.96, 0.96, 1)
+        from = CATransform3DTranslate(from, -center.x, -center.y, 0)
+        let scale = CABasicAnimation(keyPath: "transform")
+        scale.fromValue = NSValue(caTransform3D: from)
+        scale.toValue = NSValue(caTransform3D: CATransform3DIdentity)
+
+        let group = CAAnimationGroup()
+        group.animations = [fade, scale]
+        group.duration = 0.12
+        group.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(group, forKey: "pillAppear")
     }
 
     private func applyMatchCount(_ count: Int, isHydrating: Bool) {
