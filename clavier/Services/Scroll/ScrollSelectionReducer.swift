@@ -37,6 +37,16 @@ enum ScrollSideEffect: ReducerSideEffect {
     case resetDeactivationTimer
     /// Clear the selection highlight without changing area list.
     case clearSelection
+    /// Open the overlay with the session's areas and start capturing keys.
+    ///
+    /// Emitted when discovery yields the first area of an inactive session.
+    /// If the event tap can't start, the controller must reset the session and
+    /// drop the effects that follow, since they assume a live overlay.
+    case openOverlay
+    /// Show a newly discovered area on the overlay.
+    case addArea(NumberedArea)
+    /// Remove an area superseded by a larger container.
+    case removeArea(identity: AreaIdentity)
 }
 
 // MARK: - Input context
@@ -99,6 +109,99 @@ enum ScrollSelectionReducer {
         case .consume:
             return (session, [])
         }
+    }
+
+    // MARK: Discovery entry point
+
+    /// Fold a discovery event into the session.
+    ///
+    /// Unlike keyboard input, discovery may hit an inactive session: the first
+    /// area found is what opens the overlay.
+    static func reduce(
+        session: ScrollSession,
+        discovery event: DiscoveryEvent
+    ) -> (ScrollSession, [ScrollSideEffect]) {
+        switch event {
+        case .areaAddedPhase1(let area):
+            // The focused area is the user's clear intent, so Phase 1 always selects it.
+            return addArea(area, session: session, selectIfFirst: true)
+
+        case .areaAddedPhase2(let area, let isCursorInside):
+            return addArea(area, session: session, selectIfFirst: isCursorInside)
+
+        case .areaReplaced(let area, let replacedIndices, let isCursorInside):
+            return replaceAreas(
+                at: replacedIndices,
+                with: area,
+                isCursorInside: isCursorInside,
+                session: session
+            )
+        }
+    }
+
+    // MARK: - Discovery handlers
+
+    /// Plain additions only select when they open the session: once numbers are
+    /// on screen, later arrivals must not move the highlight under the user.
+    private static func addArea(
+        _ area: ScrollableArea,
+        session: ScrollSession,
+        selectIfFirst: Bool
+    ) -> (ScrollSession, [ScrollSideEffect]) {
+        guard case .active(let areas, let sel, let pending) = session else {
+            let first = NumberedArea(area: area, number: "1")
+            guard selectIfFirst else {
+                return (.active(areas: [first], selected: nil, pendingInput: ""), [.openOverlay])
+            }
+            return (.active(areas: [first], selected: 0, pendingInput: ""), [.openOverlay, .selectArea(at: 0)])
+        }
+
+        let numbered = NumberedArea(area: area, number: "\(areas.count + 1)")
+        return (.active(areas: areas + [numbered], selected: sel, pendingInput: pending), [.addArea(numbered)])
+    }
+
+    /// `indices` address the coordinator's cross-wave frame list, which mirrors
+    /// the session's area order one-to-one.
+    private static func replaceAreas(
+        at indices: [Int],
+        with area: ScrollableArea,
+        isCursorInside: Bool,
+        session: ScrollSession
+    ) -> (ScrollSession, [ScrollSideEffect]) {
+        // A replacement can only supersede areas this session already shows.
+        guard case .active(var areas, var sel, let pending) = session else { return (session, []) }
+
+        var effects: [ScrollSideEffect] = []
+
+        for index in Set(indices).sorted(by: >) where index < areas.count {
+            effects.append(.removeArea(identity: areas[index].identity))
+            areas.remove(at: index)
+            if let s = sel {
+                if index < s { sel = s - 1 }
+                else if index == s { sel = nil }
+            }
+        }
+
+        // Numbers must stay contiguous so every area remains reachable by digit.
+        for i in areas.indices {
+            let newNumber = "\(i + 1)"
+            if areas[i].number != newNumber {
+                effects.append(.updateNumber(identity: areas[i].identity, newNumber: newNumber))
+                areas[i] = NumberedArea(area: areas[i].area, number: newNumber)
+            }
+        }
+
+        let numbered = NumberedArea(area: area, number: "\(areas.count + 1)")
+        areas.append(numbered)
+        effects.append(.addArea(numbered))
+
+        if isCursorInside && sel == nil {
+            let newIndex = areas.count - 1
+            effects.append(.selectArea(at: newIndex))
+            return (.active(areas: areas, selected: newIndex, pendingInput: ""), effects)
+        }
+
+        return (.active(areas: areas, selected: sel, pendingInput: pending), effects)
     }
 
     // MARK: - Command handlers

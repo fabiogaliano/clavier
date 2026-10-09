@@ -22,6 +22,7 @@ class ScrollModeController {
     private let renderer = ScrollOverlayRenderer()
     private var session: ScrollSession = .inactive
     private var deactivationTimer: Timer?
+    private var activationStart = Date()
 
     // CF run-loop readable scalars (see CLAUDE.md threading note).
     private nonisolated(unsafe) static var isScrollModeActive = false
@@ -83,54 +84,21 @@ class ScrollModeController {
 
         loadSettings()
 
-        let activationStart = Date()
-        var tapStarted = false
+        activationStart = Date()
 
         discoveryCoordinator.discover { [weak self] event in
             guard let self else { return }
-
-            switch event {
-            case .areaAddedPhase1(let area):
-                guard self.openOverlayAndStartTap(firstArea: area, activationStart: activationStart) else { return }
-                tapStarted = true
-                // Phase 1 always auto-selects: the focused area is the user's clear intent.
-                self.selectArea(at: 0)
-                Logger.scrollMode.debug("auto-selected first area (focused area)")
-
-            case .areaAddedPhase2(let area, let isCursorInside):
-                if !tapStarted {
-                    guard self.openOverlayAndStartTap(firstArea: area, activationStart: activationStart) else { return }
-                    tapStarted = true
-                    if isCursorInside {
-                        self.selectArea(at: 0)
-                        Logger.scrollMode.debug("auto-selected first area via cursor position")
-                    }
-                } else {
-                    self.appendArea(area)
-                }
-
-            case .areaReplaced(let area, let replacedIndices, let isCursorInside):
-                guard tapStarted else { return }
-                self.removeAreas(at: replacedIndices)
-                self.appendArea(area)
-                if isCursorInside && self.selectedIndex == nil {
-                    let newIndex = self.areas.count - 1
-                    self.selectArea(at: newIndex)
-                }
-            }
+            let (nextSession, effects) = ScrollSelectionReducer.reduce(session: self.session, discovery: event)
+            self.session = nextSession
+            self.applyEffects(effects)
         }
     }
 
-    /// Open the overlay window and start the event tap for the first discovered area.
+    /// Open the overlay window for the session's areas and start the event tap.
     ///
     /// Returns false if the tap failed to start (permission denied); in that case the
     /// session is reset to `.inactive` and the caller should not proceed.
-    private func openOverlayAndStartTap(firstArea: ScrollableArea, activationStart: Date) -> Bool {
-        let numbered = NumberedArea(area: firstArea, number: "1")
-        session = .active(areas: [numbered], selected: nil, pendingInput: "")
-
-        Logger.scrollMode.debug("hint #1 → \(String(describing: firstArea.frame), privacy: .public)")
-
+    private func openOverlayAndStartTap() -> Bool {
         renderer.open(initialAreas: areas)
 
         guard startEventTap() else {
@@ -145,37 +113,6 @@ class ScrollModeController {
         let elapsed = Date().timeIntervalSince(activationStart)
         Logger.scrollMode.debug("scroll mode activated with first area in \(Int(elapsed * 1000), privacy: .public)ms")
         return true
-    }
-
-    /// Append a new area to the end of the current session and update the overlay.
-    private func appendArea(_ area: ScrollableArea) {
-        let nextNumber = "\(areas.count + 1)"
-        let numbered = NumberedArea(area: area, number: nextNumber)
-        if case .active(let current, let sel, let input) = session {
-            session = .active(areas: current + [numbered], selected: sel, pendingInput: input)
-        }
-        renderer.addArea(numbered)
-        Logger.scrollMode.debug("hint #\(nextNumber, privacy: .public) → \(String(describing: area.frame), privacy: .public)")
-    }
-
-    /// Remove areas at the given indices and reassign contiguous numbers.
-    ///
-    /// The coordinator's `replacedIndices` are indices into `crossWaveFrames`,
-    /// which mirrors the controller's session areas list.
-    private func removeAreas(at indices: [Int]) {
-        for index in indices.sorted().reversed() {
-            guard case .active(var current, var sel, let input) = session,
-                  index < current.count else { continue }
-            let removedIdentity = current[index].identity
-            renderer.removeArea(withIdentity: removedIdentity)
-            current.remove(at: index)
-            if let s = sel {
-                if index < s { sel = s - 1 }
-                else if index == s { sel = nil }
-            }
-            session = .active(areas: current, selected: sel, pendingInput: input)
-        }
-        reassignNumbers()
     }
 
     private func deactivateScrollMode() {
@@ -261,6 +198,20 @@ class ScrollModeController {
 
             case .clearSelection:
                 renderer.clearSelection()
+
+            case .openOverlay:
+                if let first = areas.first {
+                    Logger.scrollMode.debug("hint #1 → \(String(describing: first.area.frame), privacy: .public)")
+                }
+                // Later effects assume a live overlay and an active session.
+                guard openOverlayAndStartTap() else { return }
+
+            case .addArea(let numbered):
+                renderer.addArea(numbered)
+                Logger.scrollMode.debug("hint #\(numbered.number, privacy: .public) → \(String(describing: numbered.area.frame), privacy: .public)")
+
+            case .removeArea(let identity):
+                renderer.removeArea(withIdentity: identity)
             }
         }
     }
@@ -282,22 +233,6 @@ class ScrollModeController {
         let area = areas[idx]
         let clickPoint = ScreenGeometry.appKitCenterToQuartz(area.area.centerPoint)
         commandExecutor.execute(direction: direction, speed: speed, at: clickPoint)
-    }
-
-    // MARK: - Number reassignment
-
-    /// Reassign sequential numbers after a replaceExisting merge removes areas.
-    private func reassignNumbers() {
-        guard case .active(var current, let sel, let input) = session else { return }
-        for i in 0..<current.count {
-            let newNumber = "\(i + 1)"
-            if current[i].number != newNumber {
-                let oldIdentity = current[i].identity
-                current[i] = NumberedArea(area: current[i].area, number: newNumber)
-                renderer.updateNumber(forIdentity: oldIdentity, newNumber: newNumber)
-            }
-        }
-        session = .active(areas: current, selected: sel, pendingInput: input)
     }
 
     // MARK: - Settings

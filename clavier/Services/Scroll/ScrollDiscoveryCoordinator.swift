@@ -22,16 +22,16 @@ import AppKit
 
 /// Structured event from the discovery coordinator to the controller.
 ///
-/// The controller switches over each event and mutates its session accordingly.
+/// `ScrollSelectionReducer.reduce(session:discovery:)` folds each event into the session.
 enum DiscoveryEvent {
-    /// The focused area was found in Phase 1.  The controller always auto-selects it,
+    /// The focused area was found in Phase 1.  The reducer always auto-selects it,
     /// regardless of cursor position — mirroring the original Phase 1 behavior.
     case areaAddedPhase1(ScrollableArea)
     /// A brand-new area was found during Phase 2 progressive traversal.
-    /// The controller auto-selects only when the cursor is inside it.
+    /// Auto-selected only when it opens the session and the cursor is inside it.
     case areaAddedPhase2(ScrollableArea, isCursorInside: Bool)
-    /// This area supersedes one or more existing areas.  The controller must
-    /// remove the areas at `replacedIndices` from its session, then add the new area.
+    /// This area supersedes one or more existing areas.  The reducer
+    /// removes the areas at `replacedIndices` from the session, then adds the new area.
     case areaReplaced(ScrollableArea, replacedIndices: [Int], isCursorInside: Bool)
 }
 
