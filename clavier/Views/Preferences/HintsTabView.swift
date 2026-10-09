@@ -29,10 +29,7 @@ struct HintsTabView: View {
 
             Section("Hint Characters") {
                 HStack {
-                    HStack(spacing: 4) {
-                        Text("Alphabet")
-                        HelpButton(helpText: "Keys used to generate hints. Default is home row (asdfhjkl) — 8 keys gives 64 unique codes.")
-                    }
+                    Text("Alphabet")
                     Spacer()
                     TextField("", text: $hintCharacters)
                         .frame(width: 120)
@@ -43,101 +40,84 @@ struct HintsTabView: View {
                             if cleaned != newValue { hintCharacters = cleaned }
                         }
                 }
-                Text("Current: \(hintCharacters.count) chars = \(hintCharacters.count * hintCharacters.count) two-letter combos")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
+                caption("Keys used to build hints. \(hintCharacters.count) chars = \(hintCharacters.count * hintCharacters.count) two-letter combos.")
             }
 
-            Section("Text Search") {
+            Section("Continuous mode") {
+                Text("Press \(Text(hintShortcutDisplay).font(.system(.body, design: .monospaced)).bold()) twice — the second press keeps hints open after each click")
+
+                Toggle("Start every session continuous", isOn: $continuousClickMode)
+
+                Toggle("Exit after inactivity", isOn: $autoHintDeactivation)
                 HStack {
-                    HStack(spacing: 4) {
-                        Text("Enable text search")
-                        HelpButton(helpText: "Type element text to find and click without using hint codes.")
-                    }
-                    Spacer()
-                    Toggle("", isOn: $textSearchEnabled)
+                    Slider(value: $hintDeactivationDelay, in: 5...30, step: 0.5)
+                    Text("\(String(format: "%.1f", hintDeactivationDelay))s")
+                        .monospacedDigit()
+                        .frame(width: 50, alignment: .trailing)
                 }
+                .disabled(!autoHintDeactivation)
+            }
+
+            Section("Search") {
+                Toggle("Enable text search", isOn: $textSearchEnabled)
+                caption("Type an element's text to click it without its hint code.")
 
                 if textSearchEnabled {
                     HStack {
-                        HStack(spacing: 4) {
-                            Text("Minimum characters")
-                            HelpButton(helpText: "Number of characters required before text search activates. Auto-clicks when exactly one match remains.")
-                        }
+                        Text("Minimum characters")
                         Spacer()
                         Stepper("\(minSearchCharacters)", value: $minSearchCharacters, in: 1...5)
                             .frame(width: 80)
                     }
-                }
-
-                HStack {
-                    HStack(spacing: 4) {
-                        Text("Manual refresh trigger")
-                        HelpButton(helpText: "Type this text to manually refresh hints. Useful if UI changed but hints didn't update. Works in both normal and continuous mode.")
-                    }
-                    Spacer()
-                    TextField("rr", text: $manualRefreshTrigger)
-                        .frame(width: 60)
-                        .textFieldStyle(.roundedBorder)
-                        .multilineTextAlignment(.center)
-                        .font(.system(.body, design: .monospaced))
-                        .onChange(of: manualRefreshTrigger) { _, newValue in
-                            let cleaned = AppSettings.sanitizeManualRefreshTrigger(newValue)
-                            if cleaned != newValue { manualRefreshTrigger = cleaned }
-                        }
-                }
-                .padding(.top, 4)
-
-                HStack {
-                    HStack(spacing: 4) {
-                        Text("Hide labels prefix")
-                        HelpButton(helpText: "Single punctuation character. Typing it as the first filter character hides hint labels while the rest of the query searches normally. Leave blank to disable.")
-                    }
-                    Spacer()
-                    TextField(">", text: $hideHintsPrefix)
-                        .frame(width: 60)
-                        .textFieldStyle(.roundedBorder)
-                        .multilineTextAlignment(.center)
-                        .font(.system(.body, design: .monospaced))
-                        .onChange(of: hideHintsPrefix) { _, newValue in
-                            let cleaned = AppSettings.sanitizeHideHintsPrefix(newValue)
-                            if cleaned != newValue { hideHintsPrefix = cleaned }
-                        }
+                    caption("Search starts after this many characters and clicks when one match remains.")
                 }
             }
 
-            Section("Behavior") {
-                Toggle("Start every session continuous", isOn: $continuousClickMode)
-                Text("Otherwise, press the hint shortcut again while hints are open to switch the current session to continuous. Press ESC to exit.")
-                    .font(.caption)
-                    .foregroundStyle(.secondary)
-
-                if continuousClickMode {
+            Section {
+                DisclosureGroup("Advanced") {
                     HStack {
-                        HStack(spacing: 4) {
-                            Text("Automatic deactivation")
-                            HelpButton(helpText: "Automatically exit continuous mode after a period of inactivity.")
-                        }
+                        Text("Manual refresh trigger")
                         Spacer()
-                        Toggle("", isOn: $autoHintDeactivation)
-                    }
-
-                    if autoHintDeactivation {
-                        HStack {
-                            HStack(spacing: 4) {
-                                Text("Deactivation delay")
-                                HelpButton(helpText: "How long to wait before automatically exiting continuous mode.")
+                        TextField("rr", text: $manualRefreshTrigger)
+                            .frame(width: 60)
+                            .textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.center)
+                            .font(.system(.body, design: .monospaced))
+                            .onChange(of: manualRefreshTrigger) { _, newValue in
+                                let cleaned = AppSettings.sanitizeManualRefreshTrigger(newValue)
+                                if cleaned != newValue { manualRefreshTrigger = cleaned }
                             }
-                            Spacer()
-                            Text("\(String(format: "%.1f", hintDeactivationDelay))s")
-                                .monospacedDigit()
-                                .frame(width: 50)
-                        }
-                        Slider(value: $hintDeactivationDelay, in: 5...30, step: 0.5)
                     }
+                    caption("Type this to re-scan the window when hints are stale.")
+
+                    HStack {
+                        Text("Hide labels prefix")
+                        Spacer()
+                        TextField(">", text: $hideHintsPrefix)
+                            .frame(width: 60)
+                            .textFieldStyle(.roundedBorder)
+                            .multilineTextAlignment(.center)
+                            .font(.system(.body, design: .monospaced))
+                            .onChange(of: hideHintsPrefix) { _, newValue in
+                                let cleaned = AppSettings.sanitizeHideHintsPrefix(newValue)
+                                if cleaned != newValue { hideHintsPrefix = cleaned }
+                            }
+                    }
+                    caption("Type this first to hide labels and search only. Leave blank to disable.")
                 }
             }
         }
         .formStyle(.grouped)
+    }
+
+    private var hintShortcutDisplay: String {
+        KeymapUtilities.formatShortcut(keyCode: hintShortcutKeyCode, modifiers: hintShortcutModifiers)
+    }
+
+    private func caption(_ text: String) -> some View {
+        Text(text)
+            .font(.caption)
+            .foregroundStyle(.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
