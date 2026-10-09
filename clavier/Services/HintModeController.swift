@@ -48,14 +48,7 @@ class HintModeController {
 
     // Shared input infrastructure (P2-S1)
     private let hotkeyRegistrar = GlobalHotkeyRegistrar(signature: "KNAV", hotkeyID: 1)
-    private let debugHotkeyRegistrar = GlobalHotkeyRegistrar(signature: "KDBG", hotkeyID: 2)
     private let eventTap = KeyboardEventTap(slotIndex: 0)
-
-    // Debug mode state — independent of normal hint mode so ESC and its
-    // own overlay don't collide with the production path.
-    private var debugOverlay: HintDebugOverlayWindow?
-    private let debugEventTap = KeyboardEventTap(slotIndex: 2)
-    private nonisolated(unsafe) static var isDebugActive = false
 
     // Decomposed modules (P4-S2)
     private let renderer = HintOverlayRenderer()
@@ -78,11 +71,6 @@ class HintModeController {
             modifiersKey: AppSettings.Keys.hintShortcutModifiers,
             onActivation: { [weak self] in self?.toggleHintMode() }
         )
-        debugHotkeyRegistrar.register(
-            keyCodeKey: AppSettings.Keys.hintDebugShortcutKeyCode,
-            modifiersKey: AppSettings.Keys.hintDebugShortcutModifiers,
-            onActivation: { [weak self] in self?.toggleDebugHintMode() }
-        )
     }
 
     func toggleHintMode() {
@@ -104,107 +92,6 @@ class HintModeController {
             }
             await self.activateHintMode()
         }
-    }
-
-    // MARK: - Debug mode
-
-    /// Public entry: runs one discovery pass with a recorder, opens the
-    /// colored debug overlay, and writes a JSON snapshot.  Pressing ESC
-    /// (or the debug hotkey again) dismisses the overlay.
-    func toggleDebugHintMode() {
-        if HintModeController.isDebugActive {
-            deactivateDebugMode()
-        } else {
-            activateDebugMode()
-        }
-    }
-
-    private func activateDebugMode() {
-        // Tearing down normal hint mode keeps the two overlays exclusive.
-        activationTask?.cancel()
-        if isActive { deactivateHintMode() }
-
-        let recorder = HintDiscoveryRecorder()
-        // Capture the same `[UIElement]` hint mode would consume so the
-        // debug path can replay production hint assignment + placement
-        // and join the results back onto the event stream.  Any drift
-        // between the two paths is automatically impossible because the
-        // walker, assigner, and layout helper used here are identical.
-        let elements = AccessibilityService.shared.getClickableElements(recorder: recorder)
-        let hinted = assignHints(to: elements)
-        let desktopSize = ScreenGeometry.desktopBoundsInAppKit.size
-        let labeled = HintLayout.buildLabels(for: hinted, windowSize: desktopSize)
-
-        // `view.frame` is window-local; event frames are screen-global.
-        // Convert once so the snapshot stores a frame in the same
-        // coordinate system as every other frame field.
-        let windowOrigin = ScreenGeometry.desktopBoundsInAppKit.origin
-        let hintInfo: [ElementIdentity: HintDebugSnapshot.HintInfo] = Dictionary(
-            uniqueKeysWithValues: labeled.map { entry in
-                let screenFrame = entry.view.frame.offsetBy(dx: windowOrigin.x, dy: windowOrigin.y)
-                return (
-                    entry.hinted.identity,
-                    HintDebugSnapshot.HintInfo(hint: entry.hinted.hint, frame: screenFrame)
-                )
-            }
-        )
-
-        let frontApp = NSWorkspace.shared.frontmostApplication
-        let snapshotURL = HintDebugSnapshot.write(
-            recorder: recorder,
-            app: frontApp,
-            hintInfo: hintInfo
-        )
-
-        let summary = recorder.summary()
-        Logger.hintMode.debug("debug: visited=\(summary.visited, privacy: .public) accepted=\(summary.accepted, privacy: .public) deduped=\(summary.deduped, privacy: .public) tooSmall=\(summary.rejectedTooSmall, privacy: .public) rejected=\(summary.rejectedNotClickable, privacy: .public) clipped=\(summary.clipped, privacy: .public) pruned=\(summary.prunedSubtrees, privacy: .public) hinted=\(hinted.count, privacy: .public)")
-        if let snapshotURL {
-            Logger.hintMode.debug("debug: snapshot \(snapshotURL.path, privacy: .public)")
-        }
-
-        let overlay = HintDebugOverlayWindow(
-            events: recorder.events,
-            labeledHints: labeled,
-            snapshotPath: snapshotURL?.path
-        )
-        overlay.show()
-        self.debugOverlay = overlay
-        HintModeController.isDebugActive = true
-
-        // Use a CGEvent tap (same pattern as hint mode) because a menu-bar
-        // app never becomes key and `NSEvent.addLocalMonitorForEvents`
-        // therefore never fires.  The tap is gated by `isDebugActive` so
-        // it's inert the moment we deactivate.
-        let eventMask = CGEventMask(1 << CGEventType.keyDown.rawValue)
-        let started = debugEventTap.start(
-            eventMask: eventMask,
-            isActiveGate: { HintModeController.isDebugActive },
-            handler: { type, event in
-                guard type == .keyDown else { return Unmanaged.passRetained(event) }
-                let keyCode = Int(event.getIntegerValueField(.keyboardEventKeycode))
-                if keyCode == 53 {
-                    DispatchQueue.main.async {
-                        HintModeController.sharedInstance?.deactivateDebugMode()
-                    }
-                    return nil
-                }
-                return Unmanaged.passRetained(event)
-            }
-        )
-
-        if !started {
-            Logger.hintMode.warning("Failed to start debug event tap. ESC will not dismiss — use the menu or the debug hotkey.")
-        }
-    }
-
-    private func deactivateDebugMode() {
-        guard HintModeController.isDebugActive else { return }
-        HintModeController.isDebugActive = false
-
-        debugEventTap.stop()
-
-        debugOverlay?.close()
-        debugOverlay = nil
     }
 
     // MARK: - Lifecycle
@@ -297,7 +184,12 @@ class HintModeController {
         return true
     }
 
-    private func deactivateHintMode() {
+    /// Cancels an activation still in flight too, so a caller that needs
+    /// hint mode gone (debug mode's exclusivity) gets it from one call.
+    func deactivateHintMode() {
+        activationTask?.cancel()
+        activationTask = nil
+
         // Gated on the static flag rather than `session.isActive` because the
         // reducer may set `session = .inactive` before `applyEffects` fires
         // `.deactivate`; a session-based guard would early-return here and
@@ -311,8 +203,6 @@ class HintModeController {
         deactivationTimer?.invalidate()
         deactivationTimer = nil
 
-        activationTask?.cancel()
-        activationTask = nil
         refreshCoordinator.cancelPending()
         eventTap.stop()
         renderer.close()
@@ -537,16 +427,6 @@ class HintModeController {
         renderer.updateMatchCount(-1)
         renderer.setLabelsHidden(false)
         syncTapState(from: cleared)
-    }
-
-    // MARK: - Hint assignment
-
-    /// Assign hint tokens to discovered elements for a session.
-    ///
-    /// Reads the current alphabet from `AppSettings` and delegates to
-    /// `HintAssigner` (pure mapping — no AX / UserDefaults interior state).
-    private func assignHints(to elements: [UIElement]) -> [HintedElement] {
-        HintAssigner.assign(to: elements, alphabet: AppSettings.hintCharacters)
     }
 
     // MARK: - Text attribute hydration
