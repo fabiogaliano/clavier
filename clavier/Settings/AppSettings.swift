@@ -74,9 +74,9 @@ enum AppSettings {
         static let hintBackgroundHex = "#3B82F6"
         static let hintBorderHex = "#3B82F6"
         static let hintTextHex = "#FFFFFF"
-        static let highlightTextHex = "#FFFF00"
-        static let hintBackgroundOpacity = 0.3
-        static let hintBorderOpacity = 0.6
+        static let highlightTextHex = "#FFFFFF"
+        static let hintBackgroundOpacity = 0.72
+        static let hintBorderOpacity = 0.4
         static let hintHorizontalOffset = 0.0
         static let showHintTail = true
         static let useSystemAccentColor = false

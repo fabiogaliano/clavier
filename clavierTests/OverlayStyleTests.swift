@@ -94,6 +94,28 @@ final class OverlayStyleTests: XCTestCase {
         XCTAssertEqual(scrollStyle.borderColor, .systemPink)
     }
 
+    func test_defaultTypedPrefix_isWhite() {
+        XCTAssertEqual(hint([:]).highlightTextColor, NSColor(hex: "#FFFFFF"))
+    }
+
+    func test_remainder_isTextColourAt55PercentAlpha() {
+        let style = hint([K.hintTextHex: "#FF0000"])
+        let remainder = style.remainderTextColor.usingColorSpace(.sRGB)!
+        XCTAssertEqual(remainder.redComponent, 1, accuracy: 0.001)
+        XCTAssertEqual(remainder.alphaComponent, 0.55, accuracy: 0.001)
+    }
+
+    func test_legacyYellowHighlight_stillParses() {
+        XCTAssertEqual(hint([K.highlightTextHex: "#FFFF00"]).highlightTextColor, NSColor(hex: "#FFFF00"))
+    }
+
+    // MARK: - Label geometry
+
+    func test_cornerRadius_isSevenAtDefaultSize_andScalesWithFont() {
+        XCTAssertEqual(hint([:]).labelCornerRadius, 7, accuracy: 0.001)
+        XCTAssertEqual(hint([K.hintSize: 18.0]).labelCornerRadius, 10.5, accuracy: 0.001)
+    }
+
     // MARK: - Scroll specifics
 
     func test_scroll_usesFixedLabelGeometry() {

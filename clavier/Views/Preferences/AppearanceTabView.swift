@@ -72,7 +72,7 @@ struct AppearanceTabView: View {
                     set: { hintTextHex = $0.toHex() }
                 ))
 
-                ColorPicker("Match highlight", selection: Binding(
+                ColorPicker("Typed letters", selection: Binding(
                     get: { Color(hex: highlightTextHex) },
                     set: { highlightTextHex = $0.toHex() }
                 ))

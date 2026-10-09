@@ -161,7 +161,7 @@ class HintOverlayWindow: NSWindow {
             let identity = hintedElement.identity
             if let existingView = hintViews[identity] {
                 if let textField = MatchHighlightRenderer.findTextField(in: existingView) {
-                    textField.stringValue = hintedElement.hint
+                    HintLabelRenderer.applyToken(hintedElement.hint, typedPrefix: "", to: textField, style: style)
                 }
                 let newFrame = engine.place(
                     element: hintedElement.element,
@@ -196,14 +196,7 @@ class HintOverlayWindow: NSWindow {
                 }
                 view.isHidden = false
                 guard let textField = MatchHighlightRenderer.findTextField(in: view) else { continue }
-                if label.typedPrefix.isEmpty {
-                    textField.stringValue = label.token
-                    textField.textColor = style.textColor
-                } else {
-                    MatchHighlightRenderer.highlightPrefix(
-                        in: textField, prefix: label.typedPrefix, hint: label.token, style: style
-                    )
-                }
+                HintLabelRenderer.applyToken(label.token, typedPrefix: label.typedPrefix, to: textField, style: style)
             }
 
         case .numbered(let labels):

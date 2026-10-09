@@ -9,6 +9,15 @@ import SwiftUI
 
 @MainActor
 enum GlassBackdrop {
+    /// How the glass edge catches light.
+    enum Rim {
+        /// Full-perimeter gradient stroke, bright at the top.
+        case gradient
+        /// Liquid-glass look: a 1 px light line inside the top edge and a
+        /// faint dark line inside the bottom edge, no perimeter stroke.
+        case specular(top: CGFloat, bottom: CGFloat)
+    }
+
     static func make(
         size: CGSize,
         cornerRadius: CGFloat,
@@ -16,6 +25,7 @@ enum GlassBackdrop {
         tintAlpha: CGFloat,
         borderAlpha: CGFloat,
         material: NSVisualEffectView.Material = .popover,
+        rim: Rim = .gradient,
         shadow: Bool = true
     ) -> NSView {
         let container = NSView(frame: CGRect(origin: .zero, size: size))
@@ -38,6 +48,25 @@ enum GlassBackdrop {
 
         container.addSubview(blur)
 
+        switch rim {
+        case .gradient:
+            addGradientRim(to: container, cornerRadius: cornerRadius, borderAlpha: borderAlpha)
+        case .specular(let top, let bottom):
+            addSpecularRim(to: container, cornerRadius: cornerRadius, top: top, bottom: bottom)
+        }
+
+        if shadow {
+            container.layer?.masksToBounds = false
+            container.layer?.shadowColor = NSColor.black.cgColor
+            container.layer?.shadowOpacity = 0.18
+            container.layer?.shadowRadius = 6
+            container.layer?.shadowOffset = CGSize(width: 0, height: -2)
+        }
+
+        return container
+    }
+
+    private static func addGradientRim(to container: NSView, cornerRadius: CGFloat, borderAlpha: CGFloat) {
         // Gradient rim evokes a curved glass edge catching light — bright at
         // the top, fading toward the bottom. Community consensus (WWDC25 310,
         // Klarity) is that the rim carries the "glassiness" more than the fill.
@@ -68,16 +97,39 @@ enum GlassBackdrop {
         mask.fillRule = .evenOdd
         rim.mask = mask
         container.layer?.addSublayer(rim)
+    }
 
-        if shadow {
-            container.layer?.masksToBounds = false
-            container.layer?.shadowColor = NSColor.black.cgColor
-            container.layer?.shadowOpacity = 0.18
-            container.layer?.shadowRadius = 6
-            container.layer?.shadowOffset = CGSize(width: 0, height: -2)
+    /// Each line is the shape minus itself shifted by 1 px, so it follows the
+    /// corner curve and thins out toward the sides the way a lit glass edge
+    /// does, instead of reading as a flat 1 px border.
+    private static func addSpecularRim(to container: NSView, cornerRadius: CGFloat, top: CGFloat, bottom: CGFloat) {
+        let bounds = container.bounds
+        let radius = min(cornerRadius, bounds.height / 2, bounds.width / 2)
+
+        let clip = CALayer()
+        clip.frame = bounds
+        clip.cornerRadius = radius
+        clip.masksToBounds = true
+
+        func band(shiftY: CGFloat, color: NSColor) -> CAShapeLayer {
+            let base = CGPath(roundedRect: bounds, cornerWidth: radius, cornerHeight: radius, transform: nil)
+            var shift = CGAffineTransform(translationX: 0, y: shiftY)
+            let shifted = CGPath(roundedRect: bounds, cornerWidth: radius, cornerHeight: radius, transform: &shift)
+            let path = CGMutablePath()
+            path.addPath(base)
+            path.addPath(shifted)
+            let layer = CAShapeLayer()
+            layer.frame = bounds
+            layer.path = path
+            layer.fillRule = .evenOdd
+            layer.fillColor = color.cgColor
+            return layer
         }
 
-        return container
+        // Layer space is y-up here, so shifting down exposes the top edge.
+        clip.addSublayer(band(shiftY: -1, color: NSColor.white.withAlphaComponent(top)))
+        clip.addSublayer(band(shiftY: 1, color: NSColor.black.withAlphaComponent(bottom)))
+        container.layer?.addSublayer(clip)
     }
 }
 
