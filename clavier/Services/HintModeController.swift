@@ -128,7 +128,8 @@ class HintModeController {
                 to: discoveredElements,
                 previous: hintedElements,
                 alphabet: AppSettings.hintCharacters,
-                minimumTokenLength: 3
+                minimumTokenLength: 3,
+                bundleIDs: HintAssigner.runningBundleIDs(for: discoveredElements)
             )
             session = .active(hintedElements: merged, filter: "", mode: session.mode)
             renderer.updateHints(with: merged)
@@ -164,7 +165,8 @@ class HintModeController {
         let hintedElements = HintAssigner.assign(
             to: elements,
             alphabet: AppSettings.hintCharacters,
-            minimumTokenLength: minimumTokenLength
+            minimumTokenLength: minimumTokenLength,
+            bundleIDs: HintAssigner.runningBundleIDs(for: elements)
         )
         renderer.open(session: .active(hintedElements: hintedElements, filter: "", mode: initialMode))
 
@@ -255,7 +257,8 @@ class HintModeController {
         let hinted = HintAssigner.assignPreservingHints(
             to: elements,
             previous: hintedElements,
-            alphabet: AppSettings.hintCharacters
+            alphabet: AppSettings.hintCharacters,
+            bundleIDs: HintAssigner.runningBundleIDs(for: elements)
         )
         session = .active(hintedElements: hinted, filter: "", mode: session.mode)
         renderer.updateHints(with: hinted)

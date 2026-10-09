@@ -63,7 +63,11 @@ final class HintDebugModeController {
         // between the two paths is automatically impossible because the
         // walker, assigner, and layout helper used here are identical.
         let elements = AccessibilityService.shared.getClickableElements(recorder: recorder)
-        let hinted = HintAssigner.assign(to: elements, alphabet: AppSettings.hintCharacters)
+        let hinted = HintAssigner.assign(
+            to: elements,
+            alphabet: AppSettings.hintCharacters,
+            bundleIDs: HintAssigner.runningBundleIDs(for: elements)
+        )
         let desktopSize = ScreenGeometry.desktopBoundsInAppKit.size
         let labeled = HintLayout.buildLabels(for: hinted, windowSize: desktopSize)
 
