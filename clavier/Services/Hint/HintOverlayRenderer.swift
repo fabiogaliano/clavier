@@ -34,16 +34,40 @@ final class HintOverlayRenderer {
 
     // MARK: - Lifecycle
 
-    /// Open the overlay for the initial session.
+    /// Open the overlay for the initial session.  Reuses a window already
+    /// up for a status (the "waiting" bar) so the hand-off doesn't flicker.
     func open(session: HintSession) {
         style = AppSettings.hintStyle
         self.session = session
         chrome = HintScene.Chrome()
+        if window != nil {
+            render()
+            return
+        }
+        makeWindow()
+        render()
+        window?.show()
+    }
+
+    /// Show a controller status in the bar with no hints, opening the
+    /// overlay if needed.
+    func showStatus(_ status: HintScene.Status) {
+        chrome.status = status
+        if window == nil {
+            style = AppSettings.hintStyle
+            session = .inactive
+            makeWindow()
+            render()
+            window?.show()
+            return
+        }
+        render()
+    }
+
+    private func makeWindow() {
         let newWindow = HintOverlayWindow()
         newWindow.onBarHelp = { [weak self] in self?.onHelpRequested?() }
         self.window = newWindow
-        render()
-        newWindow.show()
     }
 
     /// Close and release the overlay.
