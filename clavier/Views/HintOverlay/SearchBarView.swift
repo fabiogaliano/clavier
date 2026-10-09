@@ -3,7 +3,7 @@ import AppKit
 /// Builds the search bar subview anchored to the main display.
 ///
 /// Returns the three NSView components the window needs to retain so it can
-/// drive subsequent `updateSearchBar` and `updateMatchCount` calls.
+/// apply the search text and match count of each rendered `HintScene`.
 enum SearchBarView {
     struct Components {
         let container: NSView

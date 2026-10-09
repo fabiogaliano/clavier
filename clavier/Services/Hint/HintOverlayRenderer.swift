@@ -4,14 +4,10 @@
 //
 //  Adapter between the orchestrator and `HintOverlayWindow`.
 //
-//  The controller previously called `HintOverlayWindow` methods directly and
-//  knew its full API surface.  This adapter translates high-level renderer
-//  intentions (show a session, close, update) into concrete `HintOverlayWindow`
-//  method calls so the controller only speaks in terms of `HintSession`.
-//
-//  Keeping this adapter thin is intentional: the window's rendering logic
-//  (placement, glass labels, search bar) stays untouched.  This is purely a
-//  translation layer.
+//  The reducer speaks in separate effects (session update, search text,
+//  match count, label hiding); this adapter folds them into one
+//  `HintScene` and hands the window a single `render(_:style:)` call, so
+//  the window never has to reconcile partial updates itself.
 //
 
 import Foundation
@@ -19,7 +15,7 @@ import AppKit
 
 // MARK: - Renderer
 
-/// Translates `HintSession` state into `HintOverlayWindow` calls.
+/// Translates `HintSession` state into `HintScene`s for `HintOverlayWindow`.
 ///
 /// The controller creates one instance per mode activation and calls
 /// `present(session:)` whenever the session changes.  On deactivation,
@@ -28,16 +24,22 @@ import AppKit
 final class HintOverlayRenderer {
 
     private var window: HintOverlayWindow?
+    /// Loaded once per activation; Preferences edits apply from the next one.
+    private var style: OverlayStyle = AppSettings.hintStyle
+    private var session: HintSession = .inactive
+    private var chrome = HintScene.Chrome()
 
     // MARK: - Lifecycle
 
     /// Open the overlay for the initial session.
     func open(session: HintSession) {
-        let hintedElements = session.hintedElements
-        let newWindow = HintOverlayWindow(hintedElements: hintedElements, style: AppSettings.hintStyle)
-        newWindow.setContinuousMode(session.isContinuous)
-        newWindow.show()
+        style = AppSettings.hintStyle
+        self.session = session
+        chrome = HintScene.Chrome()
+        let newWindow = HintOverlayWindow()
         self.window = newWindow
+        render()
+        newWindow.show()
     }
 
     /// Close and release the overlay.
@@ -45,31 +47,35 @@ final class HintOverlayRenderer {
         window?.orderOut(nil)
         window?.close()
         window = nil
+        session = .inactive
+        chrome = HintScene.Chrome()
     }
 
     // MARK: - Session rendering
 
-    /// Render a complete session update — diff hints, apply filter, show search bar.
-    ///
-    /// Called whenever the session transitions (new elements, filter change, text search).
+    /// Render a session transition (filter change, text search, cleared filter).
     func present(session: HintSession) {
-        guard let window else { return }
-        renderSessionDiff(session: session, in: window)
+        self.session = session
+        render()
     }
 
-    /// Update just the search bar text without re-diffing hints.
     func updateSearchBar(text: String) {
-        window?.updateSearchBar(text: text)
+        chrome.searchText = text
+        render()
     }
 
-    /// Update just the match count badge.
     func updateMatchCount(_ count: Int) {
-        window?.updateMatchCount(count)
+        chrome.matchCount = count
+        render()
     }
 
     /// Replace all hints with a fresh element list (used by refresh).
     func updateHints(with hintedElements: [HintedElement]) {
-        window?.updateHints(with: hintedElements)
+        session = .active(hintedElements: hintedElements, filter: "", mode: session.mode)
+        // A refresh implies the user started a new selection gesture; drop
+        // search state and hide-mode so the redrawn labels are visible.
+        chrome = HintScene.Chrome()
+        render()
     }
 
     /// Advance the overlap rotation: labels hidden behind others in a
@@ -82,31 +88,24 @@ final class HintOverlayRenderer {
     /// Used by the hide-prefix flow so a user can type a query without
     /// letters on top of their own UI.
     func setLabelsHidden(_ hidden: Bool) {
-        window?.setLabelsHidden(hidden)
+        chrome.labelsHidden = hidden
+        render()
     }
 
     func setContinuousMode(_ isContinuous: Bool) {
-        window?.setContinuousMode(isContinuous)
-    }
-
-    // MARK: - Private rendering
-
-    private func renderSessionDiff(session: HintSession, in window: HintOverlayWindow) {
+        let mode: HintSessionMode = isContinuous ? .continuous : .oneShot
         switch session {
         case .inactive:
             break
-
-        case .active(_, let filter, _):
-            window.filterHints(matching: filter, textMatches: [], numberedMode: false)
-
-        case .textSearch(_, let matches, _, _):
-            if matches.isEmpty {
-                window.filterHints(matching: "", textMatches: [], numberedMode: false)
-            } else if matches.count <= 9 {
-                window.filterHints(matching: "", textMatches: matches, numberedMode: true)
-            } else {
-                window.filterHints(matching: "", textMatches: matches, numberedMode: false)
-            }
+        case .active(let elements, let filter, _):
+            session = .active(hintedElements: elements, filter: filter, mode: mode)
+        case .textSearch(let elements, let matches, let filter, _):
+            session = .textSearch(hintedElements: elements, matches: matches, filter: filter, mode: mode)
         }
+        render()
+    }
+
+    private func render() {
+        window?.render(HintScene.derive(from: session, chrome: chrome), style: style)
     }
 }

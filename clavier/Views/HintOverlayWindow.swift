@@ -4,34 +4,32 @@ import SwiftUI
 @MainActor
 class HintOverlayWindow: NSWindow {
 
-    private var hintedElements: [HintedElement]
+    /// Token assignment currently laid out; compared against each incoming
+    /// scene to decide whether placement has to run again.
+    private var hintedElements: [HintedElement] = []
     /// Keyed by stable element identity so view reuse survives hint-token
     /// reassignment across session refreshes (F06).
     private var hintViews: [ElementIdentity: NSView] = [:]
+    /// Numbered labels or outline boxes for the current text-search results.
     private var elementHighlights: [UUID: NSView] = [:]
     private var searchBarView: NSView?
     private var searchTextField: NSTextField?
     private var matchCountBadge: NSView?
     private var matchCountLabel: NSTextField?
     private var continuousModeIndicator: NSView?
+    /// Last scene applied, so chrome-only changes (search text, match count)
+    /// don't rebuild labels on every keystroke.
+    private var renderedScene: HintScene?
     /// Monotonically increasing Space-press count used to rotate z-order in
     /// overlap groups. Reset on every fresh layout so pressing Space after
     /// a refresh starts from the natural z-order.
     private var overlapRotationStep: Int = 0
-    /// When true, all hint labels are hidden (search continues normally).
-    /// Driven by `HintInputReducer.setLabelsHidden`.
-    private var labelsForcedHidden: Bool = false
     /// Placement frames from the previous render pass, keyed by stable
     /// identity.  Used by the placement engine to bias toward prior
     /// positions when valid and so reduce label jitter across refreshes.
     private var previousPlacements: [ElementIdentity: CGRect] = [:]
 
-    private let style: OverlayStyle
-
-    init(hintedElements: [HintedElement], style: OverlayStyle) {
-        self.hintedElements = hintedElements
-        self.style = style
-
+    init() {
         // Cover the entire desktop so hints render correctly on every display.
         let desktopBounds = ScreenGeometry.desktopBoundsInAppKit
 
@@ -50,30 +48,14 @@ class HintOverlayWindow: NSWindow {
         self.collectionBehavior = [.canJoinAllSpaces, .fullScreenAuxiliary]
         self.isReleasedWhenClosed = false
 
-        setupHintViews()
+        let containerView = NSView(frame: CGRect(origin: .zero, size: self.frame.size))
+        containerView.wantsLayer = true
+        self.contentView = containerView
         setupSearchBar()
     }
 
     override var canBecomeKey: Bool { false }
     override var canBecomeMain: Bool { false }
-
-    private func setupHintViews() {
-        let containerView = NSView(frame: CGRect(origin: .zero, size: self.frame.size))
-        containerView.wantsLayer = true
-
-        let labels = HintLayout.buildLabels(
-            for: hintedElements,
-            windowSize: self.frame.size,
-            style: style
-        )
-        for labeled in labels {
-            containerView.addSubview(labeled.view)
-            hintViews[labeled.hinted.identity] = labeled.view
-        }
-
-        self.contentView = containerView
-        snapshotPreviousPlacements()
-    }
 
     private func setupSearchBar() {
         let windowOrigin = ScreenGeometry.desktopBoundsInAppKit.origin
@@ -89,11 +71,174 @@ class HintOverlayWindow: NSWindow {
         self.orderFrontRegardless()
     }
 
-    func updateSearchBar(text: String) {
-        searchTextField?.stringValue = text
+    override func close() {
+        hintViews.removeAll()
+        elementHighlights.removeAll()
+        self.contentView?.subviews.forEach { $0.removeFromSuperview() }
+        self.orderOut(nil)
+        super.close()
     }
 
-    func updateMatchCount(_ count: Int) {
+    // MARK: - Rendering
+
+    /// Bring the overlay in line with `scene`.  Placement runs only when the
+    /// token assignment changed; label content only when what is drawn
+    /// changed; chrome always (it is cheap).
+    func render(_ scene: HintScene, style: OverlayStyle) {
+        let relaidOut = !sameLayout(hintedElements, scene.hintedElements)
+        if relaidOut {
+            layOutHints(scene.hintedElements, style: style)
+        }
+
+        if relaidOut
+            || renderedScene?.content != scene.content
+            || renderedScene?.chrome.labelsHidden != scene.chrome.labelsHidden {
+            applyContent(scene, style: style)
+        }
+
+        applyChrome(scene)
+        renderedScene = scene
+
+        if relaidOut {
+            self.contentView?.needsDisplay = true
+            self.displayIfNeeded()
+        }
+    }
+
+    private func sameLayout(_ lhs: [HintedElement], _ rhs: [HintedElement]) -> Bool {
+        lhs.count == rhs.count && zip(lhs, rhs).allSatisfy { a, b in
+            a.identity == b.identity
+                && a.hint == b.hint
+                && a.element.visibleFrame == b.element.visibleFrame
+        }
+    }
+
+    /// Diff hint views against a new token assignment.
+    ///
+    /// Views are keyed by `ElementIdentity` so reuse is stable across refreshes
+    /// where only the hint token changed — the F06 fix. The diff:
+    /// - removes views whose identity is no longer present
+    /// - updates the hint text of views whose token changed
+    /// - repositions views whose frame changed
+    /// - adds views for newly discovered elements
+    private func layOutHints(_ newHintedElements: [HintedElement], style: OverlayStyle) {
+        let neededIdentities = Set(newHintedElements.map { $0.identity })
+
+        for (identity, view) in hintViews where !neededIdentities.contains(identity) {
+            view.removeFromSuperview()
+            hintViews[identity] = nil
+        }
+
+        self.hintedElements = newHintedElements
+        overlapRotationStep = 0
+
+        // A first layout goes through the same builder the debug overlay
+        // uses, so debug rectangles match production placement exactly.
+        if hintViews.isEmpty {
+            let labels = HintLayout.buildLabels(
+                for: hintedElements,
+                windowSize: self.frame.size,
+                previousPlacements: previousPlacements,
+                style: style
+            )
+            for labeled in labels {
+                self.contentView?.addSubview(labeled.view)
+                hintViews[labeled.hinted.identity] = labeled.view
+            }
+            snapshotPreviousPlacements()
+            bringChromeToFront()
+            return
+        }
+
+        let obstacles = hintedElements.map { $0.element.visibleFrame }
+        var engine = HintPlacementEngine(
+            windowSize: self.frame.size,
+            elementFrames: obstacles,
+            previousPlacements: previousPlacements
+        )
+        for hintedElement in hintedElements {
+            let identity = hintedElement.identity
+            if let existingView = hintViews[identity] {
+                if let textField = MatchHighlightRenderer.findTextField(in: existingView) {
+                    textField.stringValue = hintedElement.hint
+                }
+                let newFrame = engine.place(
+                    element: hintedElement.element,
+                    labelSize: existingView.frame.size,
+                    horizontalOffset: style.horizontalOffset
+                )
+                existingView.frame = newFrame
+            } else {
+                let hintView = HintLabelRenderer.createHintLabel(for: hintedElement, style: style, engine: &engine)
+                self.contentView?.addSubview(hintView)
+                hintViews[identity] = hintView
+            }
+        }
+
+        snapshotPreviousPlacements()
+        bringChromeToFront()
+    }
+
+    private func applyContent(_ scene: HintScene, style: OverlayStyle) {
+        for (_, highlightView) in elementHighlights {
+            highlightView.removeFromSuperview()
+        }
+        elementHighlights.removeAll()
+
+        switch scene.content {
+        case .hints(let labels):
+            let visible = Dictionary(labels.map { ($0.identity, $0) }, uniquingKeysWith: { first, _ in first })
+            for (identity, view) in hintViews {
+                guard !scene.chrome.labelsHidden, let label = visible[identity] else {
+                    view.isHidden = true
+                    continue
+                }
+                view.isHidden = false
+                guard let textField = MatchHighlightRenderer.findTextField(in: view) else { continue }
+                if label.typedPrefix.isEmpty {
+                    textField.stringValue = label.token
+                    textField.textColor = style.textColor
+                } else {
+                    MatchHighlightRenderer.highlightPrefix(
+                        in: textField, prefix: label.typedPrefix, hint: label.token, style: style
+                    )
+                }
+            }
+
+        case .numbered(let labels):
+            for (_, view) in hintViews { view.isHidden = true }
+            let obstacles = labels.map { $0.hinted.element.visibleFrame }
+            var engine = HintPlacementEngine(windowSize: self.frame.size, elementFrames: obstacles)
+            for label in labels {
+                let hintView = HintLabelRenderer.createHintLabel(for: label.hinted, style: style, engine: &engine)
+                self.contentView?.addSubview(hintView)
+                elementHighlights[label.hinted.element.id] = hintView
+            }
+
+        case .highlights(let boxes):
+            for box in boxes {
+                let highlightView = MatchHighlightRenderer.createHighlightView(frame: box.frame)
+                self.contentView?.addSubview(highlightView)
+                elementHighlights[UUID()] = highlightView
+            }
+            for (_, view) in hintViews { view.isHidden = true }
+        }
+    }
+
+    private func applyChrome(_ scene: HintScene) {
+        let previous = renderedScene
+        if previous?.chrome.searchText != scene.chrome.searchText {
+            searchTextField?.stringValue = scene.chrome.searchText
+        }
+        if previous?.chrome.matchCount != scene.chrome.matchCount {
+            applyMatchCount(scene.chrome.matchCount)
+        }
+        if previous?.isContinuous != scene.isContinuous {
+            applyContinuousMode(scene.isContinuous)
+        }
+    }
+
+    private func applyMatchCount(_ count: Int) {
         let style = MatchCountPresenter.style(forCount: count)
         matchCountLabel?.stringValue = style.labelText
         matchCountLabel?.textColor = style.labelColor
@@ -102,7 +247,7 @@ class HintOverlayWindow: NSWindow {
         matchCountBadge?.layer?.borderColor = style.labelColor.withAlphaComponent(0.4).cgColor
     }
 
-    func setContinuousMode(_ isContinuous: Bool) {
+    private func applyContinuousMode(_ isContinuous: Bool) {
         guard isContinuous else {
             continuousModeIndicator?.removeFromSuperview()
             continuousModeIndicator = nil
@@ -133,71 +278,6 @@ class HintOverlayWindow: NSWindow {
         bringChromeToFront()
     }
 
-    override func close() {
-        hintViews.removeAll()
-        self.contentView?.subviews.forEach { $0.removeFromSuperview() }
-        self.orderOut(nil)
-        super.close()
-    }
-
-    /// Diff the overlay against a new hint assignment list.
-    ///
-    /// Views are keyed by `ElementIdentity` so reuse is stable across refreshes
-    /// where only the hint token changed — the F06 fix. The diff:
-    /// - removes views whose identity is no longer present
-    /// - updates the hint text of views whose token changed
-    /// - repositions views whose frame changed
-    /// - adds views for newly discovered elements
-    func updateHints(with newHintedElements: [HintedElement]) {
-        for (_, view) in elementHighlights { view.removeFromSuperview() }
-        elementHighlights.removeAll()
-
-        let neededIdentities = Set(newHintedElements.map { $0.identity })
-
-        for (identity, view) in hintViews where !neededIdentities.contains(identity) {
-            view.removeFromSuperview()
-            hintViews[identity] = nil
-        }
-
-        self.hintedElements = newHintedElements
-        overlapRotationStep = 0
-        // A refresh implies the user started a new selection gesture; drop
-        // hide-mode so the redrawn labels are visible.
-        labelsForcedHidden = false
-        let obstacles = hintedElements.map { $0.element.visibleFrame }
-        var engine = HintPlacementEngine(
-            windowSize: self.frame.size,
-            elementFrames: obstacles,
-            previousPlacements: previousPlacements
-        )
-        for hintedElement in hintedElements {
-            let identity = hintedElement.identity
-            if let existingView = hintViews[identity] {
-                if let textField = MatchHighlightRenderer.findTextField(in: existingView) {
-                    textField.stringValue = hintedElement.hint
-                }
-                let newFrame = engine.place(
-                    element: hintedElement.element,
-                    labelSize: existingView.frame.size,
-                    horizontalOffset: style.horizontalOffset
-                )
-                existingView.frame = newFrame
-            } else {
-                let hintView = HintLabelRenderer.createHintLabel(for: hintedElement, style: style, engine: &engine)
-                self.contentView?.addSubview(hintView)
-                hintViews[identity] = hintView
-            }
-        }
-
-        snapshotPreviousPlacements()
-        updateSearchBar(text: "")
-        updateMatchCount(-1)
-
-        bringChromeToFront()
-        self.contentView?.needsDisplay = true
-        self.displayIfNeeded()
-    }
-
     /// Raise all persistent chrome (search bar, match badge, continuous-mode
     /// indicator) above the hint layer so overlap rotation and hint refreshes
     /// never bury them.
@@ -221,17 +301,7 @@ class HintOverlayWindow: NSWindow {
         previousPlacements = snapshot
     }
 
-    /// Hide or reveal all hint labels while keeping search behaviour intact.
-    ///
-    /// When hidden, hint views are kept in the subview tree (so `updateHints`
-    /// diffing stays stable) but every label view is marked `isHidden`.
-    /// Highlight views used by text search are unaffected.
-    func setLabelsHidden(_ hidden: Bool) {
-        labelsForcedHidden = hidden
-        for (_, view) in hintViews {
-            view.isHidden = hidden
-        }
-    }
+    // MARK: - Overlap cycling
 
     /// Advance overlap z-order by one step.
     ///
@@ -270,59 +340,5 @@ class HintOverlayWindow: NSWindow {
         }
 
         bringChromeToFront()
-    }
-
-    func filterHints(matching prefix: String, textMatches: [HintedElement], numberedMode: Bool = false) {
-        for (_, highlightView) in elementHighlights {
-            highlightView.removeFromSuperview()
-        }
-        elementHighlights.removeAll()
-
-        let textColor = style.textColor
-
-        if !textMatches.isEmpty {
-            if numberedMode {
-                for (_, view) in hintViews { view.isHidden = true }
-
-                let obstacles = textMatches.map { $0.element.visibleFrame }
-                var engine = HintPlacementEngine(windowSize: self.frame.size, elementFrames: obstacles)
-                for hintedElement in textMatches {
-                    let hintView = HintLabelRenderer.createHintLabel(for: hintedElement, style: style, engine: &engine)
-                    self.contentView?.addSubview(hintView)
-                    elementHighlights[hintedElement.element.id] = hintView
-                }
-            } else {
-                for hintedElement in textMatches {
-                    let highlightView = MatchHighlightRenderer.createHighlightView(for: hintedElement.element)
-                    self.contentView?.addSubview(highlightView)
-                    elementHighlights[hintedElement.element.id] = highlightView
-                }
-                for (_, view) in hintViews { view.isHidden = true }
-            }
-        } else {
-            for (identity, view) in hintViews {
-                guard let hintedElement = hintedElements.first(where: { $0.identity == identity }) else {
-                    view.isHidden = true
-                    continue
-                }
-                let hint = hintedElement.hint
-                if labelsForcedHidden {
-                    view.isHidden = true
-                } else if prefix.isEmpty {
-                    view.isHidden = false
-                    if let textField = MatchHighlightRenderer.findTextField(in: view) {
-                        textField.stringValue = hint
-                        textField.textColor = textColor
-                    }
-                } else if hint.hasPrefix(prefix) {
-                    view.isHidden = false
-                    if let textField = MatchHighlightRenderer.findTextField(in: view) {
-                        MatchHighlightRenderer.highlightPrefix(in: textField, prefix: prefix, hint: hint, style: style)
-                    }
-                } else {
-                    view.isHidden = true
-                }
-            }
-        }
     }
 }
