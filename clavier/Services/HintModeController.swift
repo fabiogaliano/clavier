@@ -35,17 +35,9 @@ class HintModeController {
 
     // Auto-deactivation timer (continuous mode)
     private var deactivationTimer: Timer?
-    private var autoDeactivation = false
-    private var deactivationDelay: Double = 5.0
-    private var initialMode: HintSessionMode = .oneShot
 
-    // Settings loaded at activation, valid for the lifetime of that session
-    private var inputContext = HintInputContext(
-        textSearchEnabled: true,
-        minSearchChars: 2,
-        refreshTrigger: "rr",
-        hidePrefix: ""
-    )
+    /// Captured at activation, valid for the lifetime of that session.
+    private var config = HintSessionConfig.default
 
     /// The only hint state the CF run-loop tap callback reads.  Published as
     /// one value so the callback can never observe a half-updated mix of
@@ -106,7 +98,7 @@ class HintModeController {
     private func activateHintMode() async {
         guard !isActive else { return }
 
-        loadSessionSettings()
+        config = .load()
         var presentedProvisionalBrowserHints = false
 
         let discoveredElements = await AccessibilityService.shared.getClickableElementsWhenReady(
@@ -167,9 +159,8 @@ class HintModeController {
     ) -> Bool {
         guard !elements.isEmpty, !isActive else { return false }
 
-        if continuousUpgradeRequestedWhileActivating {
-            initialMode = .continuous
-        }
+        let initialMode: HintSessionMode = continuousUpgradeRequestedWhileActivating
+            ? .continuous : config.initialMode
         let hintedElements = HintAssigner.assign(
             to: elements,
             alphabet: AppSettings.hintCharacters,
@@ -313,7 +304,7 @@ class HintModeController {
     }
 
     private func publishTapContext(for session: HintSession) {
-        let context = HintInputDecoder.Context(session: session, hidePrefix: inputContext.hidePrefix)
+        let context = HintInputDecoder.Context(session: session, hidePrefix: config.inputContext.hidePrefix)
         HintModeController.tapContext.withLock { $0 = context }
     }
 
@@ -362,7 +353,7 @@ class HintModeController {
         let (nextSession, effects) = HintInputReducer.reduce(
             session: session,
             command: command,
-            context: inputContext
+            context: config.inputContext
         )
         session = nextSession
         applyEffects(effects)
@@ -456,10 +447,10 @@ class HintModeController {
     // MARK: - Auto-deactivation
 
     private func startDeactivationTimer() {
-        guard session.isContinuous && autoDeactivation else { return }
+        guard let delay = config.autoDeactivationDelay(for: session.mode) else { return }
 
         deactivationTimer?.invalidate()
-        deactivationTimer = Timer.scheduledTimer(withTimeInterval: deactivationDelay, repeats: false) { [weak self] _ in
+        deactivationTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
             Task { @MainActor in
                 self?.deactivateHintMode()
             }
@@ -480,21 +471,5 @@ class HintModeController {
 
         renderer.setContinuousMode(true)
         startDeactivationTimer()
-    }
-
-    private func loadSessionSettings() {
-        autoDeactivation = UserDefaults.standard.bool(forKey: AppSettings.Keys.autoHintDeactivation)
-        deactivationDelay = UserDefaults.standard.double(forKey: AppSettings.Keys.hintDeactivationDelay)
-        if deactivationDelay == 0 { deactivationDelay = 5.0 }
-        initialMode = UserDefaults.standard.bool(forKey: AppSettings.Keys.continuousClickMode)
-            ? .continuous : .oneShot
-
-        let prefix = AppSettings.hideHintsPrefix
-        inputContext = HintInputContext(
-            textSearchEnabled: UserDefaults.standard.bool(forKey: AppSettings.Keys.textSearchEnabled),
-            minSearchChars: AppSettings.minSearchCharacters,
-            refreshTrigger: AppSettings.manualRefreshTrigger,
-            hidePrefix: prefix
-        )
     }
 }
