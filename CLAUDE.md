@@ -98,7 +98,7 @@ open clavier.xcodeproj
 
 **Event tap threading:**
 - Event-tap callback runs on the CF run loop, not on the main actor.
-- `nonisolated(unsafe)` static scalars are used for thread-safe gate state.
+- Each controller publishes one decoder `Context` snapshot behind an `OSAllocatedUnfairLock` whenever its session changes (`nil` = no live session); the tap callback reads it once per event.
 - UI/state mutations are dispatched back to the main queue via `DispatchQueue.main.async`.
 - All Accessibility API calls are confined to `@MainActor` per Apple DTS guidance (see `claudedocs/api-research.md`).
 

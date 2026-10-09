@@ -17,7 +17,13 @@ import os
 @MainActor
 class HintModeController {
 
-    private var session: HintSession = .inactive
+    private var session: HintSession = .inactive {
+        didSet { publishTapContext(for: session) }
+    }
+    /// True from the moment the tap + overlay are up until they are torn
+    /// down.  Distinct from `session.isActive` because the reducer sets
+    /// `session = .inactive` before `applyEffects` runs `.deactivate`.
+    private var isSessionOpen = false
     /// Captured just before a click so the post-click plan can tell whether
     /// the click opened a popup (and the one-shot session should follow it).
     private var lastClickOpensPopup = false
@@ -38,13 +44,10 @@ class HintModeController {
         hidePrefix: ""
     )
 
-    // CF run loop-readable scalars (see threading note in CLAUDE.md)
-    private nonisolated(unsafe) static var isHintModeActive = false
-    private nonisolated(unsafe) static var isTextSearchActive = false
-    private nonisolated(unsafe) static var numberedElementsCount = 0
-    /// Mirror of `inputContext.hidePrefix` exposed to the CF run loop so the
-    /// decoder can allow the configured marker character through its whitelist.
-    private nonisolated(unsafe) static var hidePrefix: String = ""
+    /// The only hint state the CF run-loop tap callback reads.  Published as
+    /// one value so the callback can never observe a half-updated mix of
+    /// fields; `nil` means no live session, so every event passes through.
+    private nonisolated static let tapContext = OSAllocatedUnfairLock<HintInputDecoder.Context?>(initialState: nil)
 
     // Shared input infrastructure (P2-S1)
     private let hotkeyRegistrar = GlobalHotkeyRegistrar(signature: "KNAV", hotkeyID: 1)
@@ -176,8 +179,8 @@ class HintModeController {
             return false
         }
 
+        isSessionOpen = true
         session = .active(hintedElements: hintedElements, filter: "", mode: initialMode)
-        HintModeController.isHintModeActive = true
 
         startDeactivationTimer()
         scheduleMainActorHydration()
@@ -190,15 +193,10 @@ class HintModeController {
         activationTask?.cancel()
         activationTask = nil
 
-        // Gated on the static flag rather than `session.isActive` because the
-        // reducer may set `session = .inactive` before `applyEffects` fires
-        // `.deactivate`; a session-based guard would early-return here and
-        // leak the event tap + overlay.
-        guard HintModeController.isHintModeActive else { return }
-
-        HintModeController.isHintModeActive = false
-        HintModeController.isTextSearchActive = false
-        HintModeController.numberedElementsCount = 0
+        // A session-based guard would early-return after the reducer's
+        // `.inactive` transition and leak the event tap + overlay.
+        guard isSessionOpen else { return }
+        isSessionOpen = false
 
         deactivationTimer?.invalidate()
         deactivationTimer = nil
@@ -261,7 +259,6 @@ class HintModeController {
             alphabet: AppSettings.hintCharacters
         )
         session = .active(hintedElements: hinted, filter: "", mode: session.mode)
-        syncTapState(from: session)
         renderer.updateHints(with: hinted)
         startDeactivationTimer()
         scheduleMainActorHydration()
@@ -273,16 +270,10 @@ class HintModeController {
         for effect in effects {
             switch effect {
             case .performClick(let element):
-                // Reset tap state before clicking so number keys are not intercepted
-                // during the refresh window that follows.
-                HintModeController.isTextSearchActive = false
-                HintModeController.numberedElementsCount = 0
                 lastClickOpensPopup = HintPopupTriggerProbe.opensPopup(element)
                 executeClick(on: element)
 
             case .performRightClick(let element):
-                HintModeController.isTextSearchActive = false
-                HintModeController.numberedElementsCount = 0
                 lastClickOpensPopup = true // a right-click opens a context menu
                 executeRightClick(on: element)
 
@@ -291,7 +282,6 @@ class HintModeController {
 
             case .updateOverlay(let session):
                 renderer.present(session: session)
-                syncTapState(from: session)
 
             case .showSearchBar(let text):
                 renderer.updateSearchBar(text: text)
@@ -314,14 +304,9 @@ class HintModeController {
         }
     }
 
-    private func syncTapState(from session: HintSession) {
-        // Only expose numbered mode to the event tap when the numbered matches are
-        // actually in 1-9 range — >9 matches show green highlights but don't use
-        // number key selection (matching the pre-refactor behaviour).
-        let numberedCount = session.numberedElements.count
-        let inNumberedMode = numberedCount > 0 && numberedCount <= 9
-        HintModeController.isTextSearchActive = inNumberedMode
-        HintModeController.numberedElementsCount = inNumberedMode ? numberedCount : 0
+    private func publishTapContext(for session: HintSession) {
+        let context = HintInputDecoder.Context(session: session, hidePrefix: inputContext.hidePrefix)
+        HintModeController.tapContext.withLock { $0 = context }
     }
 
     // MARK: - Event tap
@@ -334,13 +319,12 @@ class HintModeController {
 
         return eventTap.start(
             eventMask: eventMask,
-            isActiveGate: { HintModeController.isHintModeActive },
+            isActiveGate: { HintModeController.tapContext.withLock { $0 != nil } },
             handler: { type, event in
-                let context = HintInputDecoder.Context(
-                    isTextSearchActive: HintModeController.isTextSearchActive,
-                    numberedElementsCount: HintModeController.numberedElementsCount,
-                    hidePrefix: HintModeController.hidePrefix
-                )
+                // The session can end between the gate and this read.
+                guard let context = HintModeController.tapContext.withLock({ $0 }) else {
+                    return Unmanaged.passRetained(event)
+                }
                 let command = HintInputDecoder.decode(type: type, event: event, context: context)
 
                 switch command {
@@ -426,7 +410,6 @@ class HintModeController {
         renderer.updateSearchBar(text: "")
         renderer.updateMatchCount(-1)
         renderer.setLabelsHidden(false)
-        syncTapState(from: cleared)
     }
 
     // MARK: - Text attribute hydration
@@ -503,6 +486,5 @@ class HintModeController {
             refreshTrigger: AppSettings.manualRefreshTrigger,
             hidePrefix: prefix
         )
-        HintModeController.hidePrefix = prefix
     }
 }

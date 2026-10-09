@@ -42,9 +42,9 @@ enum ScrollInputDecoder {
 
     /// Caller-supplied context read on the CF run loop thread.
     ///
-    /// Both fields must come from `nonisolated(unsafe)` statics so the
-    /// callback can access them without crossing actor boundaries.
-    struct Context {
+    /// The controller publishes one of these behind a lock whenever its
+    /// session changes; the tap callback copies it once per event.
+    struct Context: Equatable, Sendable {
         /// The four-character scroll-key string (e.g. "hjkl").
         let scrollKeys: String
     }

@@ -50,9 +50,9 @@ enum HintInputDecoder {
 
     /// Caller-supplied context read on the CF run loop thread.
     ///
-    /// Fields must come from `nonisolated(unsafe)` statics so the
-    /// callback can access them without crossing actor boundaries.
-    struct Context {
+    /// The controller publishes one of these behind a lock whenever its
+    /// session changes; the tap callback copies it once per event.
+    struct Context: Equatable, Sendable {
         let isTextSearchActive: Bool
         let numberedElementsCount: Int
         /// Single non-alphanumeric marker the user has configured to hide
@@ -69,6 +69,22 @@ enum HintInputDecoder {
             self.isTextSearchActive = isTextSearchActive
             self.numberedElementsCount = numberedElementsCount
             self.hidePrefix = hidePrefix
+        }
+
+        /// Tap-side view of `session`; `nil` when there is no live session.
+        ///
+        /// Numbered selection is only exposed for 1–9 matches: more than nine
+        /// render as highlight boxes without numbers, so digits must keep
+        /// typing into the filter.
+        init?(session: HintSession, hidePrefix: String) {
+            guard session.isActive else { return nil }
+            let numberedCount = session.numberedElements.count
+            let inNumberedMode = numberedCount > 0 && numberedCount <= 9
+            self.init(
+                isTextSearchActive: inNumberedMode,
+                numberedElementsCount: inNumberedMode ? numberedCount : 0,
+                hidePrefix: hidePrefix
+            )
         }
     }
 

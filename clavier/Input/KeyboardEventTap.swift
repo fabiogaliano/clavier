@@ -37,8 +37,8 @@ import AppKit
 /// handler with `DispatchQueue.main.async`.
 ///
 /// The `isActiveGate` closure is evaluated on the CF run loop thread.  It
-/// should read a `nonisolated(unsafe)` static Bool (same pattern as the
-/// original controllers) to decide whether the mode is currently active.
+/// should read the mode's lock-protected tap snapshot to decide whether
+/// the mode is currently active.
 final class KeyboardEventTap {
 
     // MARK: - Global slot table
@@ -79,8 +79,8 @@ final class KeyboardEventTap {
     ///
     /// - Parameters:
     ///   - eventMask: CGEvent types to intercept.
-    ///   - isActiveGate: Evaluated on the CF run loop thread.  Should read a
-    ///     `nonisolated(unsafe)` static Bool.
+    ///   - isActiveGate: Evaluated on the CF run loop thread.  Must be safe to
+    ///     call off the main actor.
     ///   - handler: Called for each intercepted event on the CF run loop thread.
     /// - Returns: `true` on success, `false` if the tap could not be created.
     @discardableResult
