@@ -25,6 +25,35 @@ final class HintPostClickPolicyTests: XCTestCase {
         XCTAssertEqual(HintPostClickPolicy.plan(mode: .oneShot, clickOpensPopup: true), .refresh(closeIfUnchanged: true))
     }
 
+    // MARK: - Click kinds
+
+    func test_rightClick_alwaysCountsAsOpeningAPopup() {
+        XCTAssertTrue(HintPostClickPolicy.clickOpensPopup(kind: .secondary) { false })
+    }
+
+    func test_hover_neverCountsAsOpeningAPopup_soOneShotCloses() {
+        let opens = HintPostClickPolicy.clickOpensPopup(kind: .hover) { true }
+        XCTAssertFalse(opens)
+        XCTAssertEqual(HintPostClickPolicy.plan(mode: .oneShot, clickOpensPopup: opens), .close)
+        XCTAssertEqual(HintPostClickPolicy.plan(mode: .continuous, clickOpensPopup: opens), .refresh(closeIfUnchanged: false))
+    }
+
+    func test_pressingKinds_followTheTargetLikeALeftClick() {
+        for kind in [HintClickKind.primary, .double, .commandClick] {
+            XCTAssertTrue(HintPostClickPolicy.clickOpensPopup(kind: kind) { true }, "\(kind)")
+            XCTAssertFalse(HintPostClickPolicy.clickOpensPopup(kind: kind) { false }, "\(kind)")
+        }
+    }
+
+    func test_nonPressingKinds_doNotProbeTheTarget() {
+        for kind in [HintClickKind.secondary, .hover] {
+            _ = HintPostClickPolicy.clickOpensPopup(kind: kind) {
+                XCTFail("\(kind) must not probe the element")
+                return false
+            }
+        }
+    }
+
     func test_opensPopup_byRole() {
         XCTAssertTrue(HintPostClickPolicy.opensPopup(role: kAXPopUpButtonRole as String, hasPopup: nil))
         XCTAssertTrue(HintPostClickPolicy.opensPopup(role: kAXMenuButtonRole as String, hasPopup: nil))

@@ -268,13 +268,12 @@ class HintModeController {
     private func applyEffects(_ effects: [HintSideEffect]) {
         for effect in effects {
             switch effect {
-            case .performClick(let element):
-                lastClickOpensPopup = HintPopupTriggerProbe.opensPopup(element)
-                executeClick(on: element)
-
-            case .performRightClick(let element):
-                lastClickOpensPopup = true // a right-click opens a context menu
-                executeRightClick(on: element)
+            case .perform(let kind, let element):
+                lastClickOpensPopup = HintPostClickPolicy.clickOpensPopup(kind: kind) {
+                    HintPopupTriggerProbe.opensPopup(element)
+                }
+                HintActionPerformer.perform(kind, on: element)
+                startDeactivationTimer()
 
             case .deactivate:
                 deactivateHintMode()
@@ -310,7 +309,8 @@ class HintModeController {
             hotkey: HotkeyChord(
                 keyCodeKey: AppSettings.Keys.hintShortcutKeyCode,
                 modifiersKey: AppSettings.Keys.hintShortcutModifiers
-            )
+            ),
+            hintAlphabet: AppSettings.hintCharacters.rawString
         )
         HintModeController.tapContext.withLock { $0 = context }
     }
@@ -364,18 +364,6 @@ class HintModeController {
         )
         session = nextSession
         applyEffects(effects)
-    }
-
-    // MARK: - Click execution
-
-    private func executeClick(on element: UIElement) {
-        HintActionPerformer.performPrimary(on: element)
-        startDeactivationTimer()
-    }
-
-    private func executeRightClick(on element: UIElement) {
-        HintActionPerformer.performSecondary(on: element)
-        startDeactivationTimer()
     }
 
     // MARK: - Post-click

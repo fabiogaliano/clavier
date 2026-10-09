@@ -97,7 +97,7 @@ final class HintInputReducerHidePrefixTests: XCTestCase {
         // Both queries should end at the same click/selection outcome (single match)
         // and therefore collapse to .active with empty filter after the click.
         XCTAssertEqual(plainNext.filter, hiddenNext.filter, "hidden-prefix query must converge on same session as plain query")
-        XCTAssertTrue(hiddenEffects.contains { if case .performClick = $0 { return true } else { return false } })
+        XCTAssertTrue(hiddenEffects.contains { if case .perform = $0 { return true } else { return false } })
     }
 
     func test_backspacePastPrefix_emitsLabelsVisibleAgain() {
@@ -178,7 +178,7 @@ final class HintInputReducerHidePrefixTests: XCTestCase {
         var sawRestore = false
         for effect in effects {
             if case .setLabelsHidden(false) = effect { sawRestore = true }
-            if case .performClick = effect {
+            if case .perform = effect {
                 XCTAssertTrue(sawRestore, "hide-mode must restore labels on match before clicking")
                 return
             }
