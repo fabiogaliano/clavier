@@ -45,6 +45,11 @@ struct HintPlacementEngine {
     /// visibly readable. Anything higher falls through to a fresh placement.
     private static let stabilityCostThreshold: Double = 0.05
 
+    /// Per-label tracing for placement debugging. Off by default: dense
+    /// screens place hundreds of labels per render and the per-call cost of
+    /// formatting and logging shows up in overlay latency.
+    static let isVerbose = false
+
     init(
         windowSize: CGSize,
         elementFrames: [CGRect] = [],
@@ -73,7 +78,6 @@ struct HintPlacementEngine {
     mutating func place(element: UIElement, labelSize: CGSize, horizontalOffset: CGFloat) -> CGRect {
         let candidates = candidateFrames(element: element, labelSize: labelSize, horizontalOffset: horizontalOffset)
         let ownFrame = element.visibleFrame
-        let obstacleCount = elementObstacles.count
 
         // Temporal coherence: if a previous placement for this identity is
         // still geometrically valid (fits on screen, low overlap with current
@@ -86,9 +90,7 @@ struct HintPlacementEngine {
            previous.size == labelSize,
            canReusePreviousPlacement(previous, ownFrame: ownFrame) {
             placedFrames.append(previous)
-            let elDesc = String(describing: ownFrame)
-            let rDesc = String(describing: previous)
-            Logger.hintMode.debug("place el=\(elDesc, privacy: .public) obstacles=\(obstacleCount) chose=STABLE rect=\(rDesc, privacy: .public)")
+            logPlacement(ownFrame, choice: "STABLE", rect: previous)
             return previous
         }
 
@@ -105,9 +107,7 @@ struct HintPlacementEngine {
             }
             let rect = clamp(candidates[idx])
             placedFrames.append(rect)
-            let elDesc = String(describing: ownFrame)
-            let rDesc = String(describing: rect)
-            Logger.hintMode.debug("place el=\(elDesc, privacy: .public) obstacles=\(obstacleCount) chose=CLUSTER(\(String(describing: forced), privacy: .public)) rect=\(rDesc, privacy: .public)")
+            logPlacement(ownFrame, choice: "CLUSTER(\(String(describing: forced)))", rect: rect)
             return rect
         }
 
@@ -120,9 +120,7 @@ struct HintPlacementEngine {
             let cost = collisionCost(clamped, ownFrame: ownFrame)
             if cost == 0 {
                 placedFrames.append(clamped)
-                let elDesc = String(describing: ownFrame)
-                let rDesc = String(describing: clamped)
-                Logger.hintMode.debug("place el=\(elDesc, privacy: .public) obstacles=\(obstacleCount) chose=structured#\(i, privacy: .public) rect=\(rDesc, privacy: .public)")
+                logPlacement(ownFrame, choice: "structured#\(i)", rect: clamped)
                 return clamped
             }
             ranked.append((clamped, cost, "structured#\(i)"))
@@ -136,9 +134,7 @@ struct HintPlacementEngine {
             let cost = collisionCost(shifted, ownFrame: ownFrame)
             if cost == 0 {
                 placedFrames.append(shifted)
-                let elDesc = String(describing: ownFrame)
-                let rDesc = String(describing: shifted)
-                Logger.hintMode.debug("place el=\(elDesc, privacy: .public) obstacles=\(obstacleCount) chose=step×\(multiplier, privacy: .public) rect=\(rDesc, privacy: .public)")
+                logPlacement(ownFrame, choice: "step×\(multiplier)", rect: shifted)
                 return shifted
             }
             ranked.append((shifted, cost, "step×\(multiplier)"))
@@ -156,10 +152,16 @@ struct HintPlacementEngine {
 
         let winner = ranked.min(by: { $0.cost < $1.cost })!
         placedFrames.append(winner.rect)
-        let elDesc = String(describing: ownFrame)
-        let rDesc = String(describing: winner.rect)
-        Logger.hintMode.debug("place el=\(elDesc, privacy: .public) obstacles=\(obstacleCount) chose=BEST(\(winner.label, privacy: .public) cost=\(winner.cost, privacy: .public)) rect=\(rDesc, privacy: .public)")
+        logPlacement(ownFrame, choice: "BEST(\(winner.label) cost=\(winner.cost))", rect: winner.rect)
         return winner.rect
+    }
+
+    private func logPlacement(_ ownFrame: CGRect, choice: @autoclosure () -> String, rect: CGRect) {
+        guard Self.isVerbose else { return }
+        let elDesc = String(describing: ownFrame)
+        let rDesc = String(describing: rect)
+        let choiceDesc = choice()
+        Logger.hintMode.debug("place el=\(elDesc, privacy: .public) obstacles=\(elementObstacles.count) chose=\(choiceDesc, privacy: .public) rect=\(rDesc, privacy: .public)")
     }
 
     // MARK: - Cluster detection
