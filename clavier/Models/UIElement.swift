@@ -32,6 +32,10 @@ struct UIElement: Equatable {
     /// Structural discovery flag captured during traversal so action routing
     /// does not need to re-walk the live AX tree later.
     let isWebContent: Bool
+    /// Menu bar title, status item or Dock item rather than part of the
+    /// frontmost app's windows.  These get their own token prefix so adding
+    /// them never shifts the tokens of window hints.
+    let isSystemChrome: Bool
     let role: String
     /// Hydrated lazily after initial display.  `nil` means "not yet loaded";
     /// a non-nil value means hydration has run (fields within may still be
@@ -54,6 +58,7 @@ struct UIElement: Equatable {
         frame: CGRect,
         visibleFrame: CGRect,
         isWebContent: Bool = false,
+        isSystemChrome: Bool = false,
         role: String,
         textAttributes: ElementTextAttributes? = nil
     ) {
@@ -62,6 +67,7 @@ struct UIElement: Equatable {
         self.frame = frame
         self.visibleFrame = visibleFrame
         self.isWebContent = isWebContent
+        self.isSystemChrome = isSystemChrome
         self.role = role
         self.textAttributes = textAttributes
     }

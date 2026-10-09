@@ -105,6 +105,7 @@ class HintModeController {
         var presentedProvisionalBrowserHints = false
 
         let discoveredElements = await AccessibilityService.shared.getClickableElementsWhenReady(
+            includeSystemChrome: config.hintsSystemChrome,
             onBrowserRendererPending: { [weak self] nativeElements in
                 guard let self else { return }
                 presentedProvisionalBrowserHints = self.openInitialSession(
@@ -131,7 +132,9 @@ class HintModeController {
                 to: discoveredElements,
                 previous: hintedElements,
                 alphabet: AppSettings.hintCharacters,
-                minimumTokenLength: 3
+                minimumTokenLength: 3,
+                bundleIDs: HintAssigner.runningBundleIDs(for: discoveredElements),
+                reservesSystemChromePrefix: config.hintsSystemChrome
             )
             session = .active(hintedElements: merged, filter: "", mode: session.mode)
             renderer.updateHints(with: merged)
@@ -147,7 +150,9 @@ class HintModeController {
         // detect the empty-tree signature there, hand off to the help
         // sheet (which offers a one-click relaunch with the
         // accessibility flag) and don't proceed with normal hint mode.
-        if SpotifyAccessibilityHelper.shared.presentIfApplicable(elements: discoveredElements) {
+        if SpotifyAccessibilityHelper.shared.presentIfApplicable(
+            elements: discoveredElements.filter { !$0.isSystemChrome }
+        ) {
             return
         }
 
@@ -167,7 +172,9 @@ class HintModeController {
         let hintedElements = HintAssigner.assign(
             to: elements,
             alphabet: AppSettings.hintCharacters,
-            minimumTokenLength: minimumTokenLength
+            minimumTokenLength: minimumTokenLength,
+            bundleIDs: HintAssigner.runningBundleIDs(for: elements),
+            reservesSystemChromePrefix: config.hintsSystemChrome
         )
         renderer.open(session: .active(hintedElements: hintedElements, filter: "", mode: initialMode))
 
@@ -223,7 +230,9 @@ class HintModeController {
         refreshCoordinator.cancelPending()
 
         let start = CFAbsoluteTimeGetCurrent()
-        let elements = AccessibilityService.shared.getClickableElements()
+        let elements = AccessibilityService.shared.getClickableElements(
+            includeSystemChrome: config.hintsSystemChrome
+        )
         guard !elements.isEmpty else {
             deactivateHintMode()
             return
@@ -239,7 +248,9 @@ class HintModeController {
     private func sampleAfterClick() -> HintTreeSignature? {
         guard isActive, session.filter.isEmpty else { return nil }
 
-        let elements = AccessibilityService.shared.getClickableElements()
+        let elements = AccessibilityService.shared.getClickableElements(
+            includeSystemChrome: config.hintsSystemChrome
+        )
         guard !elements.isEmpty else {
             deactivateHintMode()
             return nil
@@ -258,7 +269,9 @@ class HintModeController {
         let hinted = HintAssigner.assignPreservingHints(
             to: elements,
             previous: hintedElements,
-            alphabet: AppSettings.hintCharacters
+            alphabet: AppSettings.hintCharacters,
+            bundleIDs: HintAssigner.runningBundleIDs(for: elements),
+            reservesSystemChromePrefix: config.hintsSystemChrome
         )
         session = .active(hintedElements: hinted, filter: "", mode: session.mode)
         renderer.updateHints(with: hinted)

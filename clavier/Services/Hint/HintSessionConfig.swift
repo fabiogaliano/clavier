@@ -16,6 +16,7 @@ struct HintSessionConfig {
     let deactivationDelay: TimeInterval
     let initialMode: HintSessionMode
     let inputContext: HintInputContext
+    var hintsSystemChrome: Bool = AppSettings.Defaults.hintSystemChrome
 
     static let `default` = HintSessionConfig(
         autoDeactivation: AppSettings.Defaults.autoHintDeactivation,
@@ -40,7 +41,8 @@ struct HintSessionConfig {
                 minSearchChars: AppSettings.minSearchCharacters,
                 refreshTrigger: AppSettings.manualRefreshTrigger,
                 hidePrefix: AppSettings.hideHintsPrefix
-            )
+            ),
+            hintsSystemChrome: AppSettings.hintSystemChrome
         )
     }
 

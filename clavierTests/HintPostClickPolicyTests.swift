@@ -58,6 +58,8 @@ final class HintPostClickPolicyTests: XCTestCase {
         XCTAssertTrue(HintPostClickPolicy.opensPopup(role: kAXPopUpButtonRole as String, hasPopup: nil))
         XCTAssertTrue(HintPostClickPolicy.opensPopup(role: kAXMenuButtonRole as String, hasPopup: nil))
         XCTAssertTrue(HintPostClickPolicy.opensPopup(role: kAXComboBoxRole as String, hasPopup: nil))
+        XCTAssertTrue(HintPostClickPolicy.opensPopup(role: kAXMenuBarItemRole as String, hasPopup: nil))
+        XCTAssertFalse(HintPostClickPolicy.opensPopup(role: "AXDockItem", hasPopup: nil))
     }
 
     func test_opensPopup_byHasPopupAttribute() {

@@ -25,11 +25,13 @@ enum HintPostClickPlan: Equatable {
 enum HintPostClickPolicy {
 
     /// Roles whose primary action opens a popup of choices.  Web buttons with
-    /// `aria-haspopup` are caught by the `AXHasPopup` probe instead.
+    /// `aria-haspopup` are caught by the `AXHasPopup` probe instead.  Menu bar
+    /// titles and status items open their menu the same way.
     static let popupTriggerRoles: Set<String> = [
         kAXPopUpButtonRole as String,
         kAXMenuButtonRole as String,
-        kAXComboBoxRole as String
+        kAXComboBoxRole as String,
+        kAXMenuBarItemRole as String
     ]
 
     static func plan(mode: HintSessionMode, clickOpensPopup: Bool) -> HintPostClickPlan {

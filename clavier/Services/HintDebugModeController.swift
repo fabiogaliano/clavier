@@ -62,8 +62,16 @@ final class HintDebugModeController {
         // and join the results back onto the event stream.  Any drift
         // between the two paths is automatically impossible because the
         // walker, assigner, and layout helper used here are identical.
-        let elements = AccessibilityService.shared.getClickableElements(recorder: recorder)
-        let hinted = HintAssigner.assign(to: elements, alphabet: AppSettings.hintCharacters)
+        let elements = AccessibilityService.shared.getClickableElements(
+            includeSystemChrome: AppSettings.hintSystemChrome,
+            recorder: recorder
+        )
+        let hinted = HintAssigner.assign(
+            to: elements,
+            alphabet: AppSettings.hintCharacters,
+            bundleIDs: HintAssigner.runningBundleIDs(for: elements),
+            reservesSystemChromePrefix: AppSettings.hintSystemChrome
+        )
         let desktopSize = ScreenGeometry.desktopBoundsInAppKit.size
         let labeled = HintLayout.buildLabels(for: hinted, windowSize: desktopSize)
 

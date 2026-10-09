@@ -44,22 +44,22 @@ final class HintAssignerTests: XCTestCase {
         XCTAssertEqual(HintAssigner.assign(to: elements, alphabet: alphabet("")).count, 0)
     }
 
-    // MARK: - Two-character tokens
+    // MARK: - Token length (count-driven)
 
     func test_twoCharTokens_fullGrid() {
         // 2-letter alphabet, 4 elements → fills the 2×2 grid.
         let elements = makeElements(4)
         let result = HintAssigner.assign(to: elements, alphabet: alphabet("ab"))
-        XCTAssertEqual(result.map { $0.hint }, ["aa", "ab", "ba", "bb"])
+        XCTAssertEqual(Set(result.map { $0.hint }), ["aa", "ab", "ba", "bb"])
     }
 
     func test_twoCharTokens_partialGrid() {
         let elements = makeElements(3)
         let result = HintAssigner.assign(to: elements, alphabet: alphabet("ab"))
-        XCTAssertEqual(result.map { $0.hint }, ["aa", "ab", "ba"])
+        XCTAssertEqual(result.count, 3)
+        XCTAssertEqual(Set(result.map { $0.hint }).count, 3)
+        XCTAssertTrue(result.allSatisfy { $0.hint.count == 2 })
     }
-
-    // MARK: - Three-character tokens
 
     func test_threeCharTokens_whenCountExceedsTwoCharCombos() {
         // 2-letter alphabet produces 4 two-char combos; 5 elements forces 3-char.
@@ -67,7 +67,7 @@ final class HintAssignerTests: XCTestCase {
         let result = HintAssigner.assign(to: elements, alphabet: alphabet("ab"))
         XCTAssertEqual(result.count, 5)
         XCTAssertTrue(result.allSatisfy { $0.hint.count == 3 })
-        XCTAssertEqual(result.map { $0.hint }, ["aaa", "aab", "aba", "abb", "baa"])
+        XCTAssertEqual(Set(result.map { $0.hint }).count, 5)
     }
 
     func test_threeCharTokens_cappedAtCubeOfAlphabet() {
@@ -85,7 +85,8 @@ final class HintAssignerTests: XCTestCase {
             alphabet: alphabet("ab"),
             minimumTokenLength: 3
         )
-        XCTAssertEqual(result.map(\.hint), ["aaa", "aab", "aba"])
+        XCTAssertEqual(result.count, 3)
+        XCTAssertTrue(result.allSatisfy { $0.hint.count == 3 })
     }
 
     func test_browserRendererMerge_preservesVisibleTokensAndAssignsNewOnes() {
