@@ -134,12 +134,28 @@ class AppDelegate: NSObject, NSApplicationDelegate {
 
         statusItem?.menu = menu
 
-        NotificationCenter.default.addObserver(
-            self,
-            selector: #selector(updateMenuTitles),
-            name: UserDefaults.didChangeNotification,
-            object: nil
-        )
+        // KVO on just the shortcut keys: `UserDefaults.didChangeNotification`
+        // fires for every slider tick in Preferences.
+        for key in Self.menuShortcutKeys {
+            UserDefaults.standard.addObserver(self, forKeyPath: key, options: [], context: nil)
+        }
+    }
+
+    private static let menuShortcutKeys = [
+        AppSettings.Keys.hintShortcutKeyCode,
+        AppSettings.Keys.hintShortcutModifiers,
+        AppSettings.Keys.scrollShortcutKeyCode,
+        AppSettings.Keys.scrollShortcutModifiers,
+    ]
+
+    nonisolated override func observeValue(
+        forKeyPath keyPath: String?,
+        of object: Any?,
+        change: [NSKeyValueChangeKey: Any]?,
+        context: UnsafeMutableRawPointer?
+    ) {
+        // KVO delivers on the writing thread; menu items are main-thread only.
+        Task { @MainActor in self.updateMenuTitles() }
     }
 
     /// Builds a menu item with an SF Symbol leading glyph, a main title, and
@@ -152,7 +168,7 @@ class AppDelegate: NSObject, NSApplicationDelegate {
         return item
     }
 
-    @objc private func updateMenuTitles() {
+    private func updateMenuTitles() {
         hintMenuItem?.subtitle = formatHintShortcut()
         scrollMenuItem?.subtitle = formatScrollShortcut()
     }
