@@ -94,6 +94,9 @@ struct HintScene {
         var status: Status? = nil
         /// Continuous-mode auto-deactivation; `nil` when it is off.
         var countdown: Countdown? = nil
+        /// User preference: keep the bar up for the whole session instead
+        /// of only when there is something to say.
+        var barAlwaysVisible: Bool = false
     }
 
     /// The full token assignment the overlay lays out; `content` decides
@@ -121,6 +124,7 @@ struct HintScene {
 
     private static func pillVisible(for session: HintSession, chrome: Chrome) -> Bool {
         if chrome.status != nil || chrome.labelsHidden || session.isContinuous { return true }
+        if chrome.barAlwaysVisible { return session.isActive }
         switch session {
         case .inactive:
             return false

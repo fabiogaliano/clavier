@@ -134,6 +134,7 @@ Stored in `UserDefaults` — keys live in `AppSettings.Keys`, defaults in `AppSe
 - `hintShortcutModifiers` (Int): Carbon modifier flags (default: none).
 - `hintCharacters` (String): Alphabet used for hint tokens (default: `"asdfhjkl"`).
 - `textSearchEnabled` (Bool): Enable text-search sub-mode (default: true).
+- `searchBarAlwaysVisible` (Bool): Keep the bar up for the whole session; off shows it only for search, status and continuous mode (default: true).
 - `minSearchCharacters` (Int): Characters typed before text search engages (default: 2).
 - `manualRefreshTrigger` (String): Characters typed to force a refresh in continuous mode (default: `"rr"`).
 - `continuousClickMode` (Bool): Start every hint session continuous; otherwise the live session can be upgraded with a second hint-hotkey press.
@@ -143,6 +144,7 @@ Stored in `UserDefaults` — keys live in `AppSettings.Keys`, defaults in `AppSe
 
 **Hint Mode (appearance):**
 - `hintSize` (Double): Font size (10–20pt, default: 12).
+- `hintUppercase` (Bool): Draw tokens in capitals (default: false).
 - `hintBackgroundHex`, `hintBorderHex`, `hintTextHex`, `highlightTextHex` (String): Hex colors for the four overlay surfaces.
 - `hintBackgroundOpacity`, `hintBorderOpacity` (Double): 0–1 opacity for the glass tint and the specular top edge (defaults: 0.72 / 0.4).
 - `hintHorizontalOffset` (Double): Pixel offset for hint placement, −200…+200 (default: −25).

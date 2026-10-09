@@ -10,6 +10,7 @@ struct AppearanceTabView: View {
     @AppStorage(AppSettings.Keys.hintSize) private var hintSize: Double = AppSettings.Defaults.hintSize
     @AppStorage(AppSettings.Keys.hintHorizontalOffset) private var hintHorizontalOffset: Double = AppSettings.Defaults.hintHorizontalOffset
     @AppStorage(AppSettings.Keys.showHintTail) private var showHintTail: Bool = AppSettings.Defaults.showHintTail
+    @AppStorage(AppSettings.Keys.hintUppercase) private var hintUppercase: Bool = AppSettings.Defaults.hintUppercase
     @AppStorage(AppSettings.Keys.useSystemAccentColor) private var useSystemAccent: Bool = AppSettings.Defaults.useSystemAccentColor
     @AppStorage(AppSettings.Keys.hintPaddingX) private var hintPaddingX: Double = AppSettings.Defaults.hintPaddingX
     @AppStorage(AppSettings.Keys.hintPaddingY) private var hintPaddingY: Double = AppSettings.Defaults.hintPaddingY
@@ -53,6 +54,10 @@ struct AppearanceTabView: View {
             Section("Hint Appearance") {
                 Toggle(isOn: $showHintTail) {
                     Label("Show tail pointing to element", systemImage: "arrow.up.right")
+                }
+
+                Toggle(isOn: $hintUppercase) {
+                    Label("Uppercase letters", systemImage: "textformat.size.larger")
                 }
 
                 ColorPicker("Background tint", selection: Binding(
@@ -184,6 +189,7 @@ struct AppearanceTabView: View {
         hintSize = AppSettings.Defaults.hintSize
         hintHorizontalOffset = AppSettings.Defaults.hintHorizontalOffset
         showHintTail = AppSettings.Defaults.showHintTail
+        hintUppercase = AppSettings.Defaults.hintUppercase
         useSystemAccent = AppSettings.Defaults.useSystemAccentColor
         hintPaddingX = AppSettings.Defaults.hintPaddingX
         hintPaddingY = AppSettings.Defaults.hintPaddingY

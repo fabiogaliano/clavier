@@ -250,6 +250,22 @@ final class HintSceneTests: XCTestCase {
         XCTAssertEqual(HintScene.Countdown(secondsLeft: 3, totalSeconds: 0).fraction, 0)
     }
 
+    func test_pill_alwaysVisible_showsForEmptyFilter() {
+        var chrome = HintScene.Chrome()
+        chrome.barAlwaysVisible = true
+        let scene = HintScene.derive(
+            from: .active(hintedElements: elements, filter: "", mode: .oneShot),
+            chrome: chrome
+        )
+        XCTAssertTrue(scene.isPillVisible)
+    }
+
+    func test_pill_alwaysVisible_stillHiddenWhenInactive() {
+        var chrome = HintScene.Chrome()
+        chrome.barAlwaysVisible = true
+        XCTAssertFalse(HintScene.derive(from: .inactive, chrome: chrome).isPillVisible)
+    }
+
     func test_pill_hiddenWhenInactive() {
         XCTAssertFalse(HintScene.derive(from: .inactive, chrome: .init()).isPillVisible)
     }

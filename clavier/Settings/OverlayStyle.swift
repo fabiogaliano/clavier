@@ -19,6 +19,8 @@ struct OverlayStyle: Equatable {
     let borderOpacity: CGFloat
     let horizontalOffset: CGFloat
     let showTail: Bool
+    /// Draw tokens in capitals; matching is case-insensitive either way.
+    let uppercase: Bool
     let paddingX: CGFloat
     let paddingY: CGFloat
 
@@ -51,6 +53,7 @@ struct OverlayStyle: Equatable {
             borderOpacity: reader.opacity(K.hintBorderOpacity, D.hintBorderOpacity),
             horizontalOffset: reader.double(K.hintHorizontalOffset, D.hintHorizontalOffset),
             showTail: reader.bool(K.showHintTail, D.showHintTail),
+            uppercase: reader.bool(K.hintUppercase, D.hintUppercase),
             paddingX: reader.nonNegative(K.hintPaddingX, D.hintPaddingX),
             paddingY: reader.nonNegative(K.hintPaddingY, D.hintPaddingY)
         )
@@ -74,6 +77,7 @@ struct OverlayStyle: Equatable {
             borderOpacity: reader.opacity(K.scrollBorderOpacity, D.scrollBorderOpacity),
             horizontalOffset: 0,
             showTail: false,
+            uppercase: false,
             paddingX: 10,
             paddingY: 6
         )

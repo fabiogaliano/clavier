@@ -27,7 +27,7 @@ final class HintOverlayRenderer {
     /// Loaded once per activation; Preferences edits apply from the next one.
     private var style: OverlayStyle = AppSettings.hintStyle
     private var session: HintSession = .inactive
-    private var chrome = HintScene.Chrome()
+    private var chrome = HintOverlayRenderer.freshChrome()
 
     /// Invoked when the user clicks the bar's help segment.
     var onHelpRequested: (() -> Void)?
@@ -39,7 +39,7 @@ final class HintOverlayRenderer {
     func open(session: HintSession) {
         style = AppSettings.hintStyle
         self.session = session
-        chrome = HintScene.Chrome()
+        chrome = HintOverlayRenderer.freshChrome()
         if let window {
             render()
             window.playLabelEntrance()
@@ -52,6 +52,14 @@ final class HintOverlayRenderer {
 
     /// Show a controller status in the bar with no hints, opening the
     /// overlay if needed.
+    /// Chrome starts from the user's bar preference, read at the same time
+    /// as the style so a Preferences change applies from the next session.
+    private static func freshChrome() -> HintScene.Chrome {
+        var chrome = HintScene.Chrome()
+        chrome.barAlwaysVisible = UserDefaults.standard.bool(forKey: AppSettings.Keys.searchBarAlwaysVisible)
+        return chrome
+    }
+
     func showStatus(_ status: HintScene.Status) {
         chrome.status = status
         if window == nil {
@@ -76,7 +84,7 @@ final class HintOverlayRenderer {
         window?.dismiss()
         window = nil
         session = .inactive
-        chrome = HintScene.Chrome()
+        chrome = HintOverlayRenderer.freshChrome()
     }
 
     // MARK: - Session rendering

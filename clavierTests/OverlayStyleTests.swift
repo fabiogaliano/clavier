@@ -15,6 +15,21 @@ final class OverlayStyleTests: XCTestCase {
         OverlayStyle.parseScroll({ stored[$0] }, accentColor: .systemPink)
     }
 
+    // MARK: - Letter case
+
+    func test_hint_uppercase_defaultsOff_andReadsStoredValue() {
+        XCTAssertFalse(hint([:]).uppercase)
+        XCTAssertTrue(hint([K.hintUppercase: true]).uppercase)
+    }
+
+    @MainActor
+    func test_attributedToken_followsCaseSetting() {
+        let lower = HintLabelRenderer.attributedToken("as", typedPrefix: "a", style: hint([:]))
+        let upper = HintLabelRenderer.attributedToken("as", typedPrefix: "a", style: hint([K.hintUppercase: true]))
+        XCTAssertEqual(lower.string, "as")
+        XCTAssertEqual(upper.string, "AS")
+    }
+
     // MARK: - Opacity
 
     func test_hint_zeroOpacity_staysZero() {

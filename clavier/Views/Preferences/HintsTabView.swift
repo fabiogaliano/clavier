@@ -5,6 +5,7 @@ struct HintsTabView: View {
     @AppStorage(AppSettings.Keys.hintShortcutModifiers) private var hintShortcutModifiers: Int = AppSettings.Defaults.hintShortcutModifiers
     @AppStorage(AppSettings.Keys.hintCharacters) private var hintCharacters: String = AppSettings.Defaults.hintCharacters
     @AppStorage(AppSettings.Keys.textSearchEnabled) private var textSearchEnabled: Bool = AppSettings.Defaults.textSearchEnabled
+    @AppStorage(AppSettings.Keys.searchBarAlwaysVisible) private var searchBarAlwaysVisible: Bool = AppSettings.Defaults.searchBarAlwaysVisible
     @AppStorage(AppSettings.Keys.minSearchCharacters) private var minSearchCharacters: Int = AppSettings.Defaults.minSearchCharacters
     @AppStorage(AppSettings.Keys.manualRefreshTrigger) private var manualRefreshTrigger: String = AppSettings.Defaults.manualRefreshTrigger
     @AppStorage(AppSettings.Keys.hideHintsPrefix) private var hideHintsPrefix: String = AppSettings.Defaults.hideHintsPrefix
@@ -73,6 +74,12 @@ struct HintsTabView: View {
                     }
                     caption("Search starts after this many characters and clicks when one match remains.")
                 }
+
+                Picker("Show search bar", selection: $searchBarAlwaysVisible) {
+                    Text("Always").tag(true)
+                    Text("Only when searching").tag(false)
+                }
+                caption("The bar also carries status messages and the continuous-mode countdown either way.")
             }
 
             Section {

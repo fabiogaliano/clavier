@@ -28,6 +28,8 @@ enum AppSettings {
         static let hintBorderOpacity = "hintBorderOpacity"
         static let hintHorizontalOffset = "hintHorizontalOffset"
         static let showHintTail = "showHintTail"
+        static let hintUppercase = "hintUppercase"
+        static let searchBarAlwaysVisible = "searchBarAlwaysVisible"
         static let useSystemAccentColor = "useSystemAccentColor"
         static let hintPaddingX = "hintPaddingX"
         static let hintPaddingY = "hintPaddingY"
@@ -81,6 +83,8 @@ enum AppSettings {
         static let hintBorderOpacity = 0.4
         static let hintHorizontalOffset = 0.0
         static let showHintTail = true
+        static let hintUppercase = false
+        static let searchBarAlwaysVisible = true
         static let useSystemAccentColor = false
         static let hintPaddingX = 3.0
         static let hintPaddingY = 1.0
@@ -134,6 +138,8 @@ enum AppSettings {
             Keys.hintBorderOpacity: Defaults.hintBorderOpacity,
             Keys.hintHorizontalOffset: Defaults.hintHorizontalOffset,
             Keys.showHintTail: Defaults.showHintTail,
+            Keys.hintUppercase: Defaults.hintUppercase,
+            Keys.searchBarAlwaysVisible: Defaults.searchBarAlwaysVisible,
             Keys.useSystemAccentColor: Defaults.useSystemAccentColor,
             Keys.hintPaddingX: Defaults.hintPaddingX,
             Keys.hintPaddingY: Defaults.hintPaddingY,
