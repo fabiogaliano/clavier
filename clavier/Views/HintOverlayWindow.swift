@@ -26,8 +26,11 @@ class HintOverlayWindow: NSWindow {
     /// positions when valid and so reduce label jitter across refreshes.
     private var previousPlacements: [ElementIdentity: CGRect] = [:]
 
-    init(hintedElements: [HintedElement]) {
+    private let style: OverlayStyle
+
+    init(hintedElements: [HintedElement], style: OverlayStyle) {
         self.hintedElements = hintedElements
+        self.style = style
 
         // Cover the entire desktop so hints render correctly on every display.
         let desktopBounds = ScreenGeometry.desktopBoundsInAppKit
@@ -60,7 +63,8 @@ class HintOverlayWindow: NSWindow {
 
         let labels = HintLayout.buildLabels(
             for: hintedElements,
-            windowSize: self.frame.size
+            windowSize: self.frame.size,
+            style: style
         )
         for labeled in labels {
             containerView.addSubview(labeled.view)
@@ -160,7 +164,6 @@ class HintOverlayWindow: NSWindow {
         // A refresh implies the user started a new selection gesture; drop
         // hide-mode so the redrawn labels are visible.
         labelsForcedHidden = false
-        let style = HintStyle()
         let obstacles = hintedElements.map { $0.element.visibleFrame }
         var engine = HintPlacementEngine(
             windowSize: self.frame.size,
@@ -275,14 +278,12 @@ class HintOverlayWindow: NSWindow {
         }
         elementHighlights.removeAll()
 
-        let textHex = UserDefaults.standard.string(forKey: AppSettings.Keys.hintTextHex) ?? AppSettings.Defaults.hintTextHex
-        let textColor = NSColor(hex: textHex)
+        let textColor = style.textColor
 
         if !textMatches.isEmpty {
             if numberedMode {
                 for (_, view) in hintViews { view.isHidden = true }
 
-                let style = HintStyle()
                 let obstacles = textMatches.map { $0.element.visibleFrame }
                 var engine = HintPlacementEngine(windowSize: self.frame.size, elementFrames: obstacles)
                 for hintedElement in textMatches {
@@ -316,7 +317,7 @@ class HintOverlayWindow: NSWindow {
                 } else if hint.hasPrefix(prefix) {
                     view.isHidden = false
                     if let textField = MatchHighlightRenderer.findTextField(in: view) {
-                        MatchHighlightRenderer.highlightPrefix(in: textField, prefix: prefix, hint: hint)
+                        MatchHighlightRenderer.highlightPrefix(in: textField, prefix: prefix, hint: hint, style: style)
                     }
                 } else {
                     view.isHidden = true

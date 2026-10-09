@@ -81,19 +81,6 @@ enum GlassBackdrop {
     }
 }
 
-/// Honours the `useSystemAccentColor` toggle without scattering the
-/// UserDefaults read across every renderer.
-enum AppearanceColor {
-    static func effectiveTint(customHex: String) -> NSColor {
-        let useAccent = UserDefaults.standard.bool(forKey: AppSettings.Keys.useSystemAccentColor)
-        return useAccent ? NSColor.controlAccentColor : NSColor(hex: customHex)
-    }
-
-    static var useSystemAccent: Bool {
-        UserDefaults.standard.bool(forKey: AppSettings.Keys.useSystemAccentColor)
-    }
-}
-
 // MARK: - SwiftUI glass fallback
 
 extension View {

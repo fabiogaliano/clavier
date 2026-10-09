@@ -34,7 +34,7 @@ final class HintOverlayRenderer {
     /// Open the overlay for the initial session.
     func open(session: HintSession) {
         let hintedElements = session.hintedElements
-        let newWindow = HintOverlayWindow(hintedElements: hintedElements)
+        let newWindow = HintOverlayWindow(hintedElements: hintedElements, style: AppSettings.hintStyle)
         newWindow.setContinuousMode(session.isContinuous)
         newWindow.show()
         self.window = newWindow

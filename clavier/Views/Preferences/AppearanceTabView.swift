@@ -40,31 +40,12 @@ struct AppearanceTabView: View {
             }
 
             Section("Hint Preview") {
+                // Every @AppStorage change above invalidates this body, so the
+                // style is re-parsed from UserDefaults exactly as the overlay
+                // will parse it at activation.
                 HintPreviewView(
-                    hintText: "AJ",
-                    backgroundColor: Binding(
-                        get: { Color(hex: hintBackgroundHex) },
-                        set: { hintBackgroundHex = $0.toHex() }
-                    ),
-                    borderColor: Binding(
-                        get: { Color(hex: hintBorderHex) },
-                        set: { hintBorderHex = $0.toHex() }
-                    ),
-                    textColor: Binding(
-                        get: { Color(hex: hintTextHex) },
-                        set: { hintTextHex = $0.toHex() }
-                    ),
-                    highlightColor: Binding(
-                        get: { Color(hex: highlightTextHex) },
-                        set: { highlightTextHex = $0.toHex() }
-                    ),
-                    fontSize: $hintSize,
-                    backgroundOpacity: $hintBackgroundOpacity,
-                    borderOpacity: $hintBorderOpacity,
-                    showTail: $showHintTail,
-                    useSystemAccent: $useSystemAccent,
-                    paddingX: $hintPaddingX,
-                    paddingY: $hintPaddingY
+                    token: String(AppSettings.hintCharacters.characters.prefix(2)),
+                    style: AppSettings.hintStyle
                 )
                 .listRowInsets(EdgeInsets())
             }

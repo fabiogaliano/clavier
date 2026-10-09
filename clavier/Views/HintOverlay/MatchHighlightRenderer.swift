@@ -25,13 +25,11 @@ enum MatchHighlightRenderer {
 
     /// Applies two-color attributed text to a hint label's text field so the
     /// already-typed prefix appears in the highlight color.
-    static func highlightPrefix(in textField: NSTextField?, prefix: String, hint: String) {
+    static func highlightPrefix(in textField: NSTextField?, prefix: String, hint: String, style: OverlayStyle) {
         guard let textField = textField else { return }
 
-        let highlightHex = UserDefaults.standard.string(forKey: AppSettings.Keys.highlightTextHex) ?? AppSettings.Defaults.highlightTextHex
-        let textHex = UserDefaults.standard.string(forKey: AppSettings.Keys.hintTextHex) ?? AppSettings.Defaults.hintTextHex
-        let highlightColor = NSColor(hex: highlightHex)
-        let textColor = NSColor(hex: textHex)
+        let highlightColor = style.highlightTextColor
+        let textColor = style.textColor
 
         let attributedString = NSMutableAttributedString(string: hint)
         attributedString.addAttribute(.foregroundColor, value: highlightColor, range: NSRange(location: 0, length: prefix.count))

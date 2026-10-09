@@ -36,6 +36,15 @@ extension Color {
 }
 
 extension NSColor {
+    /// Accepts only `RRGGBB` (optionally `#`-prefixed) and returns nil
+    /// otherwise, so callers can fall back to their own default instead of
+    /// `init(hex:)`'s hard-coded blue.
+    convenience init?(validatingHex raw: String) {
+        let digits = raw.hasPrefix("#") ? String(raw.dropFirst()) : raw
+        guard digits.count == 6, digits.allSatisfy(\.isHexDigit) else { return nil }
+        self.init(hex: digits)
+    }
+
     convenience init(hex: String) {
         let hex = hex.trimmingCharacters(in: CharacterSet.alphanumerics.inverted)
         var int: UInt64 = 0

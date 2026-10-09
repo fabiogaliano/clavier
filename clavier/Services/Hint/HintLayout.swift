@@ -40,9 +40,9 @@ enum HintLayout {
     static func buildLabels(
         for hintedElements: [HintedElement],
         windowSize: CGSize,
-        previousPlacements: [ElementIdentity: CGRect] = [:]
+        previousPlacements: [ElementIdentity: CGRect] = [:],
+        style: OverlayStyle = AppSettings.hintStyle
     ) -> [LabeledView] {
-        let style = HintStyle()
         let obstacles = hintedElements.map { $0.element.visibleFrame }
         var engine = HintPlacementEngine(
             windowSize: windowSize,

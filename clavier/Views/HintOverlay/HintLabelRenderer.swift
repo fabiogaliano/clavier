@@ -1,43 +1,6 @@
 import AppKit
 import CoreText
 
-/// Appearance snapshot read once per overlay activation or refresh.
-struct HintStyle {
-    let fontSize: CGFloat
-    let backgroundColor: NSColor
-    let borderColor: NSColor
-    let textColor: NSColor
-    let bgOpacity: CGFloat
-    let bdrOpacity: CGFloat
-    let horizontalOffset: CGFloat
-    let showTail: Bool
-    let paddingX: CGFloat
-    let paddingY: CGFloat
-
-    init() {
-        let size = UserDefaults.standard.double(forKey: AppSettings.Keys.hintSize)
-        fontSize = size > 0 ? CGFloat(size) : CGFloat(AppSettings.Defaults.hintSize)
-        let bgHex = UserDefaults.standard.string(forKey: AppSettings.Keys.hintBackgroundHex) ?? AppSettings.Defaults.hintBackgroundHex
-        let brHex = UserDefaults.standard.string(forKey: AppSettings.Keys.hintBorderHex) ?? AppSettings.Defaults.hintBorderHex
-        let txHex = UserDefaults.standard.string(forKey: AppSettings.Keys.hintTextHex) ?? AppSettings.Defaults.hintTextHex
-        // Accent toggle short-circuits custom hexes — single decision, applied
-        // to tint + border uniformly so they stay visually coherent.
-        backgroundColor = AppearanceColor.effectiveTint(customHex: bgHex)
-        borderColor = AppearanceColor.effectiveTint(customHex: brHex)
-        textColor = NSColor(hex: txHex)
-        let bgOp = UserDefaults.standard.double(forKey: AppSettings.Keys.hintBackgroundOpacity)
-        bgOpacity = bgOp > 0 ? CGFloat(bgOp) : CGFloat(AppSettings.Defaults.hintBackgroundOpacity)
-        let bdOp = UserDefaults.standard.double(forKey: AppSettings.Keys.hintBorderOpacity)
-        bdrOpacity = bdOp > 0 ? CGFloat(bdOp) : CGFloat(AppSettings.Defaults.hintBorderOpacity)
-        horizontalOffset = CGFloat(UserDefaults.standard.double(forKey: AppSettings.Keys.hintHorizontalOffset))
-        showTail = UserDefaults.standard.bool(forKey: AppSettings.Keys.showHintTail)
-        // UserDefaults.double returns 0 for "not set"; defaults are registered
-        // at launch so 0 is legitimately "user picked 0" (fully snug).
-        paddingX = CGFloat(UserDefaults.standard.double(forKey: AppSettings.Keys.hintPaddingX))
-        paddingY = CGFloat(UserDefaults.standard.double(forKey: AppSettings.Keys.hintPaddingY))
-    }
-}
-
 /// Creates individual hint label views (glass bubble + optional directional tail).
 ///
 /// Tail orientation is decided by the engine's cluster direction when the
@@ -56,58 +19,29 @@ enum HintLabelRenderer {
     /// typical 12–16pt hints without clashing with the tail's base width.
     static let bubbleCornerRadius: CGFloat = 6
 
-    private enum TailSide { case bottom, top, right, left, hidden }
+    enum TailSide { case bottom, top, right, left, hidden }
+
+    private struct Metrics {
+        let labelSize: CGSize
+        let bubbleSize: CGSize
+        let outerSize: CGSize
+    }
 
     @MainActor
     static func createHintLabel(
         for hintedElement: HintedElement,
-        style: HintStyle,
+        style: OverlayStyle,
         engine: inout HintPlacementEngine
     ) -> NSView {
-        let label = NSTextField(labelWithString: hintedElement.hint)
-        label.font = NSFont.monospacedSystemFont(ofSize: style.fontSize, weight: .bold)
-        label.textColor = style.textColor
-        label.backgroundColor = .clear
-        label.isBordered = false
-        label.isBezeled = false
-        label.drawsBackground = false
-        label.alignment = .center
-        label.wantsLayer = true
-        label.shadow = {
-            let shadow = NSShadow()
-            shadow.shadowColor = NSColor.black.withAlphaComponent(0.45)
-            shadow.shadowOffset = NSSize(width: 0, height: -1)
-            shadow.shadowBlurRadius = 2
-            return shadow
-        }()
-
-        label.sizeToFit()
-
-        // `labelW` includes the font's side-bearing (the whitespace the font
-        // reserves around each glyph). `inkW` is the visible glyph rect from
-        // Core Text — measurably narrower on monospaced bold. Sizing the
-        // bubble from `inkW` + padding makes the bubble hug the letters; the
-        // surrounding side-bearing whitespace is clipped by the glass
-        // container's corner-radius mask.
-        let labelW = label.frame.width
-        let labelH = label.frame.height
-        let inkW = glyphInkWidth(text: hintedElement.hint, font: label.font ?? NSFont.monospacedSystemFont(ofSize: style.fontSize, weight: .bold))
-        let bubbleWidth = ceil(inkW) + style.paddingX * 2
-        let bubbleHeight = labelH + style.paddingY * 2
+        let label = makeTextLabel(text: hintedElement.hint, style: style)
 
         let expected = engine.expectedDirection(for: hintedElement.element)
         let horizontalAxis = (expected == .rightOf || expected == .leftOf)
-
-        let tailSpace = style.showTail ? tailLength : 0
-        let outerWidth  = horizontalAxis ? (bubbleWidth + tailSpace) : bubbleWidth
-        let outerHeight = horizontalAxis ? bubbleHeight : (bubbleHeight + tailSpace)
-
-        let outer = NSView(frame: CGRect(x: 0, y: 0, width: outerWidth, height: outerHeight))
-        outer.wantsLayer = true
+        let metrics = measure(label: label, text: hintedElement.hint, style: style, horizontalAxis: horizontalAxis)
 
         let hintFrame = engine.place(
             element: hintedElement.element,
-            labelSize: CGSize(width: outerWidth, height: outerHeight),
+            labelSize: metrics.outerSize,
             horizontalOffset: style.horizontalOffset
         )
 
@@ -125,6 +59,102 @@ enum HintLabelRenderer {
             }
         }()
 
+        let outer = assemble(label: label, metrics: metrics, style: style, tailSide: tailSide)
+        outer.frame = hintFrame
+        return outer
+    }
+
+    /// The same bubble `createHintLabel` produces, unplaced and with a fixed
+    /// tail side.  Preferences renders its preview through this so the
+    /// preview cannot drift from the live overlay.
+    @MainActor
+    static func createStandaloneLabel(
+        text: String,
+        typedPrefix: String,
+        style: OverlayStyle,
+        tailSide: TailSide
+    ) -> NSView {
+        let label = makeTextLabel(text: text, style: style)
+        let horizontalAxis = (tailSide == .left || tailSide == .right)
+        let metrics = measure(label: label, text: text, style: style, horizontalAxis: horizontalAxis)
+        if !typedPrefix.isEmpty {
+            MatchHighlightRenderer.highlightPrefix(in: label, prefix: typedPrefix, hint: text, style: style)
+        }
+        return assemble(
+            label: label,
+            metrics: metrics,
+            style: style,
+            tailSide: style.showTail ? tailSide : .hidden
+        )
+    }
+
+    @MainActor
+    private static func makeTextLabel(text: String, style: OverlayStyle) -> NSTextField {
+        let label = NSTextField(labelWithString: text)
+        label.font = NSFont.monospacedSystemFont(ofSize: style.fontSize, weight: .bold)
+        label.textColor = style.textColor
+        label.backgroundColor = .clear
+        label.isBordered = false
+        label.isBezeled = false
+        label.drawsBackground = false
+        label.alignment = .center
+        label.wantsLayer = true
+        label.shadow = {
+            let shadow = NSShadow()
+            shadow.shadowColor = NSColor.black.withAlphaComponent(0.45)
+            shadow.shadowOffset = NSSize(width: 0, height: -1)
+            shadow.shadowBlurRadius = 2
+            return shadow
+        }()
+        label.sizeToFit()
+        return label
+    }
+
+    @MainActor
+    private static func measure(
+        label: NSTextField,
+        text: String,
+        style: OverlayStyle,
+        horizontalAxis: Bool
+    ) -> Metrics {
+        // `labelW` includes the font's side-bearing (the whitespace the font
+        // reserves around each glyph). `inkW` is the visible glyph rect from
+        // Core Text — measurably narrower on monospaced bold. Sizing the
+        // bubble from `inkW` + padding makes the bubble hug the letters; the
+        // surrounding side-bearing whitespace is clipped by the glass
+        // container's corner-radius mask.
+        let labelW = label.frame.width
+        let labelH = label.frame.height
+        let inkW = glyphInkWidth(text: text, font: label.font ?? NSFont.monospacedSystemFont(ofSize: style.fontSize, weight: .bold))
+        let bubbleWidth = ceil(inkW) + style.paddingX * 2
+        let bubbleHeight = labelH + style.paddingY * 2
+
+        let tailSpace = style.showTail ? tailLength : 0
+        let outerWidth  = horizontalAxis ? (bubbleWidth + tailSpace) : bubbleWidth
+        let outerHeight = horizontalAxis ? bubbleHeight : (bubbleHeight + tailSpace)
+
+        return Metrics(
+            labelSize: CGSize(width: labelW, height: labelH),
+            bubbleSize: CGSize(width: bubbleWidth, height: bubbleHeight),
+            outerSize: CGSize(width: outerWidth, height: outerHeight)
+        )
+    }
+
+    @MainActor
+    private static func assemble(
+        label: NSTextField,
+        metrics: Metrics,
+        style: OverlayStyle,
+        tailSide: TailSide
+    ) -> NSView {
+        let bubbleWidth = metrics.bubbleSize.width
+        let bubbleHeight = metrics.bubbleSize.height
+        let labelW = metrics.labelSize.width
+        let labelH = metrics.labelSize.height
+
+        let outer = NSView(frame: CGRect(origin: .zero, size: metrics.outerSize))
+        outer.wantsLayer = true
+
         let bubbleOrigin: CGPoint = {
             switch tailSide {
             case .bottom: return CGPoint(x: 0,           y: tailLength)
@@ -136,11 +166,11 @@ enum HintLabelRenderer {
         }()
 
         let glass = GlassBackdrop.make(
-            size: CGSize(width: bubbleWidth, height: bubbleHeight),
+            size: metrics.bubbleSize,
             cornerRadius: bubbleCornerRadius,
             tintColor: style.backgroundColor,
-            tintAlpha: style.bgOpacity,
-            borderAlpha: style.bdrOpacity,
+            tintAlpha: style.backgroundOpacity,
+            borderAlpha: style.borderOpacity,
             shadow: false
         )
         glass.frame.origin = bubbleOrigin
@@ -162,13 +192,13 @@ enum HintLabelRenderer {
             // same material" rather than a darker companion piece.
             let tail = makeTail(
                 side: tailSide,
-                fill: style.backgroundColor.withAlphaComponent(style.bgOpacity),
-                stroke: NSColor.white.withAlphaComponent(style.bdrOpacity * 0.35)
+                fill: style.backgroundColor.withAlphaComponent(style.backgroundOpacity),
+                stroke: NSColor.white.withAlphaComponent(style.borderOpacity * 0.35)
             )
             tail.frame = tailFrame(
                 side: tailSide,
-                outerSize: CGSize(width: outerWidth, height: outerHeight),
-                bubbleSize: CGSize(width: bubbleWidth, height: bubbleHeight)
+                outerSize: metrics.outerSize,
+                bubbleSize: metrics.bubbleSize
             )
             outer.addSubview(tail)
         }
@@ -181,7 +211,6 @@ enum HintLabelRenderer {
         outer.layer?.shadowRadius = 5
         outer.layer?.shadowOffset = CGSize(width: 0, height: -1)
 
-        outer.frame = hintFrame
         return outer
     }
 
