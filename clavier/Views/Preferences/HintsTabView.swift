@@ -11,6 +11,7 @@ struct HintsTabView: View {
     @AppStorage(AppSettings.Keys.continuousClickMode) private var continuousClickMode: Bool = AppSettings.Defaults.continuousClickMode
     @AppStorage(AppSettings.Keys.autoHintDeactivation) private var autoHintDeactivation: Bool = AppSettings.Defaults.autoHintDeactivation
     @AppStorage(AppSettings.Keys.hintDeactivationDelay) private var hintDeactivationDelay: Double = AppSettings.Defaults.hintDeactivationDelay
+    @AppStorage(AppSettings.Keys.hintSystemChrome) private var hintSystemChrome: Bool = AppSettings.Defaults.hintSystemChrome
 
     var body: some View {
         Form {
@@ -25,6 +26,7 @@ struct HintsTabView: View {
                 }
                 Text("ESC: clear search then exit · Option: clear search")
                     .foregroundStyle(.secondary)
+                Toggle("Also hint the menu bar, status items and Dock", isOn: $hintSystemChrome)
             }
 
             Section("Hint Characters") {

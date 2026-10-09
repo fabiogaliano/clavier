@@ -29,6 +29,7 @@ class AccessibilityService {
     static let shared = AccessibilityService()
 
     private let walker = ClickableElementWalker()
+    private let chromeCollector = SystemChromeCollector(walker: ClickableElementWalker())
     private let browserReadinessPolicy = BrowserWebAreaReadinessPolicy()
 
     private struct BrowserPrewarm {
@@ -75,13 +76,20 @@ class AccessibilityService {
 
     /// Synchronous discovery for refreshes after the initial session has
     /// already established renderer accessibility.
-    func getClickableElements(recorder: HintDiscoveryRecorder? = nil) -> [UIElement] {
+    func getClickableElements(
+        includeSystemChrome: Bool,
+        recorder: HintDiscoveryRecorder? = nil
+    ) -> [UIElement] {
         guard let focusedApp = NSWorkspace.shared.frontmostApplication else { return [] }
 
         ChromiumAccessibilityWaker.shared.wakeIfNeeded(focusedApp)
-        let pid = focusedApp.processIdentifier
-        let appElement = AXUIElementCreateApplication(pid)
-        return traverseAndCollect(appElement: appElement, pid: pid, recorder: recorder)
+        let appElement = AXUIElementCreateApplication(focusedApp.processIdentifier)
+        return traverseAndCollect(
+            appElement: appElement,
+            app: focusedApp,
+            includeSystemChrome: includeSystemChrome,
+            recorder: recorder
+        )
     }
 
     /// Initial discovery waits for a known browser's structural web root before
@@ -89,6 +97,7 @@ class AccessibilityService {
     /// counting native toolbar controls cannot distinguish a cold renderer from
     /// a page with few links.
     func getClickableElementsWhenReady(
+        includeSystemChrome: Bool,
         recorder: HintDiscoveryRecorder? = nil,
         onBrowserRendererPending: (([UIElement]) -> Void)? = nil
     ) async -> [UIElement] {
@@ -103,7 +112,8 @@ class AccessibilityService {
            wakeOutcome != .skipped {
             let immediateElements = traverseAndCollect(
                 appElement: appElement,
-                pid: pid,
+                app: focusedApp,
+                includeSystemChrome: includeSystemChrome,
                 recorder: recorder
             )
             if immediateElements.contains(where: \.isWebContent) {
@@ -124,16 +134,23 @@ class AccessibilityService {
               NSWorkspace.shared.frontmostApplication?.processIdentifier == pid else {
             return []
         }
-        return traverseAndCollect(appElement: appElement, pid: pid, recorder: recorder)
+        return traverseAndCollect(
+            appElement: appElement,
+            app: focusedApp,
+            includeSystemChrome: includeSystemChrome,
+            recorder: recorder
+        )
     }
 
     /// Walk every window of `appElement`, dedupe, and return the resulting
     /// `UIElement`s after any initial renderer-readiness wait has completed.
     private func traverseAndCollect(
         appElement: AXUIElement,
-        pid: pid_t,
+        app: NSRunningApplication,
+        includeSystemChrome: Bool,
         recorder: HintDiscoveryRecorder?
     ) -> [UIElement] {
+        let pid = app.processIdentifier
         var windowsRef: CFTypeRef?
         let windows: [AXUIElement]
         if AXUIElementCopyAttributeValue(appElement, kAXWindowsAttribute as CFString, &windowsRef) == .success,
@@ -143,7 +160,7 @@ class AccessibilityService {
             windows = []
         }
         let menus = openMenus(of: appElement)
-        guard !windows.isEmpty || !menus.isEmpty else { return [] }
+        guard !windows.isEmpty || !menus.isEmpty || includeSystemChrome else { return [] }
 
         // Full desktop bounds in AX coordinates so windows on non-main
         // displays are not silently dropped by the intersection clip.
@@ -164,12 +181,26 @@ class AccessibilityService {
         let traverseEndTime = CFAbsoluteTimeGetCurrent()
         Logger.accessibility.debug("traverseElements: \(Int((traverseEndTime - traverseStartTime) * 1000), privacy: .public)ms (\(pending.count, privacy: .public) raw)")
 
+        var chrome: [UIElement] = []
+        if includeSystemChrome {
+            let chromeStartTime = CFAbsoluteTimeGetCurrent()
+            chrome = chromeCollector.collect(
+                frontmost: app,
+                appElement: appElement,
+                desktopAX: desktopBoundsAX,
+                openMenuItems: &pending,
+                recorder: recorder
+            )
+            let chromeElapsed = Int((CFAbsoluteTimeGetCurrent() - chromeStartTime) * 1000)
+            Logger.accessibility.debug("systemChrome: \(chromeElapsed, privacy: .public)ms (\(chrome.count, privacy: .public) items)")
+        }
+
         let dedupeStartTime = CFAbsoluteTimeGetCurrent()
         let deduplicated = ClickableElementWalker.collect(pending: pending)
         let dedupeEndTime = CFAbsoluteTimeGetCurrent()
         Logger.accessibility.debug("deduplicateElements: \(Int((dedupeEndTime - dedupeStartTime) * 1000), privacy: .public)ms (\(deduplicated.count, privacy: .public) unique)")
 
-        return deduplicated
+        return deduplicated + chrome
     }
 
     /// Open native menus (context menus, pop-up buttons, a browser's

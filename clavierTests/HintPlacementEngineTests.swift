@@ -195,4 +195,25 @@ final class HintPlacementEngineTests: XCTestCase {
         XCTAssertEqual(placed.height, labelSize.height, accuracy: 0.1,
             "placed rect height must match label height")
     }
+
+    // MARK: - Screen edges (menu bar, Dock)
+
+    /// Menu bar items sit flush with the top of the screen and Dock items
+    /// near the bottom; their labels must stay inside the overlay rather than
+    /// be pushed past the edge.
+    func testMenuBarAndDockElementsGetOnScreenPlacements() {
+        let screen = mainScreen
+        let menuBarItem = makeElement(frame: CGRect(x: screen.minX + 200, y: screen.maxY - 24, width: 60, height: 24))
+        let dockItem = makeElement(frame: CGRect(x: screen.midX, y: screen.minY + 4, width: 56, height: 56))
+        let labelSize = CGSize(width: 24, height: 16)
+        let overlay = CGRect(origin: .zero, size: windowSize)
+        let screenLocal = ScreenGeometry.toWindowLocal(screen)
+
+        var engine = HintPlacementEngine(windowSize: windowSize)
+        for element in [menuBarItem, dockItem] {
+            let placed = engine.place(element: element, labelSize: labelSize, horizontalOffset: 0)
+            XCTAssertTrue(overlay.contains(placed), "\(placed) leaves the overlay")
+            XCTAssertTrue(screenLocal.contains(placed), "\(placed) leaves the element's screen")
+        }
+    }
 }

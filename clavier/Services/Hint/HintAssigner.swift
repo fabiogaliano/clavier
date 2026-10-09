@@ -24,18 +24,27 @@ enum HintAssigner {
     ///
     /// `bundleIDs` maps pids to bundle identifiers so preferences survive an
     /// app relaunch (a pid does not); missing pids fall back to the pid.
+    ///
+    /// With `reservesSystemChromePrefix` (or whenever an element is system
+    /// chrome) tokens starting with the alphabet's last letter belong to
+    /// system-chrome elements and window elements use the other letters.
+    /// The reservation follows the setting rather than whether chrome was
+    /// found, so window tokens don't change when, say, a full-screen app
+    /// hides the menu bar.
     static func assign(
         to elements: [UIElement],
         alphabet: HintCharacters,
         minimumTokenLength: Int = 2,
-        bundleIDs: [pid_t: String] = [:]
+        bundleIDs: [pid_t: String] = [:],
+        reservesSystemChromePrefix: Bool = false
     ) -> [HintedElement] {
         assignPreservingHints(
             to: elements,
             previous: [],
             alphabet: alphabet,
             minimumTokenLength: minimumTokenLength,
-            bundleIDs: bundleIDs
+            bundleIDs: bundleIDs,
+            reservesSystemChromePrefix: reservesSystemChromePrefix
         )
     }
 
@@ -49,19 +58,11 @@ enum HintAssigner {
         previous: [HintedElement],
         alphabet: HintCharacters,
         minimumTokenLength: Int = 2,
-        bundleIDs: [pid_t: String] = [:]
+        bundleIDs: [pid_t: String] = [:],
+        reservesSystemChromePrefix: Bool = false
     ) -> [HintedElement] {
         let chars = alphabet.characters
         guard !chars.isEmpty, !elements.isEmpty else { return [] }
-
-        // Sizing from the larger of the two sets keeps the token length from
-        // shrinking mid-session, which would invalidate every visible token.
-        let space = TokenSpace(
-            alphabet: chars,
-            firstLetters: chars,
-            elementCount: max(elements.count, previous.count),
-            minimumTokenLength: minimumTokenLength
-        )
 
         let preserved = Dictionary(
             previous.map { ($0.identity, $0.hint) },
@@ -69,14 +70,47 @@ enum HintAssigner {
         )
         let hasher = PreferenceHasher(bundleIDs: bundleIDs)
         var tokens = [String?](repeating: nil, count: elements.count)
-        assignRegion(
-            Array(elements.indices),
-            of: elements,
-            space: space,
-            preserved: preserved,
-            hasher: hasher,
-            into: &tokens
-        )
+
+        let hasChrome = elements.contains(where: \.isSystemChrome)
+        // A one-letter alphabet has no spare first letter to reserve.
+        let splitsRegions = (reservesSystemChromePrefix || hasChrome) && chars.count >= 2
+
+        // Sizing each region from the larger of the current and previous sets
+        // keeps the token length from shrinking mid-session, which would
+        // invalidate every visible token.
+        if splitsRegions {
+            let windowIndices = elements.indices.filter { !elements[$0].isSystemChrome }
+            let chromeIndices = elements.indices.filter { elements[$0].isSystemChrome }
+            let previousChrome = previous.lazy.filter(\.element.isSystemChrome).count
+
+            let windowSpace = TokenSpace(
+                alphabet: chars,
+                firstLetters: Array(chars.dropLast()),
+                elementCount: max(windowIndices.count, previous.count - previousChrome),
+                minimumTokenLength: minimumTokenLength
+            )
+            // The minimum length exists for the browser renderer merge, which
+            // only ever grows the window set.
+            let chromeSpace = TokenSpace(
+                alphabet: chars,
+                firstLetters: [chars[chars.count - 1]],
+                elementCount: max(chromeIndices.count, previousChrome),
+                minimumTokenLength: 2
+            )
+            assignRegion(windowIndices, of: elements, space: windowSpace,
+                         preserved: preserved, hasher: hasher, into: &tokens)
+            assignRegion(chromeIndices, of: elements, space: chromeSpace,
+                         preserved: preserved, hasher: hasher, into: &tokens)
+        } else {
+            let space = TokenSpace(
+                alphabet: chars,
+                firstLetters: chars,
+                elementCount: max(elements.count, previous.count),
+                minimumTokenLength: minimumTokenLength
+            )
+            assignRegion(Array(elements.indices), of: elements, space: space,
+                         preserved: preserved, hasher: hasher, into: &tokens)
+        }
 
         var result: [HintedElement] = []
         result.reserveCapacity(elements.count)
@@ -192,7 +226,8 @@ struct TokenSpace {
     }
 
     /// Two characters while they suffice, otherwise three (the cap: anything
-    /// beyond `firstLetters.count * n^2` elements goes unhinted).
+    /// beyond `firstLetters.count * n^2` elements goes unhinted).  With one
+    /// first letter (the system-chrome region) that cap is `n^2`.
     init(alphabet: [Character], firstLetters: [Character], elementCount: Int, minimumTokenLength: Int) {
         let twoCharCapacity = firstLetters.count * alphabet.count
         let length = minimumTokenLength >= 3 || elementCount > twoCharCapacity ? 3 : 2

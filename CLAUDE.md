@@ -29,8 +29,8 @@ open clavier.xcodeproj
 
 ### Core Flow - Hint Mode
 1. **Activation**: Global hotkey (default F17, configurable) opens a one-shot `HintSession`; pressing it again upgrades that live session to continuous.
-2. **Discovery**: `AccessibilityService` walks the frontmost app's windows plus any open native menus (app-level `AXMenu` children: context menus, pop-up button and `<select>` menus), delegating AX-tree traversal to `ClickableElementWalker`; clickability and ancestor dedup live in `ClickabilityPolicy` / `AncestorDedupePolicy`.
-3. **Hint Assignment**: `HintAssigner` produces two- or three-character tokens drawn from the configured `hintCharacters` alphabet and wraps each `UIElement` in a `HintedElement`.
+2. **Discovery**: `AccessibilityService` walks the frontmost app's windows plus any open native menus (app-level `AXMenu` children: context menus, pop-up button and `<select>` menus), delegating AX-tree traversal to `ClickableElementWalker`; clickability and ancestor dedup live in `ClickabilityPolicy` / `AncestorDedupePolicy`. With `hintSystemChrome` on, `SystemChromeCollector` adds the frontmost app's menu bar titles, status items (every app's `AXExtrasMenuBar` plus Control Center / SystemUIServer, time-boxed to ~30 ms) and Dock items, tagged `UIElement.isSystemChrome`.
+3. **Hint Assignment**: `HintAssigner` produces two- or three-character tokens (length is count-driven) drawn from the configured `hintCharacters` alphabet and wraps each `UIElement` in a `HintedElement`. Each element prefers a token from a stable hash of (bundle id, role, rounded frame) so tokens repeat across sessions; within-session preservation wins over the hash. System-chrome elements get tokens starting with the alphabet's last letter; window elements use the other letters.
 4. **Overlay**: `HintOverlayRenderer` owns the `HintOverlayWindow` lifecycle; the window renders hints as positioned labels.
 5. **Input Processing**: `KeyboardEventTap` intercepts key events; `HintInputDecoder` → `HintInputReducer` map them into a `HintSession` state transition and a list of `HintSideEffect`s.
 6. **Click Execution**: `HintActionPerformer` tries `AXUIElementPerformAction` first and falls back to a synthesized `CGEvent` click via `ClickService`.
@@ -139,6 +139,7 @@ Stored in `UserDefaults` — keys live in `AppSettings.Keys`, defaults in `AppSe
 - `continuousClickMode` (Bool): Start every hint session continuous; otherwise the live session can be upgraded with a second hint-hotkey press.
 - `autoHintDeactivation` (Bool): Auto-exit continuous mode after inactivity (default: true).
 - `hintDeactivationDelay` (Double): Seconds before auto-deactivation (default: 5.0).
+- `hintSystemChrome` (Bool): Also hint the menu bar, status items and Dock (default: true).
 
 **Hint Mode (appearance):**
 - `hintSize` (Double): Font size (10–20pt, default: 12).

@@ -17,6 +17,7 @@ enum AppSettings {
         static let minSearchCharacters = "minSearchCharacters"
         static let manualRefreshTrigger = "manualRefreshTrigger"
         static let hideHintsPrefix = "hideHintsPrefix"
+        static let hintSystemChrome = "hintSystemChrome"
 
         // Appearance
         static let hintBackgroundHex = "hintBackgroundHex"
@@ -71,6 +72,7 @@ enum AppSettings {
         static let minSearchCharacters = 2
         static let manualRefreshTrigger = "rr"
         static let hideHintsPrefix = ">"
+        static let hintSystemChrome = true
         static let hintBackgroundHex = "#3B82F6"
         static let hintBorderHex = "#3B82F6"
         static let hintTextHex = "#FFFFFF"
@@ -123,6 +125,7 @@ enum AppSettings {
             Keys.minSearchCharacters: Defaults.minSearchCharacters,
             Keys.manualRefreshTrigger: Defaults.manualRefreshTrigger,
             Keys.hideHintsPrefix: Defaults.hideHintsPrefix,
+            Keys.hintSystemChrome: Defaults.hintSystemChrome,
             Keys.hintBackgroundHex: Defaults.hintBackgroundHex,
             Keys.hintBorderHex: Defaults.hintBorderHex,
             Keys.hintTextHex: Defaults.hintTextHex,
@@ -228,6 +231,10 @@ extension AppSettings {
     static var hintCharacters: HintCharacters {
         let raw = UserDefaults.standard.string(forKey: Keys.hintCharacters) ?? Defaults.hintCharacters
         return HintCharacters.parse(raw) ?? .default
+    }
+
+    static var hintSystemChrome: Bool {
+        UserDefaults.standard.object(forKey: Keys.hintSystemChrome) as? Bool ?? Defaults.hintSystemChrome
     }
 
     static var minSearchCharacters: Int {
