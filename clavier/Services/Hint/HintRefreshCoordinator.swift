@@ -25,12 +25,22 @@ import os
 final class HintRefreshCoordinator: ModeCoordinator {
 
     private let timingPolicy: HintRefreshTimingPolicy
+    private let sleep: @MainActor (TimeInterval) async throws -> Void
+    private let now: @MainActor () -> CFAbsoluteTime
 
     /// Retained so `cancelPending()` can cancel an in-flight cycle.
     private var refreshTask: Task<Void, Never>?
 
-    init(timingPolicy: HintRefreshTimingPolicy) {
+    /// `sleep` and `now` are injectable so tests can drive the sampling
+    /// schedule on a virtual clock instead of waiting out real delays.
+    init(
+        timingPolicy: HintRefreshTimingPolicy,
+        sleep: @escaping @MainActor (TimeInterval) async throws -> Void = { try await Task.sleep(for: .seconds($0)) },
+        now: @escaping @MainActor () -> CFAbsoluteTime = CFAbsoluteTimeGetCurrent
+    ) {
         self.timingPolicy = timingPolicy
+        self.sleep = sleep
+        self.now = now
     }
 
     // MARK: - Public API
@@ -63,22 +73,24 @@ final class HintRefreshCoordinator: ModeCoordinator {
         let appName = app?.localizedName ?? "unknown"
         Logger.hintMode.debug("refresh: app=\(appName, privacy: .public) first=\(Int(delays.optimistic * 1000), privacy: .public)ms window=\(Int(delays.settleWindow * 1000), privacy: .public)ms")
 
+        let sleep = self.sleep
+        let now = self.now
         refreshTask = Task { @MainActor in
             var settler = HintRefreshSettler(baseline: baseline, delays: delays)
-            let start = CFAbsoluteTimeGetCurrent()
+            let start = now()
             var wait = settler.firstDelay
             var samples = 0
 
             while true {
                 do {
-                    try await Task.sleep(for: .seconds(wait))
+                    try await sleep(wait)
                 } catch {
                     return // Cancelled — a newer click, manual refresh, or deactivation.
                 }
                 guard !Task.isCancelled, let signature = sample() else { return }
                 samples += 1
 
-                let elapsed = CFAbsoluteTimeGetCurrent() - start
+                let elapsed = now() - start
                 switch settler.observe(signature, elapsed: elapsed) {
                 case .sampleAgain(let next):
                     wait = next
