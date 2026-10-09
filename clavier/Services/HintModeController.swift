@@ -304,7 +304,14 @@ class HintModeController {
     }
 
     private func publishTapContext(for session: HintSession) {
-        let context = HintInputDecoder.Context(session: session, hidePrefix: config.inputContext.hidePrefix)
+        let context = HintInputDecoder.Context(
+            session: session,
+            hidePrefix: config.inputContext.hidePrefix,
+            hotkey: HotkeyChord(
+                keyCodeKey: AppSettings.Keys.hintShortcutKeyCode,
+                modifiersKey: AppSettings.Keys.hintShortcutModifiers
+            )
+        )
         HintModeController.tapContext.withLock { $0 = context }
     }
 

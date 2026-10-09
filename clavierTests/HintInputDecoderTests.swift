@@ -8,6 +8,7 @@
 
 import XCTest
 import CoreGraphics
+import Carbon.HIToolbox
 @testable import clavier
 
 final class HintInputDecoderTests: XCTestCase {
@@ -131,5 +132,22 @@ final class HintInputDecoderTests: XCTestCase {
 
     func test_contextSnapshot_isNilForInactiveSession() {
         XCTAssertNil(HintInputDecoder.Context(session: .inactive, hidePrefix: ""))
+    }
+
+    // MARK: - Hotkey exemption
+
+    func test_cmdHotkey_passesThroughInsteadOfDismissing() {
+        let chord = HotkeyChord(keyCode: Int64(Key.space), carbonModifiers: cmdKey | shiftKey)
+        let context = HintInputDecoder.Context(isTextSearchActive: false, numberedElementsCount: 0, hotkey: chord)
+        XCTAssertEqual(decode(Key.space, flags: [.maskCommand, .maskShift], context: context), .passThrough)
+        XCTAssertEqual(decode(Key.space, flags: [.maskCommand], context: context), .dismiss)
+        XCTAssertEqual(decode(Key.space, flags: [.maskCommand, .maskShift, .maskAlphaShift], context: context), .passThrough)
+    }
+
+    func test_hotkeyWithoutCmd_isDecodedNormally() {
+        // F17 isn't in the ASCII table, so it passes through regardless of the chord.
+        let chord = HotkeyChord(keyCode: 64, carbonModifiers: 0)
+        let context = HintInputDecoder.Context(isTextSearchActive: false, numberedElementsCount: 0, hotkey: chord)
+        XCTAssertEqual(decode(64, context: context), .passThrough)
     }
 }

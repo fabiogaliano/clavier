@@ -50,6 +50,13 @@ enum ScrollInputDecoder {
     struct Context: Equatable, Sendable {
         /// The four-character scroll-key string (e.g. "hjkl").
         let scrollKeys: String
+        /// The session's own toggle hotkey, exempt from the ⌘-dismiss rule.
+        let hotkey: HotkeyChord?
+
+        init(scrollKeys: String, hotkey: HotkeyChord? = nil) {
+            self.scrollKeys = scrollKeys
+            self.hotkey = hotkey
+        }
     }
 
     /// Decode a key-down event captured by the CGEvent tap.
@@ -64,6 +71,13 @@ enum ScrollInputDecoder {
         let keyCode = event.getIntegerValueField(.keyboardEventKeycode)
         let flags = event.flags
         let isShift = flags.contains(.maskShift)
+
+        // The toggle hotkey is handled by Carbon regardless of the tap (F18
+        // already toggles scroll mode off while every key is consumed), so it
+        // only needs to be kept away from the ⌘-dismiss rule below.
+        if context.hotkey?.matches(keyCode: keyCode, flags: flags) == true {
+            return .consume
+        }
 
         // Cmd+anything is a system or app shortcut; swallowing it would
         // leave the user unable to Cmd+Tab out of scroll mode.

@@ -265,7 +265,13 @@ class ScrollModeController {
 
     private func publishTapContext(for session: ScrollSession) {
         let context = session.isActive
-            ? ScrollInputDecoder.Context(scrollKeys: inputContext.scrollKeys.rawString)
+            ? ScrollInputDecoder.Context(
+                scrollKeys: inputContext.scrollKeys.rawString,
+                hotkey: HotkeyChord(
+                    keyCodeKey: AppSettings.Keys.scrollShortcutKeyCode,
+                    modifiersKey: AppSettings.Keys.scrollShortcutModifiers
+                )
+            )
             : nil
         ScrollModeController.tapContext.withLock { $0 = context }
     }

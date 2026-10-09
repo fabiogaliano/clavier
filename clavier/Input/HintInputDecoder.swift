@@ -66,15 +66,19 @@ enum HintInputDecoder {
         /// Passed through so the decoder can accept the character (shift +
         /// punctuation keys fall outside the default letter/digit whitelist).
         let hidePrefix: String
+        /// The session's own toggle hotkey, exempt from the ⌘-dismiss rule.
+        let hotkey: HotkeyChord?
 
         init(
             isTextSearchActive: Bool,
             numberedElementsCount: Int,
-            hidePrefix: String = ""
+            hidePrefix: String = "",
+            hotkey: HotkeyChord? = nil
         ) {
             self.isTextSearchActive = isTextSearchActive
             self.numberedElementsCount = numberedElementsCount
             self.hidePrefix = hidePrefix
+            self.hotkey = hotkey
         }
 
         /// Tap-side view of `session`; `nil` when there is no live session.
@@ -82,14 +86,15 @@ enum HintInputDecoder {
         /// Numbered selection is only exposed for 1–9 matches: more than nine
         /// render as highlight boxes without numbers, so digits must keep
         /// typing into the filter.
-        init?(session: HintSession, hidePrefix: String) {
+        init?(session: HintSession, hidePrefix: String, hotkey: HotkeyChord? = nil) {
             guard session.isActive else { return nil }
             let numberedCount = session.numberedElements.count
             let inNumberedMode = numberedCount > 0 && numberedCount <= 9
             self.init(
                 isTextSearchActive: inNumberedMode,
                 numberedElementsCount: inNumberedMode ? numberedCount : 0,
-                hidePrefix: hidePrefix
+                hidePrefix: hidePrefix,
+                hotkey: hotkey
             )
         }
     }
@@ -111,6 +116,12 @@ enum HintInputDecoder {
         }
 
         guard type == .keyDown else { return .passThrough }
+
+        // The toggle hotkey belongs to the Carbon handler, which upgrades the
+        // session to continuous; it must not be mistaken for a ⌘ shortcut.
+        if context.hotkey?.matches(keyCode: keyCode, flags: flags) == true {
+            return .passThrough
+        }
 
         // Cmd+anything is a system or app shortcut (Cmd+Tab, Cmd+W, …), never
         // hint input; decoding it as a letter would eat the shortcut.
