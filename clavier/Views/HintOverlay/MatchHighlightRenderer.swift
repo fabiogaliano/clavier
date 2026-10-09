@@ -1,7 +1,7 @@
 import AppKit
 
-/// Stateless helpers for prefix filtering, green-box highlight creation, and
-/// match-count badge coloring in hint mode.
+/// Stateless helpers for text-search highlight boxes and for finding a hint
+/// label's text field inside its glass composition.
 ///
 /// These are factored out of `HintOverlayWindow` to separate rendering concerns
 /// from window lifecycle. The window owns the view caches; this module only
@@ -21,22 +21,6 @@ enum MatchHighlightRenderer {
         highlightView.layer?.cornerRadius = 6
         highlightView.layer?.backgroundColor = NSColor.systemGreen.withAlphaComponent(0.08).cgColor
         return highlightView
-    }
-
-    /// Applies two-color attributed text to a hint label's text field so the
-    /// already-typed prefix appears in the highlight color.
-    static func highlightPrefix(in textField: NSTextField?, prefix: String, hint: String, style: OverlayStyle) {
-        guard let textField = textField else { return }
-
-        let highlightColor = style.highlightTextColor
-        let textColor = style.textColor
-
-        let attributedString = NSMutableAttributedString(string: hint)
-        attributedString.addAttribute(.foregroundColor, value: highlightColor, range: NSRange(location: 0, length: prefix.count))
-        if prefix.count < hint.count {
-            attributedString.addAttribute(.foregroundColor, value: textColor, range: NSRange(location: prefix.count, length: hint.count - prefix.count))
-        }
-        textField.attributedStringValue = attributedString
     }
 
     /// Recursively walks the view hierarchy to find the hint's NSTextField.

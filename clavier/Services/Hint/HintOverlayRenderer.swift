@@ -29,23 +29,51 @@ final class HintOverlayRenderer {
     private var session: HintSession = .inactive
     private var chrome = HintScene.Chrome()
 
+    /// Invoked when the user clicks the bar's help segment.
+    var onHelpRequested: (() -> Void)?
+
     // MARK: - Lifecycle
 
-    /// Open the overlay for the initial session.
+    /// Open the overlay for the initial session.  Reuses a window already
+    /// up for a status (the "waiting" bar) so the hand-off doesn't flicker.
     func open(session: HintSession) {
         style = AppSettings.hintStyle
         self.session = session
         chrome = HintScene.Chrome()
-        let newWindow = HintOverlayWindow()
-        self.window = newWindow
+        if let window {
+            render()
+            window.playLabelEntrance()
+            return
+        }
+        makeWindow()
         render()
-        newWindow.show()
+        window?.show()
+    }
+
+    /// Show a controller status in the bar with no hints, opening the
+    /// overlay if needed.
+    func showStatus(_ status: HintScene.Status) {
+        chrome.status = status
+        if window == nil {
+            style = AppSettings.hintStyle
+            session = .inactive
+            makeWindow()
+            render()
+            window?.show()
+            return
+        }
+        render()
+    }
+
+    private func makeWindow() {
+        let newWindow = HintOverlayWindow()
+        newWindow.onBarHelp = { [weak self] in self?.onHelpRequested?() }
+        self.window = newWindow
     }
 
     /// Close and release the overlay.
     func close() {
-        window?.orderOut(nil)
-        window?.close()
+        window?.dismiss()
         window = nil
         session = .inactive
         chrome = HintScene.Chrome()
@@ -75,7 +103,8 @@ final class HintOverlayRenderer {
         session = .active(hintedElements: hintedElements, filter: "", mode: session.mode)
         // A refresh implies the user started a new selection gesture; drop
         // search state and hide-mode so the redrawn labels are visible.
-        chrome = HintScene.Chrome()
+        // The countdown belongs to the session, not the gesture.
+        chrome = HintScene.Chrome(countdown: chrome.countdown)
         render()
     }
 
@@ -103,6 +132,20 @@ final class HintOverlayRenderer {
         case .textSearch(let elements, let matches, let filter, _):
             session = .textSearch(hintedElements: elements, matches: matches, filter: filter, mode: mode)
         }
+        render()
+    }
+
+    /// Confirm a click on `frame` (AppKit screen coordinates) with a brief
+    /// ring in the hint tint.  Independent of the overlay window, so it
+    /// still plays when the click closes the session.
+    func flashClick(around frame: CGRect) {
+        ClickRing.show(around: frame, color: style.backgroundColor)
+    }
+
+    /// Continuous-mode time left; `nil` when auto-deactivation is off.
+    func setCountdown(_ countdown: HintScene.Countdown?) {
+        guard chrome.countdown != countdown else { return }
+        chrome.countdown = countdown
         render()
     }
 

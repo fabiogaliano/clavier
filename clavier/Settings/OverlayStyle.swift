@@ -9,15 +9,29 @@ struct OverlayStyle: Equatable {
     let fontSize: CGFloat
     let backgroundColor: NSColor
     let borderColor: NSColor
+    /// Base colour of the letters still to type; drawn dimmed, see
+    /// `remainderTextColor`.
     let textColor: NSColor
     /// Colour of the already-typed prefix of a hint token.
     let highlightTextColor: NSColor
     let backgroundOpacity: CGFloat
+    /// Hint labels: strength of the specular highlight along the top edge.
     let borderOpacity: CGFloat
     let horizontalOffset: CGFloat
     let showTail: Bool
     let paddingX: CGFloat
     let paddingY: CGFloat
+
+    /// Letters not yet typed recede so the typed prefix carries the eye.
+    var remainderTextColor: NSColor {
+        textColor.withAlphaComponent(textColor.alphaComponent * 0.55)
+    }
+
+    /// 7 pt at the default 12 pt size, scaled with the font so larger
+    /// labels keep the same proportions instead of turning boxy.
+    var labelCornerRadius: CGFloat {
+        7 * fontSize / CGFloat(AppSettings.Defaults.hintSize)
+    }
 
     /// Reads a raw stored value for a settings key; `nil` means "not stored".
     typealias Lookup = (String) -> Any?

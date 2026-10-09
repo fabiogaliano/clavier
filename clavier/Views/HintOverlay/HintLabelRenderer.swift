@@ -15,9 +15,9 @@ enum HintLabelRenderer {
     static let tailLength: CGFloat = 5
     static let tailBase: CGFloat = 10
 
-    /// Corner radius of the glass bubble. Chosen to read as a soft pill on
-    /// typical 12–16pt hints without clashing with the tail's base width.
-    static let bubbleCornerRadius: CGFloat = 6
+    /// Uppercase monospaced glyphs crowd each other; a little tracking keeps
+    /// pairs like "MW" from fusing.
+    static let trackingPerPoint: CGFloat = 0.07
 
     enum TailSide { case bottom, top, right, left, hidden }
 
@@ -33,11 +33,11 @@ enum HintLabelRenderer {
         style: OverlayStyle,
         engine: inout HintPlacementEngine
     ) -> NSView {
-        let label = makeTextLabel(text: hintedElement.hint, style: style)
+        let label = makeTextLabel(token: hintedElement.hint, typedPrefix: "", style: style)
 
         let expected = engine.expectedDirection(for: hintedElement.element)
         let horizontalAxis = (expected == .rightOf || expected == .leftOf)
-        let metrics = measure(label: label, text: hintedElement.hint, style: style, horizontalAxis: horizontalAxis)
+        let metrics = measure(label: label, style: style, horizontalAxis: horizontalAxis)
 
         let hintFrame = engine.place(
             element: hintedElement.element,
@@ -74,12 +74,9 @@ enum HintLabelRenderer {
         style: OverlayStyle,
         tailSide: TailSide
     ) -> NSView {
-        let label = makeTextLabel(text: text, style: style)
+        let label = makeTextLabel(token: text, typedPrefix: typedPrefix, style: style)
         let horizontalAxis = (tailSide == .left || tailSide == .right)
-        let metrics = measure(label: label, text: text, style: style, horizontalAxis: horizontalAxis)
-        if !typedPrefix.isEmpty {
-            MatchHighlightRenderer.highlightPrefix(in: label, prefix: typedPrefix, hint: text, style: style)
-        }
+        let metrics = measure(label: label, style: style, horizontalAxis: horizontalAxis)
         return assemble(
             label: label,
             metrics: metrics,
@@ -88,24 +85,53 @@ enum HintLabelRenderer {
         )
     }
 
+    /// Tokens are matched lowercase but drawn uppercase. The typed prefix
+    /// is drawn at full strength and the rest dimmed, so the label reads as
+    /// "you have typed this, press one of these next".
+    static func attributedToken(_ token: String, typedPrefix: String, style: OverlayStyle) -> NSAttributedString {
+        let display = token.uppercased()
+        let font = labelFont(style)
+        let paragraph = NSMutableParagraphStyle()
+        paragraph.alignment = .center
+        let result = NSMutableAttributedString(string: display, attributes: [
+            .font: font,
+            .foregroundColor: style.remainderTextColor,
+            .paragraphStyle: paragraph,
+        ])
+        let length = (display as NSString).length
+        let prefixLength = min((typedPrefix.uppercased() as NSString).length, length)
+        if prefixLength > 0 {
+            result.addAttribute(.foregroundColor, value: style.highlightTextColor,
+                                range: NSRange(location: 0, length: prefixLength))
+        }
+        // Tracking after the last glyph would push the text off-centre.
+        if length > 1 {
+            result.addAttribute(.kern, value: style.fontSize * trackingPerPoint,
+                                range: NSRange(location: 0, length: length - 1))
+        }
+        return result
+    }
+
+    /// Redraws an existing label's text; used when a reused view gets a new
+    /// token or the typed prefix changes.
     @MainActor
-    private static func makeTextLabel(text: String, style: OverlayStyle) -> NSTextField {
-        let label = NSTextField(labelWithString: text)
-        label.font = NSFont.monospacedSystemFont(ofSize: style.fontSize, weight: .bold)
-        label.textColor = style.textColor
+    static func applyToken(_ token: String, typedPrefix: String, to label: NSTextField, style: OverlayStyle) {
+        label.attributedStringValue = attributedToken(token, typedPrefix: typedPrefix, style: style)
+    }
+
+    private static func labelFont(_ style: OverlayStyle) -> NSFont {
+        NSFont.monospacedSystemFont(ofSize: style.fontSize, weight: .semibold)
+    }
+
+    @MainActor
+    private static func makeTextLabel(token: String, typedPrefix: String, style: OverlayStyle) -> NSTextField {
+        let label = NSTextField(labelWithAttributedString: attributedToken(token, typedPrefix: typedPrefix, style: style))
         label.backgroundColor = .clear
         label.isBordered = false
         label.isBezeled = false
         label.drawsBackground = false
         label.alignment = .center
         label.wantsLayer = true
-        label.shadow = {
-            let shadow = NSShadow()
-            shadow.shadowColor = NSColor.black.withAlphaComponent(0.45)
-            shadow.shadowOffset = NSSize(width: 0, height: -1)
-            shadow.shadowBlurRadius = 2
-            return shadow
-        }()
         label.sizeToFit()
         return label
     }
@@ -113,7 +139,6 @@ enum HintLabelRenderer {
     @MainActor
     private static func measure(
         label: NSTextField,
-        text: String,
         style: OverlayStyle,
         horizontalAxis: Bool
     ) -> Metrics {
@@ -125,7 +150,7 @@ enum HintLabelRenderer {
         // container's corner-radius mask.
         let labelW = label.frame.width
         let labelH = label.frame.height
-        let inkW = glyphInkWidth(text: text, font: label.font ?? NSFont.monospacedSystemFont(ofSize: style.fontSize, weight: .bold))
+        let inkW = glyphInkWidth(label.attributedStringValue)
         let bubbleWidth = ceil(inkW) + style.paddingX * 2
         let bubbleHeight = labelH + style.paddingY * 2
 
@@ -167,10 +192,11 @@ enum HintLabelRenderer {
 
         let glass = GlassBackdrop.make(
             size: metrics.bubbleSize,
-            cornerRadius: bubbleCornerRadius,
+            cornerRadius: style.labelCornerRadius,
             tintColor: style.backgroundColor,
             tintAlpha: style.backgroundOpacity,
             borderAlpha: style.borderOpacity,
+            rim: .specular(top: style.borderOpacity, bottom: 0.12),
             shadow: false
         )
         glass.frame.origin = bubbleOrigin
@@ -208,18 +234,17 @@ enum HintLabelRenderer {
         outer.layer?.masksToBounds = false
         outer.layer?.shadowColor = NSColor.black.cgColor
         outer.layer?.shadowOpacity = 0.2
-        outer.layer?.shadowRadius = 5
-        outer.layer?.shadowOffset = CGSize(width: 0, height: -1)
+        outer.layer?.shadowRadius = 3
+        outer.layer?.shadowOffset = CGSize(width: 0, height: -2)
 
         return outer
     }
 
     /// Measures the tight visual width of the rendered glyphs, ignoring the
     /// font's side-bearing. Using `.useGlyphPathBounds` gives the actual ink
-    /// rect; monospaced bold returns a value 5–6pt narrower than the
+    /// rect; monospaced semibold returns a value several points narrower than the
     /// advance-width frame `sizeToFit()` reports.
-    private static func glyphInkWidth(text: String, font: NSFont) -> CGFloat {
-        let attributed = NSAttributedString(string: text, attributes: [.font: font])
+    private static func glyphInkWidth(_ attributed: NSAttributedString) -> CGFloat {
         let line = CTLineCreateWithAttributedString(attributed)
         let bounds = CTLineGetBoundsWithOptions(line, .useGlyphPathBounds)
         return bounds.width

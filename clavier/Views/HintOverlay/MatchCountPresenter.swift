@@ -2,74 +2,37 @@
 //  MatchCountPresenter.swift
 //  clavier
 //
-//  Pure mapping from match-count state to the visual style used by the
-//  overlay's search bar.
+//  Pure mapping from match-count state to the bar's count segment.
 //
-//  The count values carry two kinds of signal, matching the existing
-//  controller contract:
-//   - `-1` — no active search / reset (blue border, empty badge).
-//   -  `0` — search produced no matches (red border, "0" badge).
-//   -  `1` — single match (green border, green "1" badge — typically the
-//            last state the user sees before auto-click fires).
-//   -  `n ≥ 2` — multi-match (yellow border, yellow "n" badge).
-//
-//  Extracted from `HintOverlayWindow.updateMatchCount` so the window can
-//  apply a pre-computed `Style` without doing its own color branching,
-//  and so the mapping is unit-testable.
+//   - `-1` — no active search: no segment.
+//   -  `0` — search produced no matches: red "0".
+//   -  `n ≥ 1` — blue "n", the same tint whether one or many match, so the
+//            segment reads as information rather than a warning.
 //
 
 import AppKit
 
 enum MatchCountPresenter {
 
-    /// Describes the visual state of the match-count badge and its
-    /// surrounding search-bar border.
     struct Style: Equatable {
+        /// Empty means "draw no count segment".
         let labelText: String
         let labelColor: NSColor
-        let borderColor: NSColor
     }
 
-    /// Map a raw match count to the badge + border style.
-    ///
-    /// `-1` is the sentinel for "reset / no search active" — callers pass it
-    /// when filters clear or the overlay transitions back to hint-prefix mode.
-    ///
     /// `isHydrating`: element text is still being read, so a zero count only
     /// means "not known yet" and must not flash the red no-match state.
     static func style(forCount count: Int, isHydrating: Bool = false) -> Style {
         if count == 0 && isHydrating {
-            return Style(
-                labelText: "…",
-                labelColor: .secondaryLabelColor,
-                borderColor: .systemBlue
-            )
+            return Style(labelText: "…", labelColor: .secondaryLabelColor)
         }
         switch count {
-        case -1:
-            return Style(
-                labelText: "",
-                labelColor: .systemYellow,
-                borderColor: .systemBlue
-            )
+        case ..<0:
+            return Style(labelText: "", labelColor: .secondaryLabelColor)
         case 0:
-            return Style(
-                labelText: "0",
-                labelColor: .systemRed,
-                borderColor: .systemRed
-            )
-        case 1:
-            return Style(
-                labelText: "1",
-                labelColor: .systemGreen,
-                borderColor: .systemGreen
-            )
+            return Style(labelText: "0", labelColor: .systemRed)
         default:
-            return Style(
-                labelText: "\(count)",
-                labelColor: .systemYellow,
-                borderColor: .systemYellow
-            )
+            return Style(labelText: "\(count)", labelColor: .systemBlue)
         }
     }
 }

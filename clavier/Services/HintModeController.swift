@@ -33,8 +33,22 @@ class HintModeController {
     private var hydrationTask: Task<Void, Never>?
     private var continuousUpgradeRequestedWhileActivating = false
 
+    // Activation feedback: the bar speaks while there is no session yet.
+    private var waitingFeedbackTask: Task<Void, Never>?
+    private var statusDismissTask: Task<Void, Never>?
+    private var escapeMonitor: Any?
+    /// The overlay is up showing only a status, with no session behind it.
+    private var isShowingStatus = false
+    /// Short discoveries finish before this and never flash the bar.
+    private static let waitingFeedbackDelay: Duration = .milliseconds(250)
+    private static let nothingToClickDuration: Duration = .milliseconds(1500)
+
     // Auto-deactivation timer (continuous mode)
     private var deactivationTimer: Timer?
+    /// Drives the bar's countdown ring once a second; the one-shot
+    /// `deactivationTimer` stays the authority on when the session ends.
+    private var countdownTimer: Timer?
+    private var deactivationDeadline: Date?
 
     /// Captured at activation, valid for the lifetime of that session.
     private var config = HintSessionConfig.default
@@ -68,6 +82,10 @@ class HintModeController {
 
     func registerGlobalHotkey() {
         HintModeController.sharedInstance = self
+        renderer.onHelpRequested = { [weak self] in
+            SpotifyAccessibilityHelper.shared.presentManually()
+            self?.closeStatusOverlay()
+        }
         hotkeyRegistrar.register(
             keyCodeKey: AppSettings.Keys.hintShortcutKeyCode,
             modifiersKey: AppSettings.Keys.hintShortcutModifiers,
@@ -103,6 +121,10 @@ class HintModeController {
 
         config = .load()
         var presentedProvisionalBrowserHints = false
+        closeStatusOverlay()
+        let frontmost = NSWorkspace.shared.frontmostApplication
+        let appName = frontmost?.localizedName ?? "this app"
+        scheduleWaitingFeedback(appName: appName)
 
         let discoveredElements = await AccessibilityService.shared.getClickableElementsWhenReady(
             includeSystemChrome: config.hintsSystemChrome,
@@ -119,7 +141,10 @@ class HintModeController {
                 }
             }
         )
+        // A cancelled activation was ended by `deactivateHintMode`, which
+        // already tore the feedback down.
         guard !Task.isCancelled else { return }
+        endWaitingFeedback()
 
         if presentedProvisionalBrowserHints {
             guard isActive else { return }
@@ -153,11 +178,73 @@ class HintModeController {
         if SpotifyAccessibilityHelper.shared.presentIfApplicable(
             elements: discoveredElements.filter { !$0.isSystemChrome }
         ) {
+            closeStatusOverlay()
             return
         }
 
-        guard !discoveredElements.isEmpty else { return }
-        _ = openInitialSession(with: discoveredElements)
+        guard !discoveredElements.isEmpty else {
+            showNothingToClick(
+                appName: appName,
+                offersHelp: frontmost?.bundleIdentifier == SpotifyAccessibilityHelper.spotifyBundleId
+            )
+            return
+        }
+        if !openInitialSession(with: discoveredElements) {
+            closeStatusOverlay()
+        }
+    }
+
+    // MARK: - Activation feedback
+
+    private func scheduleWaitingFeedback(appName: String) {
+        waitingFeedbackTask?.cancel()
+        waitingFeedbackTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.waitingFeedbackDelay)
+            guard let self, !Task.isCancelled, !self.isSessionOpen else { return }
+            self.isShowingStatus = true
+            self.renderer.showStatus(.waiting(appName: appName))
+            // No event tap runs before the session opens, so Esc is observed
+            // (not consumed) to cancel the wait.
+            self.escapeMonitor = NSEvent.addGlobalMonitorForEvents(matching: .keyDown) { [weak self] event in
+                guard event.keyCode == 53 else { return }
+                MainActor.assumeIsolated { self?.deactivateHintMode() }
+            }
+            self.dismissalMonitor.start { [weak self] in self?.deactivateHintMode() }
+        }
+    }
+
+    /// Stop waiting-specific observation; the overlay stays up so the
+    /// session or a "nothing to click" status can take it over.
+    private func endWaitingFeedback() {
+        waitingFeedbackTask?.cancel()
+        waitingFeedbackTask = nil
+        if let escapeMonitor {
+            NSEvent.removeMonitor(escapeMonitor)
+        }
+        escapeMonitor = nil
+        if !isSessionOpen {
+            dismissalMonitor.stop()
+        }
+    }
+
+    private func showNothingToClick(appName: String, offersHelp: Bool) {
+        isShowingStatus = true
+        renderer.showStatus(.nothingToClick(appName: appName, offersHelp: offersHelp))
+        statusDismissTask?.cancel()
+        statusDismissTask = Task { @MainActor [weak self] in
+            try? await Task.sleep(for: Self.nothingToClickDuration)
+            guard let self, !Task.isCancelled else { return }
+            self.closeStatusOverlay()
+        }
+    }
+
+    private func closeStatusOverlay() {
+        statusDismissTask?.cancel()
+        statusDismissTask = nil
+        if isShowingStatus && !isSessionOpen {
+            renderer.close()
+        }
+        isShowingStatus = false
     }
 
     @discardableResult
@@ -185,6 +272,7 @@ class HintModeController {
         }
 
         isSessionOpen = true
+        isShowingStatus = false
         session = .active(hintedElements: hintedElements, filter: "", mode: initialMode)
         dismissalMonitor.start { [weak self] in self?.dispatch(.dismiss) }
 
@@ -198,6 +286,8 @@ class HintModeController {
     func deactivateHintMode() {
         activationTask?.cancel()
         activationTask = nil
+        endWaitingFeedback()
+        closeStatusOverlay()
 
         // A session-based guard would early-return after the reducer's
         // `.inactive` transition and leak the event tap + overlay.
@@ -206,6 +296,7 @@ class HintModeController {
 
         deactivationTimer?.invalidate()
         deactivationTimer = nil
+        stopCountdown()
 
         refreshCoordinator.cancelPending()
         hydrationTask?.cancel()
@@ -289,6 +380,9 @@ class HintModeController {
                     HintPopupTriggerProbe.opensPopup(element)
                 }
                 HintActionPerformer.perform(kind, on: element)
+                if kind != .hover {
+                    renderer.flashClick(around: element.visibleFrame)
+                }
                 startDeactivationTimer()
 
             case .deactivate:
@@ -473,7 +567,10 @@ class HintModeController {
     // MARK: - Auto-deactivation
 
     private func startDeactivationTimer() {
-        guard let delay = config.autoDeactivationDelay(for: session.mode) else { return }
+        guard let delay = config.autoDeactivationDelay(for: session.mode) else {
+            stopCountdown()
+            return
+        }
 
         deactivationTimer?.invalidate()
         deactivationTimer = Timer.scheduledTimer(withTimeInterval: delay, repeats: false) { [weak self] _ in
@@ -481,6 +578,33 @@ class HintModeController {
                 self?.deactivateHintMode()
             }
         }
+        startCountdown(delay: delay)
+    }
+
+    private func startCountdown(delay: TimeInterval) {
+        countdownTimer?.invalidate()
+        let deadline = Date().addingTimeInterval(delay)
+        deactivationDeadline = deadline
+        publishCountdown()
+        countdownTimer = Timer.scheduledTimer(withTimeInterval: 1, repeats: true) { [weak self] _ in
+            Task { @MainActor in
+                self?.publishCountdown()
+            }
+        }
+    }
+
+    private func publishCountdown() {
+        guard let deadline = deactivationDeadline,
+              let delay = config.autoDeactivationDelay(for: session.mode) else { return }
+        let left = max(Int(deadline.timeIntervalSinceNow.rounded()), 0)
+        renderer.setCountdown(HintScene.Countdown(secondsLeft: left, totalSeconds: Int(delay.rounded())))
+    }
+
+    private func stopCountdown() {
+        countdownTimer?.invalidate()
+        countdownTimer = nil
+        deactivationDeadline = nil
+        renderer.setCountdown(nil)
     }
 
     private func upgradeToContinuous() {

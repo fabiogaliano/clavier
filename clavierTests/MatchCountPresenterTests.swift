@@ -2,7 +2,7 @@
 //  MatchCountPresenterTests.swift
 //  clavierTests
 //
-//  Pure tests for the match-count → badge/border style mapping.
+//  Pure tests for the match-count → bar count segment mapping.
 //
 
 import XCTest
@@ -11,46 +11,39 @@ import AppKit
 
 final class MatchCountPresenterTests: XCTestCase {
 
-    func test_resetSentinel_producesBlueBorderWithEmptyLabel() {
-        let style = MatchCountPresenter.style(forCount: -1)
-        XCTAssertEqual(style.labelText, "")
-        XCTAssertEqual(style.borderColor, .systemBlue)
+    func test_resetSentinel_drawsNoSegment() {
+        XCTAssertEqual(MatchCountPresenter.style(forCount: -1).labelText, "")
     }
 
-    func test_zeroMatches_producesRedStyle() {
+    func test_zeroMatches_isRed() {
         let style = MatchCountPresenter.style(forCount: 0)
         XCTAssertEqual(style.labelText, "0")
         XCTAssertEqual(style.labelColor, .systemRed)
-        XCTAssertEqual(style.borderColor, .systemRed)
     }
 
-    func test_singleMatch_producesGreenStyle() {
+    func test_singleMatch_isBlue() {
         let style = MatchCountPresenter.style(forCount: 1)
         XCTAssertEqual(style.labelText, "1")
-        XCTAssertEqual(style.labelColor, .systemGreen)
-        XCTAssertEqual(style.borderColor, .systemGreen)
+        XCTAssertEqual(style.labelColor, .systemBlue)
     }
 
-    func test_multiMatch_producesYellowStyleWithCount() {
+    func test_multiMatch_isBlueWithCount() {
         let style = MatchCountPresenter.style(forCount: 7)
         XCTAssertEqual(style.labelText, "7")
-        XCTAssertEqual(style.labelColor, .systemYellow)
-        XCTAssertEqual(style.borderColor, .systemYellow)
+        XCTAssertEqual(style.labelColor, .systemBlue)
     }
 
     func test_largeMatchCount_stringsThroughAsIs() {
-        let style = MatchCountPresenter.style(forCount: 123)
-        XCTAssertEqual(style.labelText, "123")
+        XCTAssertEqual(MatchCountPresenter.style(forCount: 123).labelText, "123")
     }
 
     func test_zeroMatchesWhileHydrating_showsPendingInsteadOfRed() {
         let style = MatchCountPresenter.style(forCount: 0, isHydrating: true)
         XCTAssertEqual(style.labelText, "…")
-        XCTAssertNotEqual(style.borderColor, .systemRed)
+        XCTAssertNotEqual(style.labelColor, .systemRed)
     }
 
     func test_nonZeroMatchesWhileHydrating_showsRealCount() {
-        let style = MatchCountPresenter.style(forCount: 3, isHydrating: true)
-        XCTAssertEqual(style.labelText, "3")
+        XCTAssertEqual(MatchCountPresenter.style(forCount: 3, isHydrating: true).labelText, "3")
     }
 }
