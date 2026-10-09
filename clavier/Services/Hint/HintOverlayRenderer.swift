@@ -135,6 +135,13 @@ final class HintOverlayRenderer {
         render()
     }
 
+    /// Confirm a click on `frame` (AppKit screen coordinates) with a brief
+    /// ring in the hint tint.  Independent of the overlay window, so it
+    /// still plays when the click closes the session.
+    func flashClick(around frame: CGRect) {
+        ClickRing.show(around: frame, color: style.backgroundColor)
+    }
+
     /// Continuous-mode time left; `nil` when auto-deactivation is off.
     func setCountdown(_ countdown: HintScene.Countdown?) {
         guard chrome.countdown != countdown else { return }

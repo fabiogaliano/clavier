@@ -367,6 +367,9 @@ class HintModeController {
                     HintPopupTriggerProbe.opensPopup(element)
                 }
                 HintActionPerformer.perform(kind, on: element)
+                if kind != .hover {
+                    renderer.flashClick(around: element.visibleFrame)
+                }
                 startDeactivationTimer()
 
             case .deactivate:
