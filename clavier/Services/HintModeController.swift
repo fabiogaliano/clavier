@@ -554,7 +554,7 @@ class HintModeController {
     /// Schedule a main-actor hydration pass that fills in `textAttributes`
     /// on each discovered element for text-search lookups.
     ///
-    /// The AX API requires main-thread access (see claudedocs/api-research.md),
+    /// The AX API requires main-thread access,
     /// so the hop here is *not* about moving work off-main — it is purely about
     /// yielding to the current run loop turn so the overlay paints first, then
     /// performing the AX reads synchronously on the main actor.  The name

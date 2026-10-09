@@ -12,8 +12,8 @@
 //  the walker.
 //
 //  Threading: every call path touches `AXUIElementCopyMultipleAttributeValues`,
-//  which Apple DTS requires be called from the main thread (see
-//  `claudedocs/api-research.md`).  This type is therefore `@MainActor`.
+//  which Apple DTS requires be called from the main thread.
+//  This type is therefore `@MainActor`.
 //
 
 import Foundation
@@ -120,8 +120,7 @@ struct ClickableElementWalker {
     ) {
         // BATCH FETCH: Get role, position, size, children, enabled in ONE IPC call.
         // Missing attributes arrive as AXValueError sentinels; Swift `as?` yields
-        // nil for those slots without failing the overall call — see
-        // claudedocs/api-research.md for the documented semantics we rely on.
+        // nil for those slots without failing the overall call.
         let attributes = [
             kAXRoleAttribute as CFString,
             kAXPositionAttribute as CFString,

@@ -100,7 +100,7 @@ open clavier.xcodeproj
 - Event-tap callback runs on the CF run loop, not on the main actor.
 - `nonisolated(unsafe)` static scalars are used for thread-safe gate state.
 - UI/state mutations are dispatched back to the main queue via `DispatchQueue.main.async`.
-- All Accessibility API calls are confined to `@MainActor` per Apple DTS guidance (see `claudedocs/api-research.md`).
+- All Accessibility API calls are confined to `@MainActor` per Apple DTS guidance.
 
 **Settings persistence:**
 - `UserDefaults` + `@AppStorage` for preferences.

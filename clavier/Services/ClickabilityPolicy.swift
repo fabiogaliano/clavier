@@ -12,8 +12,8 @@
 //
 //  Threading: `isClickable(role:element:enabled:)` calls
 //  `AXUIElementCopyActionNames` for the `AXStaticText` branch, which is a
-//  main-thread-only AX API per Apple DTS guidance recorded in
-//  `claudedocs/api-research.md`.  The type is therefore `@MainActor`.
+//  main-thread-only AX API per Apple DTS guidance.  The type is therefore
+//  `@MainActor`.
 //
 
 import Foundation

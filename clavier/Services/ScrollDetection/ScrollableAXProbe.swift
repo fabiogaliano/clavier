@@ -22,8 +22,7 @@ import AppKit
 /// Stateless AX probes used by scroll-area detection.
 ///
 /// All entry points are `@MainActor` because Apple DTS guidance is that
-/// every Accessibility API call must come from the main thread (see
-/// `claudedocs/api-research.md` → "Accessibility API threading").
+/// every Accessibility API call must come from the main thread.
 @MainActor
 enum ScrollableAXProbe {
 

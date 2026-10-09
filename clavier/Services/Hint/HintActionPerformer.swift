@@ -9,10 +9,10 @@
 //  click through `ClickService` when AX reports anything other than
 //  `.success`. Some Electron/Chromium controls acknowledge `AXPress`
 //  without actually activating, so web-content elements are routed
-//  straight to the CGEvent path — see `claudedocs/api-research.md`.
+//  straight to the CGEvent path.
 //
 //  The type is `@MainActor` because every AXUIElement API is documented
-//  by Apple DTS as main-thread only (`claudedocs/api-research.md:54-93`).
+//  by Apple DTS as main-thread only.
 //
 
 import Foundation

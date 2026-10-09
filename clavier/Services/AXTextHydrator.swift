@@ -4,8 +4,8 @@
 //
 //  Main-actor hydration of `UIElement.textAttributes` from the AX API.
 //
-//  Why main actor: Apple DTS guidance and community experience (see
-//  claudedocs/api-research.md) say all `AXUIElement` functions must be
+//  Why main actor: Apple DTS guidance and community experience
+//  say all `AXUIElement` functions must be
 //  called from the main thread.  This hydrator therefore performs its reads
 //  on `MainActor` — the `@MainActor` annotation is the entire point of the
 //  type, not an incidental attribute.
