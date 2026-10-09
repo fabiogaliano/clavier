@@ -62,6 +62,44 @@ class HintOverlayWindow: NSWindow {
         if barPanel.parent == nil {
             addChildWindow(barPanel, ordered: .above)
         }
+        playLabelEntrance()
+    }
+
+    /// Fade the labels in.  Also used when hints arrive in a window that was
+    /// already up for a status, so they never pop in.
+    func playLabelEntrance() {
+        guard let content = contentView, let layer = content.layer,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else { return }
+        content.alphaValue = 1
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = 0
+        fade.toValue = 1
+        fade.duration = 0.08
+        fade.timingFunction = CAMediaTimingFunction(name: .easeOut)
+        layer.add(fade, forKey: "labelsEnter")
+    }
+
+    /// Fade labels and bar out, then close.  The window keeps itself alive
+    /// through the fade; callers can drop their reference immediately.
+    func dismiss() {
+        guard let content = contentView, let layer = content.layer,
+              !NSWorkspace.shared.accessibilityDisplayShouldReduceMotion else {
+            close()
+            return
+        }
+        barPanel.dismissBar()
+        CATransaction.begin()
+        CATransaction.setCompletionBlock {
+            MainActor.assumeIsolated { self.close() }
+        }
+        let fade = CABasicAnimation(keyPath: "opacity")
+        fade.fromValue = layer.presentation()?.opacity ?? 1
+        fade.toValue = 0
+        fade.duration = 0.1
+        fade.timingFunction = CAMediaTimingFunction(name: .easeIn)
+        content.alphaValue = 0
+        layer.add(fade, forKey: "labelsExit")
+        CATransaction.commit()
     }
 
     override func close() {

@@ -40,8 +40,9 @@ final class HintOverlayRenderer {
         style = AppSettings.hintStyle
         self.session = session
         chrome = HintScene.Chrome()
-        if window != nil {
+        if let window {
             render()
+            window.playLabelEntrance()
             return
         }
         makeWindow()
@@ -72,8 +73,7 @@ final class HintOverlayRenderer {
 
     /// Close and release the overlay.
     func close() {
-        window?.orderOut(nil)
-        window?.close()
+        window?.dismiss()
         window = nil
         session = .inactive
         chrome = HintScene.Chrome()
