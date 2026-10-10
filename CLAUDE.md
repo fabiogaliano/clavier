@@ -139,7 +139,7 @@ Stored in `UserDefaults` — keys live in `AppSettings.Keys`, defaults in `AppSe
 - `manualRefreshTrigger` (String): Characters typed to force a refresh in continuous mode (default: `"rr"`).
 - `continuousClickMode` (Bool): Start every hint session continuous; otherwise the live session can be upgraded with a second hint-hotkey press.
 - `autoHintDeactivation` (Bool): Auto-exit continuous mode after inactivity (default: true).
-- `hintDeactivationDelay` (Double): Seconds before auto-deactivation (default: 5.0).
+- `hintDeactivationDelay` (Double): Seconds before auto-deactivation (default: 10.0).
 - `hintSystemChrome` (Bool): Also hint the menu bar, status items and Dock (default: true).
 
 **Hint Mode (appearance):**

@@ -68,7 +68,7 @@ enum AppSettings {
         static let hintSize = 12.0
         static let continuousClickMode = false
         static let autoHintDeactivation = true
-        static let hintDeactivationDelay = 5.0
+        static let hintDeactivationDelay = 10.0
         static let hintCharacters = "asdfhjkl"
         static let textSearchEnabled = true
         static let minSearchCharacters = 2
